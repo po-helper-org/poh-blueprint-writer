@@ -382,6 +382,12 @@ cp -r "$PL/g" "$PL/cand" && sed -i '0,/^команда: vit$/s//кандидат
   && python3 "$BBUILD" "$PL/cand" --no-source --no-zip --out-dir "$PL/cand-out" >/dev/null 2>&1 \
   && grep -q "Витрина или UnitB" "$PL/cand-out/dineclub-restart-map.html" \
   && ok "автопилот · кандидаты «Витрина или UnitB» — сборка проходит (BL032 не ложный)" || fail "автопилот · кандидаты валят сборку"
+# ссылка на карточку посреди значения «Параметров» — страница показывает значение без неё, это не выдумка
+cp -r "$PL/g" "$PL/mid" && sed -i 's/^- \*\*Выход:\*\* Частота и каналы касаний (BP-12.2)$/- **Выход:** Частота (BP-12.2) и каналы касаний/' "$PL/mid/plan/map.md" \
+  && grep -q "Частота (BP-12.2) и каналы касаний" "$PL/mid/plan/map.md" \
+  && python3 "$DIR/scripts/bft-plan.py" apply "$PL/mid" >/dev/null 2>&1 \
+  && python3 "$BBUILD" "$PL/mid" --no-source --no-zip --out-dir "$PL/mid-out" >/dev/null 2>&1 \
+  && ok "автопилот · ссылка (BP-x.y) посреди значения — сборка проходит" || fail "автопилот · ссылка посреди значения валит сборку (BL032)"
 # BL033: история от лица команды-исполнителя
 cp -r "$PL/g" "$PL/role" && sed -i '0,/^Как официант, я хочу получать ответ/s//Как команда TeamA, я хочу получать ответ/' "$PL/role/plan/map.md" \
   && python3 "$DIR/scripts/bft-plan.py" apply "$PL/role" 2>&1 | grep -q " BL033 BP-16.1" \

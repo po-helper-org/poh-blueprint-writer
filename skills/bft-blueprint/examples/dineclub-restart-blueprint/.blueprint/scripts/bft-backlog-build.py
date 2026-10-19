@@ -170,6 +170,9 @@ def provenance(m: dict, pr: bl.Project) -> list[str]:
     corpus = "\n".join(f.read_text(encoding="utf-8") for f in sorted(pr.bdir.rglob("*.md")))
     norm = lambda s: " ".join(s.split())  # noqa: E731
     text = norm(corpus)
+    # значение «Параметров» страница показывает без ссылок (BP-x.y): сверяем и с текстом без них
+    refs = re.compile(rf"\s*\(\s*(?:[←→]\s*)?{re.escape(pr.prefix)}-\d+(?:\.\d+)*(?:\s*,\s*(?:[←→]\s*)?{re.escape(pr.prefix)}-\d+(?:\.\d+)*)*\s*\)")
+    bare = norm(refs.sub("", corpus.replace("**", "")))
     miss: list[str] = []
 
     def walk(v, key: str) -> None:
@@ -188,7 +191,7 @@ def provenance(m: dict, pr: bl.Project) -> list[str]:
                     if not (pr.root / im.group(2)).is_file():
                         miss.append(f"картинка {im.group(2)}")
                     continue
-                if len(ln) >= 3 and ln not in text:
+                if len(ln) >= 3 and ln not in text and ln not in bare:
                     miss.append(ln)
     walk(m, "")
     paths = [x["file"] for x in m["tasks"] + m["cards"]] + [d["file"] for d in m["docs"].values()] + [s["img"] for s in m["screens"].values()]
