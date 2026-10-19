@@ -29,10 +29,10 @@ def _lint():
     return mod
 
 
-def review(root: Path) -> int:
+def review(root: Path, source: str | None = None) -> int:
     """Проверка карты, адресованная плану: строка плана, код, сообщение; ниже — как исправить."""
     lint = _lint()
-    pr = lint.run(root, None, False)
+    pr = lint.run(root, source, False)
     pl = bp.parse(root) if (root / bp.PLAN_DIR / "map.md").is_file() else None
     where: dict[str, str] = {}
     if pl:
@@ -92,6 +92,7 @@ def main() -> int:
     ap.add_argument("cmd", choices=("apply", "export", "next"))
     ap.add_argument("project", type=Path)
     ap.add_argument("--force", action="store_true", help="export: переписать существующий план")
+    ap.add_argument("--source", help="apply, next: путь к БФТ (по умолчанию — `source_doc` паспорта рядом с проектом)")
     a = ap.parse_args()
     root = a.project.resolve()
     if bl.find_backlog(root) is None:
@@ -116,7 +117,7 @@ def main() -> int:
             return 1
         for line in bp.apply(pl, root):
             print(f"  {line}")
-    return review(root)
+    return review(root, a.source)
 
 
 if __name__ == "__main__":
