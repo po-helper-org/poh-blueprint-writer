@@ -393,6 +393,22 @@ cp -r "$PL/g" "$PL/role" && sed -i '0,/^Как официант, я хочу п�
   && python3 "$DIR/scripts/bft-plan.py" apply "$PL/role" 2>&1 | grep -q " BL033 BP-16.1" \
   && ok "автопилот · BL033: UserStory от лица исполнителя, адрес — строка плана" || fail "автопилот · BL033"
 
+# качество: процесс о работе над проектом (BL034), один кандидат (BL035), «Когда» с заглавной (BL030)
+cp -r "$PL/g" "$PL/qual" && python3 - "$PL/qual/plan/map.md" <<'PY'
+import sys
+p = sys.argv[1]; t = open(p, encoding="utf-8").read()
+t = t.replace("- TeamA: Проверяет: активен, не использован, ≤7 дней", "- СА: Проверяет: активен, не использован, ≤7 дней", 1)
+t = t.replace("команда: vit", "кандидаты: vit", 1)
+t = t.replace("- Когда приходит штрихкод", "- Когда Приходит штрихкод", 1)
+open(p, "w", encoding="utf-8").write(t)
+PY
+out="$(python3 "$DIR/scripts/bft-plan.py" apply "$PL/qual" 2>&1)"
+( for c in "BL034 BP-16.1" "BL035" "BL030 BP-16.1"; do grep -q " $c" <<<"$out" || exit 1; done ) \
+  && ok "автопилот · BL034 СА в процессе, BL035 один кандидат, BL030 «Когда» с заглавной" || fail "автопилот · проверки качества карты"
+sed 's/^| guest | Гость Acme Tickets |/| guest | Гость, кассир и администратор |/' "$DIR/examples/golden_story.md" > "$tmp/merged-story.md"
+python3 "$DIR/scripts/bft-story-lint.py" "$tmp/merged-story.md" --no-source 2>&1 | grep -q " ST025 " \
+  && ok "автопилот · ST025: персонаж из нескольких ролей" || fail "автопилот · ST025"
+
 # встроенный CLI и настоящий Backlog.md читают файлы друг друга — если npm-пакет установлен
 if command -v backlog >/dev/null 2>&1; then
   ( cd "$tmp/unz/dineclub-restart-blueprint" && [ "$(backlog task list --plain 2>/dev/null | grep -c 'BP-')" -eq 40 ] \
