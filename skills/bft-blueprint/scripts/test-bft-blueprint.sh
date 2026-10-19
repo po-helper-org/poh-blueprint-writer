@@ -324,6 +324,63 @@ python3 "$DIR/scripts/bft-backlog-init.py" "$FIX/story_ok.md" --dir "$tmp/init" 
 python3 "$DIR/scripts/bft-backlog-init.py" "$DIR/scripts/fixtures/broken_story_semantics.md" --dir "$tmp/init2" >/dev/null 2>&1; rc=$?
 { [ "$rc" -eq 1 ] && [ ! -e "$tmp/init2" ]; } && ok "карта · init: история с ошибками — проект не создаётся" || fail "карта · init по сломанной истории (rc=$rc)"
 
+# автопилот: без --auto непросмотренная история не превращается в проект, с --auto — превращается
+sed 's/^status: Согласован/status: Черновик/' "$FIX/story_ok.md" > "$tmp/draft-story.md"
+python3 "$DIR/scripts/bft-backlog-init.py" "$tmp/draft-story.md" --dir "$tmp/auto0" >/dev/null 2>&1; rc=$?
+python3 "$DIR/scripts/bft-backlog-init.py" "$tmp/draft-story.md" --dir "$tmp/auto1" --auto >/dev/null 2>&1 \
+  && [ "$rc" -eq 1 ] && [ ! -e "$tmp/auto0" ] && [ -f "$tmp/auto1/.blueprint/templates/map.md" ] && [ -f "$tmp/auto1/.blueprint/rules/autopilot.md" ] \
+  && ok "автопилот · init --auto: проект из черновика истории, шаблоны и маршрут внутри" || fail "автопилот · init --auto"
+python3 "$DIR/scripts/bft-story-lint.py" "$DIR/templates/story.md" --no-source 2>&1 | grep -q " ST024 " \
+  && ok "автопилот · ST024: незаполненный шаблон истории" || fail "автопилот · ST024 не ловит шаблон"
+
+# инвентарь БФТ: все требования и разделы на месте
+python3 "$DIR/scripts/bft-reqs.py" "$FIX/golden_deep_document.md" > "$tmp/reqs.md" \
+  && ( for id in БТ-1 ПТ-1 ПТ-2 ИТ-1 ИТ-2 ФТ-1 ФТ-2 ФТ-3 ФТ-4 НФТ-1; do grep -q "^| $id |" "$tmp/reqs.md" || exit 1; done ) \
+  && grep -q "Контент-менеджер Direct" "$tmp/reqs.md" && grep -q "Контент-менеджер → Карточка в Direct" "$tmp/reqs.md" \
+  && ok "автопилот · bft-reqs: 10 требований, акторы, сценарий с участниками" || fail "автопилот · bft-reqs"
+
+# план карты: экспорт эталона = образец в examples; apply того же плана ничего не меняет; с нуля — та же карта
+PL="$tmp/plan"; mkdir -p "$PL" && cp -r "$BGOLD" "$PL/g" && rm -rf "$PL/g/plan"
+python3 "$DIR/scripts/bft-plan.py" export "$PL/g" >/dev/null 2>&1 && diff -r "$PL/g/plan" "$DIR/examples/dineclub-restart-plan" >/dev/null \
+  && ok "автопилот · export: план эталона совпадает с examples/dineclub-restart-plan" \
+  || fail "автопилот · план эталона разошёлся — пересобери: bft-plan.py export (examples/dineclub-restart-plan)"
+cp -r "$PL/g" "$PL/same" && python3 "$DIR/scripts/bft-plan.py" apply "$PL/same" >/dev/null 2>&1 && diff -r "$PL/g" "$PL/same" >/dev/null \
+  && ok "автопилот · apply того же плана — файлы не меняются" || fail "автопилот · apply не идемпотентен"
+cp -r "$PL/g" "$PL/new" && rm -f "$PL/new/backlog/tasks/"*.md "$PL/new/backlog/docs/screens/"*.md
+python3 "$DIR/scripts/bft-plan.py" apply "$PL/new" >/dev/null 2>&1; rc=$?
+python3 - "$DIR/scripts" "$PL/g" "$PL/new" <<'PY' && [ "$rc" -eq 0 ] && ok "автопилот · apply с нуля: та же карта, что у эталона" || fail "автопилот · apply с нуля дал другую карту (rc=$rc)"
+import importlib.util, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+spec = importlib.util.spec_from_file_location("b", Path(sys.argv[1]) / "bft-backlog-build.py"); b = importlib.util.module_from_spec(spec); spec.loader.exec_module(b)
+def m(p):
+    d = b.model(b.lint.run(Path(p).resolve(), None, True))
+    for x in d["tasks"] + d["cards"]:
+        x.pop("file")
+    for k in ("docs", "noteFiles"):
+        d.pop(k)
+    return d
+a, c = m(sys.argv[2]), m(sys.argv[3])
+assert a == c, [k for k in a if a[k] != c[k]]
+PY
+# ошибки формы плана: в бэклог ничего не пишется
+cp -r "$PL/g" "$PL/bad" && python3 - "$PL/bad/plan/map.md" <<'PY'
+import sys
+p = sys.argv[1]; t = open(p, encoding="utf-8").read()
+t = t.replace("## BP-1 · ", "## Задача BP-1 ", 1).replace("слой: backstage", "слой: бэкенд", 1).replace("вид: создать", "вид: создать\nсрок: завтра", 1)
+t += "\n## BP-77.1 · Карточка без задачи\nэтап: A\nслой: support\n\n{{суть}}\n"
+open(p, "w", encoding="utf-8").write(t)
+PY
+before="$(cd "$PL/bad/backlog" && find . -type f -exec md5sum {} + | sort | md5sum)"
+out="$(python3 "$DIR/scripts/bft-plan.py" apply "$PL/bad" 2>&1)"; rc=$?
+after="$(cd "$PL/bad/backlog" && find . -type f -exec md5sum {} + | sort | md5sum)"
+( [ "$rc" -eq 1 ] && [ "$before" = "$after" ] && for c in PL002 PL003 PL004 PL007; do grep -q " $c " <<<"$out" || exit 1; done ) \
+  && ok "автопилот · ошибки плана PL002 PL003 PL004 PL007 — бэклог не тронут" || fail "автопилот · ошибки плана"
+# BL033: история от лица команды-исполнителя
+cp -r "$PL/g" "$PL/role" && sed -i '0,/^Как официант, я хочу получать ответ/s//Как команда TeamA, я хочу получать ответ/' "$PL/role/plan/map.md" \
+  && python3 "$DIR/scripts/bft-plan.py" apply "$PL/role" 2>&1 | grep -q " BL033 BP-16.1" \
+  && ok "автопилот · BL033: UserStory от лица исполнителя, адрес — строка плана" || fail "автопилот · BL033"
+
 # встроенный CLI и настоящий Backlog.md читают файлы друг друга — если npm-пакет установлен
 if command -v backlog >/dev/null 2>&1; then
   ( cd "$tmp/unz/dineclub-restart-blueprint" && [ "$(backlog task list --plain 2>/dev/null | grep -c 'BP-')" -eq 40 ] \

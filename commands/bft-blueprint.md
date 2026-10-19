@@ -5,11 +5,12 @@ description: 'Service Blueprint по БФТ в два согласуемых э�
 ## Использование
 
 ```
-/bft-blueprint <epic_slug|путь> [вводная] [--story | --map | --layers]
+/bft-blueprint <epic_slug|путь> [вводная] [--auto | --story | --map | --layers]
 ```
 
 **Параметры:**
 - `<epic_slug|путь>` — слаг эпика (БФТ ищется по пути `<docs_path>/<epic_slug>/<epic_slug>.md`, если его нет — `<epic_slug>-fast.md` с предупреждением) либо прямой путь к документу.
+- `--auto` — опц., автопилот: история и карта за один заход без вопросов PO по маршруту `resources/autopilot.md`. Неизвестное — открытыми вопросами на карте.
 - `--story` — опц., только первый этап: собрать или пересобрать историю и остановиться.
 - `--map` — опц., только второй этап по уже согласованной истории.
 - `--layers` — опц., прежняя слоевая схема `<epic_slug>-blueprint.md` для документов, собранных раньше.
@@ -19,6 +20,7 @@ description: 'Service Blueprint по БФТ в два согласуемых э�
 
 ```
 /bft-blueprint dineclub-restart
+/bft-blueprint dineclub-restart --auto
 /bft-blueprint dineclub-restart --story
 /bft-blueprint dineclub-restart --map "сканер делает DineClub, проверку билета — TeamA"
 ```
@@ -56,7 +58,7 @@ description: 'Service Blueprint по БФТ в два согласуемых э�
 
 ## Инструкция для LLM
 
-Навык — `../skills/bft-blueprint/SKILL.md`. Порядок — этапы оттуда: resolve → **story** со своим STOP → **map** → STOP. Стандарты — `resources/story_line.md`, `resources/story_interview.md`, `resources/backlog_rules.md`; эталоны — `examples/golden_story.md`, проект `examples/dineclub-restart-blueprint/`.
+Навык — `../skills/bft-blueprint/SKILL.md`. Порядок — этапы оттуда: resolve → **story** со своим STOP → **map** → STOP. С `--auto` — без остановок, строго по `resources/autopilot.md`, шаги 1–7. Стандарты — `resources/story_line.md`, `resources/story_interview.md`, `resources/backlog_rules.md`; эталоны — `examples/golden_story.md`, проект `examples/dineclub-restart-blueprint/`.
 
 ### Гейт перед показом PO (обязателен)
 

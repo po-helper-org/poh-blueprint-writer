@@ -42,8 +42,10 @@ import backlog_cli as cli  # noqa: E402
 START, END = "<!-- BFT-BLUEPRINT START -->", "<!-- BFT-BLUEPRINT END -->"
 NPM_START, NPM_END = "<!-- BACKLOG.MD GUIDELINES START -->", "<!-- BACKLOG.MD GUIDELINES END -->"
 TOOLS = ("backlog_cli.py", "bft_blueprint.py", "bft_story.py", "bft_screens.py", "bft_mock.py", "bft_backlog.py", "bft-blueprint-lint.py",
-         "bft-backlog-lint.py", "bft-backlog-build.py", "bft-backlog-init.py", "page_kit.js", "map_page.js", "map_page.css")
-RULES = ("backlog_rules.md", "screen_notes.md", "story_line.md")
+         "bft-backlog-lint.py", "bft-backlog-build.py", "bft-backlog-init.py", "bft_plan.py", "bft-plan.py", "bft-reqs.py",
+         "page_kit.js", "map_page.js", "map_page.css")
+RULES = ("autopilot.md", "backlog_rules.md", "screen_notes.md", "story_line.md")
+TEMPLATES = ("map.md", "screen.md")   # шаблоны плана карты — .blueprint/templates/
 VENDOR = ("mermaid.min.js", "mermaid.LICENSE")   # схемы на странице рисует mermaid из этой папки, без сети
 AGENT_FILES = ("CLAUDE.md", "AGENTS.md", "GEMINI.md")
 CONFIG = """project_name: "{name}"
@@ -79,12 +81,20 @@ here = os.path.dirname(os.path.abspath(__file__))
 scripts = os.path.join(here, ".blueprint", "scripts")
 cmd, rest = (sys.argv[1] if len(sys.argv) > 1 else "help"), sys.argv[2:]
 if cmd == "lint":
-    run = ["bft-backlog-lint.py", here]
+    run = ["bft-backlog-lint.py", here, "--hints"]
 elif cmd == "build":
     run = ["bft-backlog-build.py", here, "--out-dir", here]
 elif cmd == "check":
     run = ["bft-backlog-build.py", here, "--check"]
+elif cmd in ("apply", "export", "next"):
+    run = ["bft-plan.py", cmd, here]
+elif cmd == "reqs":
+    run = ["bft-reqs.py", "--project", here]
 else:
+    print("./blueprint.py reqs   — инвентарь БФТ: требования, акторы, сценарий, зависимости и куда они ложатся на карте")
+    print("./blueprint.py apply  — план plan/map.md и plan/screens/*.md → задачи, карточки, документы; затем проверка")
+    print("./blueprint.py next   — что исправить дальше: ошибки по строкам плана и как их исправить")
+    print("./blueprint.py export — план из бэклога (правки одним файлом)")
     print("./blueprint.py lint   — проверить карту (коды BL, SN; правила — .blueprint/rules/backlog_rules.md)")
     print("./blueprint.py build  — схемы BPMN из «Процесса», страница <epic>-map.html и архив <epic>-blueprint.zip")
     print("./blueprint.py check  — проверка без записи: схемы и скрипты проекта актуальны")
@@ -177,6 +187,9 @@ def wanted(root: Path, title: str, epic: str, source: str) -> dict[str, bytes]:
     for r in RULES:
         if (rules_dir() / r).is_file():
             out[f".blueprint/rules/{r}"] = (rules_dir() / r).read_bytes()
+    for tpl in TEMPLATES:
+        if (HERE.parent / "templates" / tpl).is_file():
+            out[f".blueprint/templates/{tpl}"] = (HERE.parent / "templates" / tpl).read_bytes()
     for v in VENDOR:
         out[f".blueprint/vendor/{v}"] = (HERE.parent / "vendor" / v).read_bytes()
     out["backlog.py"], out["blueprint.py"] = BACKLOG_SH.encode(), BLUEPRINT_SH.encode()
@@ -244,6 +257,7 @@ def main() -> int:
     ap.add_argument("story", type=Path, nargs="?", help="<epic>-story.md — согласованная история")
     ap.add_argument("--dir", type=Path, help="папка проекта (по умолчанию <epic>-blueprint рядом с историей)")
     ap.add_argument("--guides", type=Path, metavar="ПРОЕКТ", help="обновить скрипты, правила и инструкции агенту в проекте")
+    ap.add_argument("--auto", action="store_true", help="автопилот: карта по истории, которую PO ещё не видел (история остаётся черновиком)")
     args = ap.parse_args()
     if args.guides:
         pr = bl.parse(args.guides)
@@ -261,8 +275,9 @@ def main() -> int:
             print(f"{args.story}:{i.line}: {i.level} {i.code} {i.msg}", file=sys.stderr)
         print("backlog-init: история с ошибками — сначала bft-story-lint.py", file=sys.stderr)
         return 1
-    if st.meta.get("status", "").lower() != "согласован":
-        print("backlog-init: история ещё не согласована PO (status: Согласован) — карта собирается после согласования", file=sys.stderr)
+    if st.meta.get("status", "").lower() != "согласован" and not args.auto:
+        print("backlog-init: история ещё не согласована PO (status: Согласован) — карта собирается после согласования; "
+              "автопилот без PO — --auto", file=sys.stderr)
         return 1
     epic = st.meta["epic_slug"]
     root = args.dir or args.story.parent / f"{epic}-blueprint"
@@ -280,7 +295,8 @@ def main() -> int:
     backlog(root, "doc", "update", "doc-2", "--content", story_body)
     install(root, title, epic, st.meta.get("source_doc", ""))
     print(f"backlog-init: {root} — автономный проект Backlog.md: документы «Карта» и «История», ./backlog.py, ./blueprint.py, инструкции агенту")
-    print("дальше: команды и вопросы — в «Карту», задачи и карточки — ./backlog.py task create (.blueprint/rules/backlog_rules.md)")
+    print("дальше: ./blueprint.py reqs — инвентарь БФТ; план карты — plan/map.md по .blueprint/templates/map.md; ./blueprint.py apply "
+          "(методология — .blueprint/rules/autopilot.md)")
     return 0
 
 

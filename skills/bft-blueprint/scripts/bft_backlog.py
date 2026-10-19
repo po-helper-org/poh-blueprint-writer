@@ -758,6 +758,12 @@ def _check_card(pr: Project, c: BTask, stages: set, team_ids: set, task_ids: set
         c.user_story = secs["UserStory"][1].strip()
         if c.user_story and not re.match(r"^Как .+,\s*я хочу .+,\s*чтобы .+", c.user_story.replace("**", ""), re.S):
             pr.warn(rel, secs["UserStory"][0], "BL030", f"{c.id}: UserStory — «Как <роль>, я хочу <действие>, чтобы <ценность>»")
+        role = re.match(r"^Как\s+(.+?),\s*я хочу", c.user_story.replace("**", ""))
+        if role:
+            r = role.group(1).lower()
+            teams = {t.id.lower() for t in pr.teams} | {t.name.lower() for t in pr.teams}
+            if re.search(r"\bкоманд|разработ|исполнител", r) or r in teams:
+                pr.warn(rel, secs["UserStory"][0], "BL033", f"{c.id}: UserStory от лица исполнителя «{role.group(1)}» — роль: тот, кто пользуется результатом (гость, официант, PO)")
     if "JobStory" in secs:
         c.job_stories = [re.sub(r"^[-*]\s+", "", x.strip()) for x in secs["JobStory"][1].split("\n") if re.match(r"^\s*[-*]\s+\S", x)]
         if secs["JobStory"][1].strip() and not c.job_stories:

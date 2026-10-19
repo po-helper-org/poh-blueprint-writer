@@ -41,6 +41,22 @@ HTML без `npm` и CDN.
 эталон — [`examples/dineclub-restart-blueprint/`](skills/bft-blueprint/examples/dineclub-restart-blueprint)
 и его страница [`examples/dineclub-restart-map.html`](skills/bft-blueprint/examples/dineclub-restart-map.html).
 
+## Автопилот: один промпт
+
+`/bft-blueprint <epic> --auto` — история и карта за один заход без вопросов PO. Маршрут для агента —
+[`resources/autopilot.md`](skills/bft-blueprint/resources/autopilot.md):
+
+1. инвентарь БФТ — `bft-reqs.py`;
+2. история по шаблону;
+3. проект Backlog.md;
+4. план карты одним файлом `plan/map.md` — команды, задачи, карточки, экраны;
+5. `./blueprint.py apply` — до нуля ошибок, с адресом строки плана и подсказкой к каждому коду;
+6. рубрика качества и сводка `./blueprint.py next`;
+7. сборка.
+
+Решения сведены в таблицы, форма — в шаблоны, проверки — в скрипты: маршрут рассчитан на модели
+уровня Haiku и Sonnet.
+
 ## Установка
 
 Из корня воркспейса, где уже стоит poh-bft-writer:
