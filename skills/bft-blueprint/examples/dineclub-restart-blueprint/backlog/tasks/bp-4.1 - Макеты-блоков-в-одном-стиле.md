@@ -39,8 +39,8 @@ ordinal: 23000
 ### BPMN
 ```mermaid
 flowchart LR
-  S(("старт"))
   subgraph L1["Дизайнер"]
+    S((" "))
     N1["Готовит блок страницы и плашку письма"]
     N2["Готовит экраны сканера"]
   end
@@ -49,13 +49,22 @@ flowchart LR
   end
   subgraph L3["TeamA"]
     N4["Встраивает плашку в письмо"]
+    E(((" ")))
   end
-  E((("конец")))
   S --> N1
   N1 --> N2
   N2 --> N3
   N3 --> N4
   N4 --> E
+  classDef start fill:#fff,stroke:#2f6b2a,stroke-width:2px
+  classDef stop fill:#fff,stroke:#1c1c1c,stroke-width:4px
+  classDef gw fill:#fff8e6,stroke:#b7791f
+  classDef ask color:#c0392b,stroke:#c0392b
+  class S start
+  class E stop
+  style L1 fill:#faf9f6,stroke:#d8d4cb
+  style L2 fill:#ffffff,stroke:#d8d4cb
+  style L3 fill:#faf9f6,stroke:#d8d4cb
 ```
 
 ### HowToDemo

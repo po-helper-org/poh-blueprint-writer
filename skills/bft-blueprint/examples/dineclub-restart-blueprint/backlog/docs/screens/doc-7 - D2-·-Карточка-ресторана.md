@@ -7,7 +7,7 @@ updated_date: '2026-10-19 19:07'
 ---
 # Карточка ресторана
 
-![Карточка](screen:D2)
+![Карточка](../../assets/screens/D2.svg)
 
 ## Product
 

@@ -5,10 +5,10 @@
 и название). Тело — обычный markdown:
 
     # Заголовок экрана
-    ![Подпись](screen:F3)        ← картинки экрана до первой вкладки: 0, 1 или несколько
+    ![Подпись](../../assets/screens/F3.svg)   ← картинки экрана до первой вкладки: 0, 1 или несколько
     ## Product                   ← вкладки: Product, Design, Functions — по порядку
     ### Заголовок заметки        ← одна заметка — одно требование
-    Текст заметки: абзацы, списки, **жирный**, картинки ![…](screen:F4) или ![…](файл.png).
+    Текст заметки: абзацы, списки, **жирный**, картинки ![…](../../assets/screens/F4.svg) или свой файл.
     Источник: ФТ-1, ИТ-8
 
 Product — job stories «Когда …, хочу …, чтобы …»; Design — где, в каком состоянии, что главное,
@@ -23,13 +23,13 @@ Product — job stories «Когда …, хочу …, чтобы …»; Design
   SN004  заметка без заголовка или текста,
          повтор заголовка во вкладке
   SN005  Functions: нет шага «**Тогда**»
-  SN006  картинка: экрана или файла нет
+  SN006  картинка: файла нет; `screen:F3` вместо пути
 
 Только стандартная библиотека.
 """
 from __future__ import annotations
 
-import base64
+import os
 import re
 import sys
 from dataclasses import dataclass, field
@@ -43,7 +43,8 @@ TABS = ("Product", "Design", "Functions")
 IMG_RE = re.compile(r"^!\[(.*?)\]\((.+?)\)$")
 INLINE_IMG = re.compile(r"!\[(.*?)\]\((.+?)\)")
 SCREEN_ID = re.compile(r"^[A-ZА-Я]\d{1,2}$")
-MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif", ".svg": "image/svg+xml"}
+DOC_TO_ASSETS = "../../assets/screens"   # от backlog/docs/screens/ до картинок экранов
+SCREEN_FILE = re.compile(r"assets/screens/([A-ZА-Я]\d{1,2})\.(?:svg|png|jpe?g|webp)$")
 
 
 @dataclass
@@ -141,9 +142,14 @@ def check(docs: list[ScreenDoc], screen_ids: set[str], issues: list) -> dict[str
         out[doc.id] = doc
         for alt, src, n in doc.images + [(m.group(1), m.group(2), x.line) for x in doc.notes for m in INLINE_IMG.finditer(x.md)]:
             if src.startswith("screen:"):
-                if src[7:] not in screen_ids:
-                    issues.append(bb.Issue(n, "ERROR", "SN006", f"картинка «{alt}»: экрана {src[7:]} нет в истории", rel))
-            elif not re.match(r"^(https?:|data:)", src) and not (doc.path.parent / src).is_file():
+                issues.append(bb.Issue(n, "ERROR", "SN006", f"картинка «{alt}»: ссылка {src} — картинка экрана лежит файлом, `![{alt}]({DOC_TO_ASSETS}/{src[7:]}.svg)`", rel))
+                continue
+            if re.match(r"^(https?:|data:)", src):
+                continue
+            sid = screen_of(src)
+            if sid and sid in screen_ids and src.endswith(".svg"):
+                continue   # упрощённый экран — его пишет сборка из «Истории»
+            if not (doc.path.parent / src).is_file():
                 issues.append(bb.Issue(n, "ERROR", "SN006", f"картинка «{alt}»: файла {src} нет рядом с документом", rel))
         for t in TABS:
             if not any(x.tab == t for x in doc.notes):
@@ -155,20 +161,25 @@ def check(docs: list[ScreenDoc], screen_ids: set[str], issues: list) -> dict[str
                 issues.append(bb.Issue(x.line, "WARN", "SN021", f"«{x.title}»: нет строки «Источник:» с ID требований", rel))
             if x.tab == "Product" and not re.search(r"Когда .+хочу", x.md.replace("**", "")):
                 issues.append(bb.Issue(x.line, "WARN", "SN022", f"«{x.title}»: история в форме «Когда …, хочу …, чтобы …»", rel))
-    covered = set(out) | {src[7:] for d in out.values() for _, src, _ in d.images if src.startswith("screen:")}
+    covered = set(out) | {screen_of(src) for d in out.values() for _, src, _ in d.images} - {""}
     missing = sorted(screen_ids - covered)
     if missing:
         issues.append(bb.Issue(1, "WARN", "SN023", f"экраны без требований для дизайнера (документ «F3 · …» в docs/{DIR}/): {', '.join(missing)}"))
     return out
 
 
-def page_md(doc: ScreenDoc) -> str:
-    """Текст файла для страницы: локальные картинки встроены в data: — страница остаётся одним файлом."""
-    def inline(m: re.Match) -> str:
+def screen_of(src: str) -> str:
+    """ID экрана по пути картинки `…/assets/screens/F3.svg` (или своему макету `F3.png`); иначе пусто."""
+    m = SCREEN_FILE.search(src)
+    return m.group(1) if m else ""
+
+
+def page_md(doc: ScreenDoc, root: Path) -> str:
+    """Текст файла для страницы: пути картинок — от корня проекта, файлы остаются в бэклоге."""
+    def path(m: re.Match) -> str:
         alt, src = m.group(1), m.group(2)
-        p = doc.path.parent / src
-        if src.startswith(("screen:", "http:", "https:", "data:")) or not p.is_file():
+        if re.match(r"^(https?:|data:)", src):
             return m.group(0)
-        mime = MIME.get(p.suffix.lower(), "application/octet-stream")
-        return f"![{alt}](data:{mime};base64,{base64.b64encode(p.read_bytes()).decode()})"
-    return INLINE_IMG.sub(inline, doc.text)
+        p = os.path.normpath(doc.path.parent / src)
+        return f"![{alt}]({Path(os.path.relpath(p, root)).as_posix()})"
+    return INLINE_IMG.sub(path, doc.text)

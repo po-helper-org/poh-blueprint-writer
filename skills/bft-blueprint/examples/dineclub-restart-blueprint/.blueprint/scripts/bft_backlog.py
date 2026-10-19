@@ -424,54 +424,73 @@ def lanes_of(proc: list) -> list[str]:
 
 
 def bpmn_of(c: BTask) -> str:
-    """Процесс карточки в mermaid: дорожка — участник, развилка — ромб; тот же процесс — тот же текст."""
+    """Процесс карточки в mermaid: дорожка — участник, развилка — ромб; тот же процесс — тот же текст.
+    Старт, развилка и конец лежат в дорожке того, кто на этом шаге действует; вид задан в самом
+    тексте (`classDef`) — схема одинаково читается на карте, в браузере Backlog.md и на GitHub."""
     q = lambda s: s.replace('"', "#quot;")  # noqa: E731
     lanes = lanes_of(c.proc)
     lane_nodes: dict[str, list[str]] = {ln: [] for ln in lanes}
     edges: list[str] = []
-    node_lines: list[str] = []
-    n = 0
+    ask: list[str] = []
+    n = ends = 0
     prev: list[tuple[str, str]] = [("S", "")]   # (узел, подпись ребра)
     last_lane = lanes[0] if lanes else ""
-    first_lane = last_lane
-    ends = 0
+    lane_nodes.setdefault(last_lane, []).append('S((" "))')
+
+    def node(nid: str, lane: str, shape: str, text: str) -> None:
+        lane_nodes[lane].append(f'{nid}{shape[0]}"{q(text)}"{shape[1]}')
+        if bb.MARKER in text:
+            ask.append(nid)
+
     for x in c.proc:
+        n += 1
         if x["t"] == "task":
-            n += 1
             nid = f"N{n}"
-            lane_nodes[x["lane"]].append(f'{nid}["{q(x["text"])}"]')
+            node(nid, x["lane"], "[]", x["text"])
             edges += [f"  {a} -- {lab} --> {nid}" if lab else f"  {a} --> {nid}" for a, lab in prev]
             prev, last_lane = [(nid, "")], x["lane"]
-        else:
+            continue
+        gid = f"G{n}"
+        node(gid, last_lane, "{}", x["q"])
+        edges += [f"  {a} -- {lab} --> {gid}" if lab else f"  {a} --> {gid}" for a, lab in prev]
+        prev = []
+        for b in x["br"]:
+            if b.get("end"):
+                ends += 1
+                lane_nodes[last_lane].append(f'E{ends}(((" ")))')
+                edges.append(f'  {gid} -- {q(b["label"])} --> E{ends}')
+                continue
             n += 1
-            gid = f"G{n}"
-            node_lines.append(f'  {gid}{{"{q(x["q"])}"}}')
-            edges += [f"  {a} -- {lab} --> {gid}" if lab else f"  {a} --> {gid}" for a, lab in prev]
-            prev = []
-            for b in x["br"]:
-                if b.get("end"):
-                    ends += 1
-                    node_lines.append(f'  E{ends}((("конец")))')
-                    edges.append(f'  {gid} -- {q(b["label"])} --> E{ends}')
-                    continue
-                n += 1
-                nid = f"N{n}"
-                lane_nodes[b["lane"]].append(f'{nid}["{q(b["text"])}"]')
-                edges.append(f'  {gid} -- {q(b["label"])} --> {nid}')
-                prev.append((nid, ""))
-                last_lane = b["lane"]
-    out = ["```mermaid", "flowchart LR", '  S(("старт"))']
+            nid = f"N{n}"
+            node(nid, b["lane"], "[]", b["text"])
+            edges.append(f'  {gid} -- {q(b["label"])} --> {nid}')
+            prev.append((nid, ""))
+        if len(prev) == 1:
+            last_lane = next(b["lane"] for b in x["br"] if not b.get("end"))
+    if prev:
+        lane_nodes[last_lane].append('E(((" ")))')
+        edges += [f"  {a} --> E" for a, _ in prev]
+    stops = (["E"] if prev else []) + [f"E{i}" for i in range(1, ends + 1)]
+    out = ["```mermaid", "flowchart LR"]
     for i, ln in enumerate(lanes, 1):
         out.append(f'  subgraph L{i}["{q(ln)}"]')
         out += [f"    {x}" for x in lane_nodes[ln]]
         out.append("  end")
-    out += node_lines
-    if prev:
-        out.append('  E((("конец")))')
-        edges += [f"  {a} --> E" for a, _ in prev]
     out += edges
+    out += ["  classDef start fill:#fff,stroke:#2f6b2a,stroke-width:2px",
+            "  classDef stop fill:#fff,stroke:#1c1c1c,stroke-width:4px",
+            "  classDef gw fill:#fff8e6,stroke:#b7791f",
+            "  classDef ask color:#c0392b,stroke:#c0392b",
+            "  class S start",
+            f"  class {','.join(stops)} stop"]
+    gws = [x.split("{")[0] for ln in lanes for x in lane_nodes[ln] if x.startswith("G")]
+    if gws:
+        out.append(f"  class {','.join(gws)} gw")
+    if ask:
+        out.append(f"  class {','.join(ask)} ask")
+    for i in range(1, len(lanes) + 1):
+        out.append(f"  style L{i} fill:{'#faf9f6' if i % 2 else '#ffffff'},stroke:#d8d4cb")
     out.append("```")
-    del first_lane, last_lane
     return "\n".join(out)
 
 
