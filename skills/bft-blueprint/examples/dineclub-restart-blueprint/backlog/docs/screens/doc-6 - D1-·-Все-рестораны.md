@@ -7,7 +7,7 @@ updated_date: '2026-10-19 19:07'
 ---
 # Все рестораны
 
-![Список](screen:D1)
+![Список](../../assets/screens/D1.svg)
 
 ## Product
 

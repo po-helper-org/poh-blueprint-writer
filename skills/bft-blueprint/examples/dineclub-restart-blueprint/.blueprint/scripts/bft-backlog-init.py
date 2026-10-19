@@ -7,7 +7,9 @@
   backlog/                   данные Backlog.md 1.54: config.yml, документы «Карта» и «История»
   backlog.py                 встроенный CLI Backlog.md: ./backlog.py task list --plain
   blueprint.py               проверка и сборка страницы карты: ./blueprint.py lint | build | check
+  backlog/assets/screens     картинки экранов: <ID>.svg пишет сборка из «Истории», свой макет — <ID>.png
   .blueprint/scripts, rules  скрипты сборки и правила карты
+  .blueprint/vendor          mermaid.min.js — страница рисует схемы BPMN без сети
   CLAUDE.md, AGENTS.md,      инструкции агенту: что где лежит, правила, команды — без внешних ссылок
   GEMINI.md
   .claude/settings.json      Claude Code: команды проекта разрешены без запроса
@@ -39,9 +41,10 @@ import backlog_cli as cli  # noqa: E402
 
 START, END = "<!-- BFT-BLUEPRINT START -->", "<!-- BFT-BLUEPRINT END -->"
 NPM_START, NPM_END = "<!-- BACKLOG.MD GUIDELINES START -->", "<!-- BACKLOG.MD GUIDELINES END -->"
-TOOLS = ("backlog_cli.py", "bft_blueprint.py", "bft_story.py", "bft_screens.py", "bft_backlog.py", "bft-blueprint-lint.py",
+TOOLS = ("backlog_cli.py", "bft_blueprint.py", "bft_story.py", "bft_screens.py", "bft_mock.py", "bft_backlog.py", "bft-blueprint-lint.py",
          "bft-backlog-lint.py", "bft-backlog-build.py", "bft-backlog-init.py", "page_kit.js", "map_page.js", "map_page.css")
 RULES = ("backlog_rules.md", "screen_notes.md", "story_line.md")
+VENDOR = ("mermaid.min.js", "mermaid.LICENSE")   # схемы на странице рисует mermaid из этой папки, без сети
 AGENT_FILES = ("CLAUDE.md", "AGENTS.md", "GEMINI.md")
 CONFIG = """project_name: "{name}"
 default_status: "To Do"
@@ -109,8 +112,10 @@ def guide(title: str, epic: str, source: str) -> str:
 | `./blueprint.py` | `lint` — проверка карты, `build` — страница `{epic}-map.html` и архив `{epic}-blueprint.zip`, `check` — без записи |
 | `backlog/tasks/` | задачи: «Что делаем» и их подзадачи «Как это работает» |
 | `backlog/docs/` | документы: «Карта» (команды, вопросы), «История» (этапы, шаги, экраны), `screens/` — требования к экранам |
+| `backlog/assets/screens/` | картинки экранов: `<ID>.svg` пишет `./blueprint.py build` из таблицы «Экраны» «Истории»; свой макет — `<ID>.png` рядом |
 | `.blueprint/rules/` | правила: `backlog_rules.md` — карта, `screen_notes.md` — экраны, `story_line.md` — история |
-| `blueprint.html`, `{epic}-map.html` | страница карты; в браузере — правой кнопкой замечание, меню «Замечания» — промпт агенту |
+| `.blueprint/vendor/` | `mermaid.min.js` — страница рисует схемы BPMN без сети |
+| `blueprint.html`, `{epic}-map.html` | страница карты: текст — только из этих файлов, картинки и mermaid — из папки. Правой кнопкой — замечание, «?» — ответить на вопрос, «!» — файлы, откуда собрано; промпт агенту — кнопкой «Скопировать промпт» |
 
 Установлен npm-пакет `backlog.md` — его `backlog board` и `backlog browser` работают с теми же файлами.
 
@@ -118,7 +123,7 @@ def guide(title: str, epic: str, source: str) -> str:
 
 - **Что делаем** — задача с меткой `stage:<этап>` и видом (`создать`, `доработать`, `используем`, `уточнить`), исполнитель — команда `@id` из «Карты» (неизвестна — метки `кандидат:<id>`). Описание: зачем; строка `Требования БФТ: …`; разделы `### ASIS`, `### GAP`, `### TOBE`, `### HowToDemo`, по желанию `### Дополнительно`. Чеклист приемки — критерии `--ac`.
 - **Как это работает** — подзадача (`-p BP-N`) с метками `stage:<этап>` и `layer:employee|technology|backstage|support`. Описание: суть; `### UserStory` «Как <роль>, я хочу …, чтобы …»; `### JobStory` — список «- Когда …, хочу …, чтобы …»; `### Параметры` (`- **Вход:** …`, `- **Управление:** …`, `- **Выход:** …`, `- **Механизм:** …`, значения через `;`, ссылка `(BP-8.1)` — связь с карточкой); `### Процесс` — шаги `- Участник: действие`, развилка `- ? вопрос` и под ней ветки `  - да → Участник: действие` или `  - нет → конец`; `### HowToDemo`. Блок `### BPMN` не пиши — его собирает `./blueprint.py build` из процесса.
-- **Требования к экрану** — документ `F3 · Название` в `backlog/docs/screens/`: `# Название`, картинки `![…](screen:F3)`, вкладки `## Product`, `## Design`, `## Functions`, заметки `### …` с `Источник: ФТ-1`.
+- **Требования к экрану** — документ `F3 · Название` в `backlog/docs/screens/`: `# Название`, картинки `![…](../../assets/screens/F3.svg)`, вкладки `## Product`, `## Design`, `## Functions`, заметки `### …` с `Источник: ФТ-1`.
 
 Задачи без метки `stage:` на карте не показываются — это обычная работа: план реализации, баги.
 
@@ -172,6 +177,8 @@ def wanted(root: Path, title: str, epic: str, source: str) -> dict[str, bytes]:
     for r in RULES:
         if (rules_dir() / r).is_file():
             out[f".blueprint/rules/{r}"] = (rules_dir() / r).read_bytes()
+    for v in VENDOR:
+        out[f".blueprint/vendor/{v}"] = (HERE.parent / "vendor" / v).read_bytes()
     out["backlog.py"], out["blueprint.py"] = BACKLOG_SH.encode(), BLUEPRINT_SH.encode()
     block = guide(title, epic, source)
     head = (f"# {title}\n\nService Blueprint инициативы `{epic}` — автономный проект Backlog.md. "

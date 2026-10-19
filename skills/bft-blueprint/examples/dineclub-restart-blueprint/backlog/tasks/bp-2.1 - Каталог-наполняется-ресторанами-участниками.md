@@ -42,8 +42,8 @@ UnitB собирает каталог участников: список от Di
 ### BPMN
 ```mermaid
 flowchart LR
-  S(("старт"))
   subgraph L1["DineClub"]
+    S((" "))
     N1["Передаёт список участников"]
   end
   subgraph L2["Справочник рейтингов"]
@@ -51,11 +51,11 @@ flowchart LR
   end
   subgraph L3["Каталог UnitB"]
     N3["Собирает часы работы и площадки рядом"]
+    G4{"Часы работы есть у всех?"}
     N5["Публикует каталог"]
     N6["Запрашивает часы [УТОЧНИТЬ у UnitB]"]
+    E(((" ")))
   end
-  G4{"Часы работы есть у всех?"}
-  E((("конец")))
   S --> N1
   N1 --> N2
   N2 --> N3
@@ -64,6 +64,17 @@ flowchart LR
   G4 -- нет --> N6
   N5 --> E
   N6 --> E
+  classDef start fill:#fff,stroke:#2f6b2a,stroke-width:2px
+  classDef stop fill:#fff,stroke:#1c1c1c,stroke-width:4px
+  classDef gw fill:#fff8e6,stroke:#b7791f
+  classDef ask color:#c0392b,stroke:#c0392b
+  class S start
+  class E stop
+  class G4 gw
+  class N6 ask
+  style L1 fill:#faf9f6,stroke:#d8d4cb
+  style L2 fill:#ffffff,stroke:#d8d4cb
+  style L3 fill:#faf9f6,stroke:#d8d4cb
 ```
 
 ### HowToDemo

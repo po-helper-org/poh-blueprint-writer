@@ -4,7 +4,10 @@
 Детерминированно, без ИИ:
 1. проверка проекта (`bft-backlog-lint.py`); с ошибками ничего не собирается — код 1;
 2. схема BPMN карточек «Как это работает» — mermaid из «Процесса» (блок `### BPMN` в файле карточки);
-3. `<epic>-map.html` — одна страница без CDN: «Что видят», «Что делаем», «Как это работает»;
+   картинки экранов — `backlog/assets/screens/<ID>.svg` из таблицы «Экраны» «Истории»;
+3. `<epic>-map.html` — страница без CDN: «Что видят», «Что делаем», «Как это работает». Текст на ней —
+   только из файлов проекта (BL032 — иначе не соберётся); картинки экранов и mermaid
+   (`.blueprint/vendor/`) она берёт из папки проекта по относительному пути;
 4. папка проекта автономна: `.blueprint/` (эти скрипты и правила), `./backlog.py` — встроенный CLI
    Backlog.md, `./blueprint.py` — проверка и сборка, CLAUDE.md, AGENTS.md, GEMINI.md, `.claude/settings.json`
    (`bft-backlog-init.py`, `install()`); сборка их обновляет;
@@ -14,7 +17,8 @@
 Использование:
     python3 bft-backlog-build.py <проект> [--out-dir КАТАЛОГ] [--source БФТ.md | --no-source] [--check] [--no-zip]
 
---check — ничего не пишет: устаревшая схема BPMN, скрипты или инструкции проекта — ошибка (для CI и самотеста).
+--check — ничего не пишет: устаревшая схема BPMN, картинка экрана, скрипты или инструкции проекта — ошибка
+(для CI и самотеста).
 По умолчанию файлы ложатся рядом с папкой проекта.
 """
 from __future__ import annotations
@@ -24,6 +28,8 @@ import hashlib
 import html
 import importlib.util
 import json
+import os
+import re
 import sys
 import zipfile
 from pathlib import Path
@@ -33,6 +39,7 @@ sys.path.insert(0, str(HERE))
 import bft_backlog as bl  # noqa: E402
 import bft_story as bs  # noqa: E402
 import bft_screens as bsn  # noqa: E402
+import bft_mock as bm  # noqa: E402
 
 
 
@@ -54,13 +61,15 @@ PAGE = """<!doctype html>
 {css}</style></head>
 <body>
 <h1 class="ptitle">{h1}</h1>
-<div class="fab"><button class="burger" id="burger" aria-label="Меню карты" aria-expanded="false" aria-controls="menu"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg><span class="bdot" id="bdot"></span></button><nav class="views" aria-label="Слой карты"><button data-view="see" class="on">Что видят</button><button data-view="do">Что делаем</button><button data-view="how">Как это работает</button></nav><span id="fchip"></span><button class="cmchip" id="cmchip" data-cmpanel hidden></button></div>
+<div class="fab"><button class="burger" id="burger" aria-label="Меню карты" aria-expanded="false" aria-controls="menu"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg><span class="bdot" id="bdot"></span></button><nav class="views" aria-label="Слой карты"><button data-view="see" class="on">Что видят</button><button data-view="do">Что делаем</button><button data-view="how">Как это работает</button></nav><span id="fchip"></span></div>
+<div class="tr"><button class="ib iq" data-qpanel title="Уточнить: ответить на открытые вопросы" aria-label="Уточнить"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M6.2 6.1a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.6"/><circle cx="8" cy="11.6" r=".4"/></svg><span id="iq"></span></button><button class="ib icm" data-cmpanel title="Замечания" aria-label="Замечания"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7.5H7l-3 2.5V11H2.5z"/></svg><span id="icm"></span></button></div>
 <div class="mscrim"></div>
 <nav class="menu" id="menu" aria-label="Меню карты"><div class="mtop"><div><span class="draft{status_cls}">{status}</span><h1>{h1}</h1></div><button class="x" data-menu="close" aria-label="Закрыть">×</button></div>
 <button class="play" id="play">▶ Рассказать историю</button>
 <div class="mlist"><span id="blk"></span>
 <button class="mi" data-guide="help"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h4.5A1.5 1.5 0 0 1 8 4.5V14a1.5 1.5 0 0 0-1.5-1.5H2zM14 3H9.5A1.5 1.5 0 0 0 8 4.5V14a1.5 1.5 0 0 1 1.5-1.5H14z"/></svg>Инструкции</button>
 <button class="mi" data-guide="legend"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2.5" width="4" height="4" rx="1"/><path d="M8.5 4.5H14"/><circle cx="4" cy="11.5" r="2"/><path d="M8.5 11.5H14"/></svg>Легенда</button>
+<button class="mi" data-qpanel><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M6.2 6.1a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.6"/></svg>Уточнить</button>
 <button class="mi" data-cmpanel><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7.5H7l-3 2.5V11H2.5z"/></svg>Замечания<b class="cnt cmn" id="cmn" hidden></b></button></div>
 <div class="mlab">Команды — показать работу одной</div><div class="teams" id="teams"></div></nav>
 <section class="hero" id="hero" aria-label="Что видят люди — путь слева направо"></section>
@@ -82,8 +91,11 @@ def step_json(s: bs.Step) -> dict:
     return {"id": s.id, "title": s.title, "text": s.text, "was": s.was, "screens": s.screens, "source": s.source}
 
 
-def model(pr: bl.Project) -> dict:
+def model(pr: bl.Project, base: str = "") -> dict:
+    """Данные страницы — только из файлов проекта (проверяет `provenance`). `base` — путь от страницы
+    до папки проекта: картинки экранов и mermaid страница берёт оттуда, а не из себя."""
     st = pr.story
+    bdir = pr.bdir.relative_to(pr.root).as_posix()
     cols = [s.id for s in st.stages] + [bl.FINAL]
     names = {p.id: p.name for p in st.personas}
 
@@ -123,7 +135,7 @@ def model(pr: bl.Project) -> dict:
                         "refs": [str(x) for x in t.refs], "docs": [str(x) for x in t.docs], "file": t.rel}
     tasks = [{**common(t), "cand": t.cand, "why": t.why, "reqs": t.reqs, "kind": t.kind, "notes": t.notes,
               "brief": {k: v[1] for k, v in t.sections.items()}, "ac": [[d, x] for d, x in t.ac]} for t in pr.tasks]
-    cards = [{**common(c), "task": c.parent, "layer": c.layer, "lead": c.lead, "us": c.user_story, "js": c.job_stories, "proc": c.proc,
+    cards = [{**common(c), "task": c.parent, "layer": c.layer, "lead": c.lead, "us": c.user_story, "js": c.job_stories, "bpmn": re.sub(r"^```mermaid\n|\n?```$", "", c.mermaid.strip()),
               "params": {k: [{"t": it.text, "r": it.refs} for it in v] for k, v in c.params.items()},
               "demo": c.sections.get("HowToDemo", (0, ""))[1]} for c in pr.cards]
     return {
@@ -131,22 +143,60 @@ def model(pr: bl.Project) -> dict:
         "stages": [{"id": s.id, "name": s.name, "when": s.when} for s in st.stages],
         "personas": [{"id": p.id, "name": names[p.id], "lane": p.lane} for p in st.personas],
         "seen": seen, "story": story,
-        "screens": {sc.id: {"contour": sc.contour, "device": sc.device, "view": sc.view, "el": sc.elements} for sc in st.screens},
-        "notes": {sid: bsn.page_md(doc) for sid, doc in sorted(pr.screens.items())},
+        "screens": {sc.id: {"contour": sc.contour, "view": sc.view, "img": f"{bdir}/{bm.image_of(pr.bdir, sc.id)}"} for sc in st.screens},
+        "notes": {sid: bsn.page_md(doc, pr.root) for sid, doc in sorted(pr.screens.items())},
         "noteFiles": {sid: doc.rel for sid, doc in sorted(pr.screens.items())},
         "docs": docs,
-        "storyQuestions": [{"id": q.id, "to": q.to, "text": q.text, "where": q.where} for q in st.questions if q.open],
+        "storyQuestions": [{"id": q.id, "to": q.to, "text": q.text, "where": q.where, "open": q.open, "answer": q.answer} for q in st.questions],
         "teams": [{"id": t.id, "name": t.name} for t in pr.teams], "tasks": tasks, "cards": cards,
         "links": [{"src": a, "dst": b, "what": w} for a, b, w in pr.links()],
         "questions": [{"id": q.id, "to": q.to, "text": q.text, "where": q.where, "kind": q.kind,
                        "open": q.open, "answer": q.answer} for q in pr.questions],
         "files": {"map": pr.map_doc.rel, "story": pr.story_doc.rel, "source": pr.meta.get("source_doc", ""),
                   "project": f"{pr.meta.get('epic_slug', 'epic')}-blueprint"},
+        "base": base, "mermaid": ".blueprint/vendor/mermaid.min.js",
     }
 
 
-def render(pr: bl.Project) -> str:
-    m = model(pr)
+# ключи, которые страница считает сама: подписи шагов, ключи кадров, пути — их нет в тексте проекта
+DERIVED = {"key", "label", "rev", "base", "mermaid", "file", "files", "img", "noteFiles", "col", "final", "open", "kind"}
+BY_ID = {"notes", "noteFiles", "screens", "docs", "files"}   # словари «ID → значение»: ключ — не имя поля
+
+
+def provenance(m: dict, pr: bl.Project) -> list[str]:
+    """Каждая строка данных страницы есть в файлах проекта Backlog.md — дословно, построчно.
+    Путь (файл, картинка) — существует. Возвращает строки, которых в проекте нет: так сборка
+    не может показать на карте то, чего в бэклоге не написано."""
+    corpus = "\n".join(f.read_text(encoding="utf-8") for f in sorted(pr.bdir.rglob("*.md")))
+    norm = lambda s: " ".join(s.split())  # noqa: E731
+    text = norm(corpus)
+    miss: list[str] = []
+
+    def walk(v, key: str) -> None:
+        if isinstance(v, dict):
+            for k, x in v.items():
+                walk(x, "#" + key if key in BY_ID else k)
+        elif isinstance(v, list):
+            for x in v:
+                walk(x, key)
+        elif isinstance(v, str) and key.lstrip("#") not in DERIVED:
+            for line in v.split("\n"):
+                ln = norm(line)
+                im = bsn.IMG_RE.match(ln)
+                if im and not re.match(r"^(https?:|data:)", im.group(2)):
+                    if not (pr.root / im.group(2)).is_file():
+                        miss.append(f"картинка {im.group(2)}")
+                    continue
+                if len(ln) >= 3 and ln not in text:
+                    miss.append(ln)
+    walk(m, "")
+    paths = [x["file"] for x in m["tasks"] + m["cards"]] + [d["file"] for d in m["docs"].values()] + [s["img"] for s in m["screens"].values()]
+    miss += [f"файл {p}" for p in paths if not (pr.root / p).is_file()]
+    return miss
+
+
+def render(pr: bl.Project, base: str = "") -> str:
+    m = model(pr, base)
     # ревизия страницы: пересобранная карта закрывает замечания прошлого круга
     m["rev"] = hashlib.sha1(json.dumps(m, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:12]
     data = json.dumps(m, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
@@ -203,23 +253,40 @@ def main() -> int:
         stale_kit = kit.install(root, *meta, write=False)
         for rel in stale_kit:
             print(f"{root / rel}:1: ERROR BL029 файл автономного проекта устарел — ./blueprint.py build обновит")
-        return 1 if rc or stale_kit else 0
+        stale_img = bm.sync(pr.bdir, pr.story.screens, write=False)
+        for sid in stale_img:
+            print(f"{pr.bdir / bm.ASSETS / (sid + '.svg')}:1: ERROR BL031 картинка экрана {sid} не совпадает с «Историей» — ./blueprint.py build перепишет")
+        miss = [] if stale_img else provenance(model(pr), pr)
+        for x in miss:
+            print(f"{root}:1: ERROR BL032 на странице было бы то, чего нет в проекте: {x[:120]}")
+        return 1 if rc or stale_kit or stale_img or miss else 0
     synced = bl.sync_schema(pr, write=True)
     if synced:
         print(f"backlog-build: схема BPMN пересобрана из «Процесса» — {', '.join(c.id for c in synced)}")
         pr = lint.run(root, args.source, args.no_source)
+    imgs = bm.sync(pr.bdir, pr.story.screens, write=True)
+    if imgs:
+        print(f"backlog-build: картинки экранов пересобраны из «Истории» — {', '.join(imgs)}")
     lint.report(pr, False, "backlog-build")
+    miss = provenance(model(pr), pr)
+    if miss:
+        for x in miss:
+            print(f"{root}:1: ERROR BL032 на странице было бы то, чего нет в проекте: {x[:120]}")
+        print("backlog-build: данные страницы должны браться только из проекта — исправь сборку или проект", file=sys.stderr)
+        return 1
     kit_changed = kit.install(root, *meta)
     if kit_changed:
         print(f"backlog-build: обновлены скрипты, правила и инструкции проекта — {len(kit_changed)} файлов")
     out_dir = (args.out_dir or root.parent).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     epic = pr.meta.get("epic_slug", "epic")
-    page = render(pr)
+    base = Path(os.path.relpath(root, out_dir)).as_posix()
+    base = "" if base == "." else base + "/"
+    page = render(pr, base)
     (out_dir / f"{epic}-map.html").write_text(page, encoding="utf-8")
-    print(f"backlog-build: {out_dir / f'{epic}-map.html'}")
+    print(f"backlog-build: {out_dir / f'{epic}-map.html'} — картинки и схемы берёт из {base or './'}")
     if not args.no_zip:
-        n = build_zip(pr, page, out_dir / f"{epic}-blueprint.zip")
+        n = build_zip(pr, page if not base else render(pr), out_dir / f"{epic}-blueprint.zip")
         print(f"backlog-build: {out_dir / f'{epic}-blueprint.zip'} — файлов {n}")
     return 0
 

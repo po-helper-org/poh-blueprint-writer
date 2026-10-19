@@ -7,7 +7,7 @@ updated_date: '2026-10-19 19:07'
 ---
 # Сканер — инструкция и поддержка
 
-![Инструкция и FAQ](screen:F6)
+![Инструкция и FAQ](../../assets/screens/F6.svg)
 
 ## Product
 

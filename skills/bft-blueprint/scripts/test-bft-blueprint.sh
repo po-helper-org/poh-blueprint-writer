@@ -230,7 +230,7 @@ expect_bl "экраны · битые заметки"        1 "$tmp/bad/screens
 # сборка: эталон совпадает со страницей в examples, архив — тот же байт в байт и автономный
 python3 "$BBUILD" "$BGOLD" --no-source --check >/dev/null 2>&1 \
   && ok "карта · эталон: схемы BPMN, скрипты и инструкции проекта актуальны" || fail "карта · эталон устарел (BL022/BL029) — python3 $BBUILD $BGOLD --no-source --out-dir $DIR/examples --no-zip"
-cp -r "$BGOLD" "$tmp/gold" && python3 "$BBUILD" "$tmp/gold" --out-dir "$tmp/bout" >/dev/null 2>&1 \
+GOLD="$tmp/bout/dineclub-restart-blueprint"; mkdir -p "$tmp/bout" && cp -r "$BGOLD" "$GOLD" && python3 "$BBUILD" "$GOLD" --out-dir "$tmp/bout" >/dev/null 2>&1 \
   && cmp -s "$tmp/bout/dineclub-restart-map.html" "$DIR/examples/dineclub-restart-map.html" \
   && ok "карта · html: совпадает с examples/dineclub-restart-map.html" \
   || fail "карта · html разошёлся с эталоном — пересобери: python3 $BBUILD $BGOLD --out-dir $DIR/examples --no-zip"
@@ -240,12 +240,47 @@ from pathlib import Path
 d = json.loads(re.search(r'id="map-data">(.*?)</script>', (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf-8"), re.S).group(1))
 assert len(d["tasks"]) == 19 and len(d["cards"]) == 20, (len(d["tasks"]), len(d["cards"]))
 assert {c["layer"] for c in d["cards"]} == {"employee", "technology", "backstage", "support"}
-assert all(c["params"].get("out") and c["demo"] and c["us"] and c["js"] and len(c["proc"]) >= 2 for c in d["cards"])
+assert all(c["params"].get("out") and c["demo"] and c["us"] and c["js"] and c["bpmn"].startswith("flowchart LR") for c in d["cards"])
 assert all(t["brief"].get("ASIS") and t["ac"] for t in d["tasks"])
 assert len(d["links"]) >= 20 and len(d["notes"]) == 12
 PY
+# картинки и mermaid — файлы проекта: страница ссылается на них, а не несёт в себе
+python3 - "$tmp/bout" <<'PY' && ok "карта · картинки экранов и mermaid — файлы проекта, схема BPMN — текст карточки" || fail "карта · страница несёт картинки или mermaid в себе"
+import json, re, sys
+from pathlib import Path
+out = Path(sys.argv[1]); page = (out / "dineclub-restart-map.html").read_text(encoding="utf-8")
+d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
+root = out / d["base"]
+assert d["base"] == "dineclub-restart-blueprint/" and "data:image" not in page and "mermaid.initialize" not in page.split("map-data")[0]
+assert all((root / s["img"]).is_file() and s["img"].startswith("backlog/assets/screens/") for s in d["screens"].values())
+assert (root / d["mermaid"]).is_file() and len(page) < 300_000
+for sid, md in d["notes"].items():
+    for src in re.findall(r"!\[.*?\]\((.+?)\)", md):
+        assert (root / src).is_file(), src
+for c in d["cards"]:
+    text = (root / c["file"]).read_text(encoding="utf-8")
+    assert "```mermaid\n" + c["bpmn"] + "\n```" in text, c["id"]
+PY
+# BL032: строка, которой нет в проекте, не попадает на страницу; BL031: картинка экрана расходится с «Историей»
+python3 - "$DIR/scripts" "$GOLD" <<'PY' && ok "карта · BL032: на странице только текст проекта" || fail "карта · BL032 не ловит выдуманный текст"
+import importlib.util, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+spec = importlib.util.spec_from_file_location("b", Path(sys.argv[1]) / "bft-backlog-build.py"); b = importlib.util.module_from_spec(spec); spec.loader.exec_module(b)
+pr = b.lint.run(Path(sys.argv[2]).resolve(), None, True)
+m = b.model(pr)
+assert b.provenance(m, pr) == []
+m["cards"][0]["us"] = "Как гость, я хочу то, чего в бэклоге нет"
+m["tasks"][0]["brief"]["ASIS"] = "Выдуманная строка"
+miss = b.provenance(m, pr)
+assert len(miss) == 2, miss
+PY
+cp "$GOLD/backlog/assets/screens/F3.svg" "$tmp/F3.svg" && echo '<!-- правка -->' >> "$GOLD/backlog/assets/screens/F3.svg"
+out="$(python3 "$BBUILD" "$GOLD" --check 2>&1)"; rc=$?
+cp "$tmp/F3.svg" "$GOLD/backlog/assets/screens/F3.svg"
+[ "$rc" -eq 1 ] && grep -q "BL031 картинка экрана F3" <<<"$out" && ok "карта · BL031: картинка экрана расходится с «Историей»" || fail "карта · BL031 не сработал"
 cp "$tmp/bout/dineclub-restart-blueprint.zip" "$tmp/first.zip"
-python3 "$BBUILD" "$tmp/gold" --out-dir "$tmp/bout" >/dev/null 2>&1 && cmp -s "$tmp/bout/dineclub-restart-blueprint.zip" "$tmp/first.zip" \
+python3 "$BBUILD" "$GOLD" --out-dir "$tmp/bout" >/dev/null 2>&1 && cmp -s "$tmp/bout/dineclub-restart-blueprint.zip" "$tmp/first.zip" \
   && ok "карта · zip: та же карта — тот же архив байт в байт" || fail "карта · zip: архив не детерминирован"
 python3 - "$tmp/first.zip" "$tmp/unz" <<'PY' || fail "карта · zip: распаковка не удалась"
 import sys, zipfile
@@ -266,16 +301,16 @@ PY
   && ok "карта · zip: автономный проект — ./backlog.py и ./blueprint.py без установки, инструкции агенту" || fail "карта · zip: распакованный проект не автономен"
 
 # BPMN собирается из «Процесса»: правка процесса → сборка переписывает блок mermaid
-python3 - "$tmp/gold" <<'PY'
+python3 - "$GOLD" <<'PY'
 import sys
 from pathlib import Path
 f = next(Path(sys.argv[1]).glob("backlog/tasks/bp-16.1 - *.md")); t = f.read_text(encoding="utf-8")
 f.write_text(t.replace("- Приложение-сканер: Показывает ответ официанту", "- Приложение-сканер: Показывает ответ официанту\n- TeamA: Пишет журнал проверок"), encoding="utf-8")
 PY
-python3 "$BBUILD" "$tmp/gold" --check >/dev/null 2>&1; rc=$?
-python3 "$BBUILD" "$tmp/gold" --out-dir "$tmp/bout2" --no-zip >/dev/null 2>&1 \
-  && [ "$rc" -eq 1 ] && grep -q '\["Пишет журнал проверок"\]' "$tmp/gold/backlog/tasks/bp-16.1 - "*.md \
-  && python3 "$BBUILD" "$tmp/gold" --check >/dev/null 2>&1 \
+python3 "$BBUILD" "$GOLD" --check >/dev/null 2>&1; rc=$?
+python3 "$BBUILD" "$GOLD" --out-dir "$tmp/bout2" --no-zip >/dev/null 2>&1 \
+  && [ "$rc" -eq 1 ] && grep -q '\["Пишет журнал проверок"\]' "$GOLD/backlog/tasks/bp-16.1 - "*.md \
+  && python3 "$BBUILD" "$GOLD" --check >/dev/null 2>&1 \
   && ok "карта · BPMN: --check ловит устаревшую схему, сборка переписывает mermaid" || fail "карта · BPMN не пересобрался из процесса"
 python3 "$BBUILD" "$tmp/bad/refs" --out-dir "$tmp/bbad" --no-source >/dev/null 2>&1; rc=$?
 { [ "$rc" -eq 1 ] && [ ! -e "$tmp/bbad" ]; } && ok "карта · сломанный проект — код 1, файлов нет" || fail "карта · сборка по сломанному проекту (rc=$rc)"

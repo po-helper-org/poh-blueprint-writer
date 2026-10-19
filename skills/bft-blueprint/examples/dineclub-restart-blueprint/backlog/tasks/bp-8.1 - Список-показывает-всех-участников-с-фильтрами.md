@@ -45,8 +45,8 @@ ordinal: 27000
 ### BPMN
 ```mermaid
 flowchart LR
-  S(("старт"))
   subgraph L1["Гость"]
+    S((" "))
     N1["Открывает «Все рестораны»"]
   end
   subgraph L2["Витрина"]
@@ -56,12 +56,12 @@ flowchart LR
   end
   subgraph L3["Каталог UnitB"]
     N3["Возвращает список: близость × рейтинг"]
+    G4{"Фильтры дали результат?"}
   end
   subgraph L4["Аналитика"]
     N7["Принимает метрики фильтров"]
+    E(((" ")))
   end
-  G4{"Фильтры дали результат?"}
-  E((("конец")))
   S --> N1
   N1 --> N2
   N2 --> N3
@@ -71,6 +71,18 @@ flowchart LR
   N5 --> N7
   N6 --> N7
   N7 --> E
+  classDef start fill:#fff,stroke:#2f6b2a,stroke-width:2px
+  classDef stop fill:#fff,stroke:#1c1c1c,stroke-width:4px
+  classDef gw fill:#fff8e6,stroke:#b7791f
+  classDef ask color:#c0392b,stroke:#c0392b
+  class S start
+  class E stop
+  class G4 gw
+  class N6 ask
+  style L1 fill:#faf9f6,stroke:#d8d4cb
+  style L2 fill:#ffffff,stroke:#d8d4cb
+  style L3 fill:#faf9f6,stroke:#d8d4cb
+  style L4 fill:#ffffff,stroke:#d8d4cb
 ```
 
 ### HowToDemo

@@ -4,7 +4,9 @@
 (function () {
   "use strict";
   const D = JSON.parse(document.getElementById("map-data").textContent);
-  const { esc, wrapT, chip, mockSVG } = BPK;
+  const { esc, chip } = BPK;
+  /* файлы проекта — от страницы: страница лежит в папке проекта (blueprint.html) или рядом с ней */
+  const B = D.base || "", fileURL = p => /^(https?:|data:)/.test(p) ? p : B + p.split("/").map(encodeURIComponent).join("/");
   const body = document.body, grid = document.getElementById("grid");
   const MARK = "[УТОЧНИТЬ";
   const U = t => String(t || "").includes(MARK);
@@ -18,6 +20,10 @@
   const TASK = {}; D.tasks.forEach(t => TASK[t.id] = t);
   const PROC = {}; D.cards.forEach(p => PROC[p.id] = p);
   const qOf = where => D.questions.filter(q => q.where === where && q.open);
+  /* вопросы карты («Карта») и истории («История») — одним списком; ответ PO уходит в промпт агенту */
+  const QS = [...D.questions.map(q => ({ ...q, key: "map:" + q.id, doc: "map" })), ...D.storyQuestions.map(q => ({ ...q, kind: "вопрос", key: "story:" + q.id, doc: "story" }))];
+  const QK = {}; QS.forEach(q => QK[q.key] = q);
+  const qsOf = ids => QS.filter(q => ids.includes(q.where));
   const asks = id => qOf(id).filter(q => q.kind === "вопрос").length;
   const blocks = id => qOf(id).filter(q => q.kind === "блокер");
   const scrOpen = id => D.storyQuestions.some(q => q.where === id);
@@ -25,7 +31,10 @@
   const LAYER = { employee: ["Employee Actions", "действия сотрудника", "#a8541a"], technology: ["Technology", "что видит гость", "#0f8b8d"], backstage: ["Backstage", "за кадром", "#2563c9"], support: ["Support", "основа", "#6b5fb0"] };
   const PERSONA_ICON = ['<circle cx="8" cy="5.5" r="2.6"/><path d="M3 14c.6-3 2.6-4.5 5-4.5s4.4 1.5 5 4.5"/>', '<path d="M4 2v5a2 2 0 0 0 2 2v5M6 2v4M8 2v5a2 2 0 0 1-2 2M12 14V2c-1.5 1-2.5 3-2.5 5.5H12"/>'];
   const who = p => `<span class="who"><svg viewBox="0 0 16 16">${PERSONA_ICON[Math.min(1, D.personas.findIndex(x => x.id === p.id))]}</svg>${esc(p.name)}</span>`;
-  const mock = (id, w) => `<span class="scrw" style="position:relative;display:block${w ? `;width:${w}px` : ""}">${scrOpen(id) ? '<span class="dot" style="top:-4px;right:-5px"></span>' : ""}${mockSVG(D.screens[id], D.screens[id].contour)}</span>`;
+  /* экран — картинка из backlog/assets/screens: упрощённый SVG из «Истории» или свой макет */
+  const screenImg = id => fileURL(D.screens[id].img);
+  const scrPic = id => `<img src="${esc(screenImg(id))}" alt="${esc(D.screens[id].contour)}" loading="lazy" draggable="false">`;
+  const mock = (id, w) => `<span class="scrw" style="position:relative;display:block${w ? `;width:${w}px` : ""}">${scrOpen(id) ? '<span class="dot" style="top:-4px;right:-5px"></span>' : ""}${scrPic(id)}</span>`;
 
   /* ---------- шапка ---------- */
   const uniqBlk = [...new Set(D.questions.filter(q => q.open && q.kind === "блокер").map(q => q.text))];
@@ -119,8 +128,9 @@
     doc.tabs.forEach(t => t.notes.forEach(n => n.md = n.body.join("\n").trim()));
     return doc;
   }
-  Object.keys(D.notes || {}).forEach(id => { SCR[id] = parseNotes(D.notes[id]); NOTE_OF[id] = id; SCR[id].images.forEach(im => { const k = im.src.replace(/^screen:/, ""); if (im.src.startsWith("screen:") && !NOTE_OF[k]) NOTE_OF[k] = id }) });
-  const imgSrc = s => s.startsWith("screen:") && D.screens[s.slice(7)] ? screenImg(s.slice(7)) : s;
+  const SCR_FILE = /assets\/screens\/([A-ZА-Я]\d{1,2})\.\w+$/;
+  Object.keys(D.notes || {}).forEach(id => { SCR[id] = parseNotes(D.notes[id]); NOTE_OF[id] = id; SCR[id].images.forEach(im => { const m = im.src.match(SCR_FILE); if (m && !NOTE_OF[m[1]]) NOTE_OF[m[1]] = id }) });
+  const imgSrc = s => fileURL(s);
   const mdInline = s => esc(s).replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>').replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\*(.+?)\*/g, "<i>$1</i>").replace(/\[УТОЧНИТЬ у ([^\]]+)\]/g, '<mark>? $1</mark>');
   function mdHTML(text) {
     let k = -1;
@@ -135,7 +145,7 @@
   }
   const notePreview = n => (n.md.split("\n").find(l => l.trim() && !IMG_MD.test(l.trim()) && !l.startsWith("Источник:")) || "").replace(/\*\*/g, "").replace(/\[УТОЧНИТЬ у ([^\]]+)\]/g, "? $1").replace(/^[-*] /, "");
   let snCur = null, snTab = 0, gallery = [];
-  const snHead = (title, back) => `<div class="snbar">${back ? '<button class="snback" data-snback aria-label="Назад">←</button>' : ""}<h3>${esc(title)}</h3><button class="x" aria-label="Закрыть">×</button></div>`;
+  const snHead = (title, back) => head(title, "", back);
   function openScreen(id, tab) {
     snCur = NOTE_OF[id]; if (tab != null) snTab = tab; const d = SCR[snCur], t = d.tabs[snTab] || d.tabs[0];
     gallery = d.images.map(im => ({ alt: im.alt, src: imgSrc(im.src) }));
@@ -164,10 +174,6 @@
      ряд — персонаж; пустая клетка — персонаж на этапе не участвует. Кадр — экран картинкой
      и подпись; несколько экранов у шага — кадры листаются сами и стрелками. */
   const hero = document.getElementById("hero");
-  /* экран — картинка: SVG-макет отдаётся в <img>, как отдался бы PNG из макетов */
-  const IMG = {};
-  const screenImg = id => IMG[id] || (IMG[id] = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(mockSVG(D.screens[id], D.screens[id].contour)
-    .replace("<svg ", '<svg xmlns="http://www.w3.org/2000/svg" font-family="Inter,-apple-system,Helvetica,Arial,sans-serif" ')));
   (function buildHero() {
     const persons = D.personas.filter(p => D.seen.some(s => s.persona === p.id));
     const cell = (p, c) => D.seen.find(s => s.persona === p.id && s.col === c);
@@ -175,7 +181,7 @@
     const FW = 196, GAP = 18, PAD = 16;
     const frame = (s, st) => {
       const n = st.screens.length, q = st.screens.some(scrOpen) || D.storyQuestions.some(qq => qq.where === st.id);
-      const pic = n ? `<span class="track">${st.screens.map(id => `<span class="sld"><img src="${screenImg(id)}" alt="${esc(D.screens[id].contour)}" draggable="false"></span>`).join("")}</span>
+      const pic = n ? `<span class="track">${st.screens.map(id => `<span class="sld">${scrPic(id)}</span>`).join("")}</span>
         ${n > 1 ? `<span class="sl prev" data-sl="-1" aria-hidden="true">‹</span><span class="sl next" data-sl="1" aria-hidden="true">›</span>` : ""}` : "";
       const dots = n > 1 ? `<span class="dots">${st.screens.map((_, i) => `<i data-dot="${i}"${i ? "" : ' class="on"'}></i>`).join("")}</span>` : "";
       const notes = st.screens.some(id => NOTE_OF[id]);
@@ -248,15 +254,15 @@
     body.classList.toggle("wide", !!wide); body.classList.add("open"); side.scrollTop = 0;
   }
   const closeSide = () => body.classList.remove("open", "wide");
-  const qHTML = list => list.length ? `<ul class="qlist">${list.map(q => `<li class="${q.kind === "блокер" ? "b" : ""}">${q.kind === "блокер" ? "Блокер: " : ""}${esc(q.text)}<small>${esc(q.to)}</small></li>`).join("")}</ul>` : "";
 
   function openSeen(key) {
     const s = D.seen.find(x => x.key === key), p = D.personas.find(x => x.id === s.persona), col = COLS[s.col];
     const html = s.steps.map(st => `<div class="stp">${st.screens.length ? `<div class="chips2">${[...new Set(st.screens.map(id => D.screens[id].contour))].map(chip).join("")}</div><div class="vis">${st.screens.map(id => mock(id, 170)).join("")}</div>` : ""}
       <h5>${esc(st.title)}</h5><p>${esc(st.text)}</p>${st.was ? `<div class="was"><b>Раньше</b>${esc(st.was)}</div>` : ""}
-      ${qHTML(D.storyQuestions.filter(q => q.where === st.id || st.screens.includes(q.where)).map(q => ({ ...q, kind: "вопрос" })))}<div class="src">Источник: ${esc(st.source)}</div></div>`).join("");
-    openSide(p.name, "#2f6b2a", col.name, `${esc(p.lane)} · ${s.steps.length} ${s.steps.length === 1 ? "шаг" : "шага"}`, html);
-    side.dataset.ctx = "seen:" + key;
+      ${qList(qsOf([st.id, ...st.screens]))}<div class="src">Источник: ${esc(st.source)}</div></div>`).join("");
+    side.innerHTML = head(col.name, `<span class="pteam" style="--c:#2f6b2a"><i></i>${esc(p.name)}</span> · ${esc(p.lane)} · ${s.steps.length} ${plural(s.steps.length, "шаг", "шага", "шагов")}`) + `<div class="snbody">${html}</div>`;
+    body.classList.remove("wide"); body.classList.add("open"); side.scrollTop = 0;
+    side.dataset.ctx = "seen:" + key; side.dataset.note = "";
   }
 
   /* задача «Что делаем» — постановка для техлида, задача Backlog.md. «Требования»: зачем, ASIS, GAP, TOBE,
@@ -296,50 +302,67 @@
     if (f.dataset.ex !== "note") f.parentElement.nextElementSibling.innerHTML = links(f.value);
   });
   const sec = (name, html) => html ? `<section class="tk"><h4>${name}</h4>${html}</section>` : "";
-  const uniqQ = qs => [...new Map(qs.map(q => [q.text, q])).values()];
-  const qList = qs => qs.length ? `<ul class="tkq">${uniqQ(qs).map(q => `<li class="${q.kind === "блокер" ? "b" : ""}">${q.kind === "блокер" ? "<b>Блокер.</b> " : ""}${esc(q.text)} <span>— ${esc(q.to)}</span></li>`).join("")}</ul>` : "";
+  /* вопросы карточки и задачи — те же, что в «Уточнить»: клик — ответить */
+  const qList = qs => qs.length ? `<ul class="tkq">${qs.map(q => { const st = qState(q);
+    return `<li class="${q.kind === "блокер" ? "b " : ""}${st}" data-q="${esc(q.key)}" tabindex="0">${st === "done" || st === "past" ? '<i class="ok">✓</i>' : '<i class="qd"></i>'}<span>${q.kind === "блокер" ? "<b>Блокер.</b> " : ""}${esc(q.text)} <em>— ${esc(q.to)}</em></span></li>` }).join("")}</ul>` : "";
   /* ссылка на другую задачу или карточку, документ, страницу */
   const idChip = id => PROC[id] ? `<button class="ref" data-proc="${id}" title="${esc(PROC[id].text)}">${esc(id)}</button>` : TASK[id] ? `<button class="ref" data-task="${id}" title="${esc(TASK[id].text)}">${esc(id)}</button>` : `<code>${esc(id)}</code>`;
   function refItem(r) {
     if (/^https?:\/\//.test(r)) return `<a href="${esc(r)}" target="_blank" rel="noopener">${esc(r.replace(/^https?:\/\//, "").slice(0, 60))}</a>`;
     const d = D.docs[r.toLowerCase().split(" ")[0]];
-    if (d) return d.screen && NOTE_OF[d.screen] ? `<button class="lnk" data-screen-doc="${esc(d.screen)}">${esc(d.title)}</button>` : `<span>${esc(d.title)}</span> <code>${esc(d.file)}</code>`;
+    if (d) return d.screen && NOTE_OF[d.screen] ? `<button class="lnk" data-screen-doc="${esc(d.screen)}">${esc(d.title)}</button>` : `<a href="${esc(fileURL(d.file))}" target="_blank">${esc(d.title)}</a>`;
     if (PROC[r] || TASK[r]) return `${idChip(r)} ${esc((PROC[r] || TASK[r]).text)}`;
     return `<code>${esc(r)}</code>`;
   }
   const refList = items => items.length ? `<ul class="lnks">${items.map(x => `<li>${x}</li>`).join("")}</ul>` : "";
+  /* шапка панели: заголовок, «!» — файлы проекта, откуда всё это, крестик; ниже — одна строка сведений */
+  const head = (title, meta, back) => `<div class="snbar">${back ? '<button class="snback" data-snback aria-label="Назад">←</button>' : ""}<h3 title="${esc(title)}">${esc(title)}</h3><button class="srcb" data-src aria-label="Откуда это: файлы проекта" title="Откуда это: файлы проекта">!</button><button class="x" aria-label="Закрыть">×</button></div>${meta ? `<div class="tkmeta">${meta}</div>` : ""}`;
   function openTask(id, tab) {
     if (tab != null) taskTab = tab;
     const t = TASK[id], br = t.brief || {}, cards = D.cards.filter(c => c.task === id);
-    const qs = [...qOf(id), ...cards.flatMap(c => qOf(c.id))];
     let done = {}; try { done = JSON.parse(localStorage.getItem(dodKey(id)) || "{}") } catch (e) { }
     const ac = t.ac.map(([d, x], k) => `<label class="dod"><input type="checkbox" data-dod="${id}:${k}"${(done[k] != null ? done[k] : d) ? " checked" : ""}><span>${mdInline(x)}</span></label>`).join("");
-    const extra = [br["Дополнительно"] ? mdHTML(br["Дополнительно"]) : "",
-      t.reqs.length ? `<p class="tkreq">Требования БФТ: ${t.reqs.map(esc).join(", ")}</p>` : "",
-      refList([...cards.map(c => `${idChip(c.id)} ${esc(c.text)}`), ...t.docs.map(refItem), ...t.refs.filter(r => !/^https?:\/\//.test(r)).map(refItem)]), qList(qs)].join("");
+    const links = refList([...(t.reqs.length ? [`<span class="lk">Требования БФТ</span> ${t.reqs.map(esc).join(", ")}`] : []), ...t.docs.map(refItem), ...t.refs.filter(r => !/^https?:\/\//.test(r)).map(refItem)]);
     const html = (t.why ? `<p class="tklead">${mdInline(t.why)}</p>` : "") + sec("ASIS", mdHTML(br.ASIS || "")) + sec("GAP", mdHTML(br.GAP || "")) + sec("TOBE", mdHTML(br.TOBE || "")) +
-      sec("HowToDemo", mdHTML(br.HowToDemo || "")) + sec("Чеклист приемки", ac) + sec("Дополнительно", extra);
+      sec("HowToDemo", mdHTML(br.HowToDemo || "")) + sec("Чеклист приемки", ac) + sec("Дополнительно", mdHTML(br["Дополнительно"] || "")) +
+      sec("Как это работает", refList(cards.map(c => `${idChip(c.id)} ${esc(c.text)}`))) + sec("Вопросы", qList(qsOf([id, ...cards.map(c => c.id)]))) + sec("Ссылки", links);
     const tabs = `<nav class="snseg tktabs">${["Требования", "Исполнение"].map((n, i) => `<button data-tktab="${i}"${i === taskTab ? ' class="on"' : ""}>${n}</button>`).join("")}</nav>`;
-    side.innerHTML = `<div class="snbar"><h3>${esc(t.text)}</h3><button class="x" aria-label="Закрыть">×</button></div><div class="snbody"><div class="tkmeta"><span class="pteam" style="--c:${teamC(t)}"><i></i>${esc(t.team === "?" && t.cand ? "Команда? " + t.cand : teamN(t))}</span> · ${esc(COLS[colOf(t.stage)].name)} · ${esc(id)} · ${esc(t.status)}</div>${tabs}${taskTab ? execHTML(t) : html}</div>`;
+    side.innerHTML = head(t.text, `<span class="pteam" style="--c:${teamC(t)}"><i></i>${esc(t.team === "?" && t.cand ? "Команда? " + t.cand : teamN(t))}</span> · ${esc(COLS[colOf(t.stage)].name)} · ${esc(id)} · ${esc(t.status)}`) + `<div class="snbody">${tabs}${taskTab ? execHTML(t) : html}</div>`;
     body.classList.remove("wide"); body.classList.add("open"); side.scrollTop = 0;
     side.dataset.ctx = "task:" + id; side.dataset.note = "";
   }
 
-  /* карточка «Как это работает» — техническая задача: UserStory, JobStory, процесс в BPMN, параметры, HowToDemo, ссылки */
+  /* карточка «Как это работает» — техническая задача: UserStory, JobStory, процесс и его схема BPMN,
+     параметры, HowToDemo, вопросы, ссылки. Схема — текст mermaid из файла карточки; рисует mermaid
+     из папки проекта (.blueprint/vendor), без сети. Нет mermaid — видно сам текст схемы. */
   const PNAME = { in: "Вход", ctl: "Управление", out: "Выход", mech: "Механизм" };
+  let MM = null, mmN = 0;
+  function mermaidLib() {
+    if (window.mermaid) return Promise.resolve(window.mermaid);
+    return MM || (MM = new Promise((ok, no) => {
+      const sc = document.createElement("script"); sc.src = fileURL(D.mermaid || ""); sc.onerror = () => { MM = null; no(new Error("mermaid")) };
+      sc.onload = () => { window.mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "neutral", fontFamily: "Inter,-apple-system,Segoe UI,Roboto,Arial,sans-serif", themeVariables: { fontSize: "12.5px" }, flowchart: { useMaxWidth: true, htmlLabels: true, padding: 6, nodeSpacing: 28, rankSpacing: 34, wrappingWidth: 140 } }); ok(window.mermaid) };
+      document.head.appendChild(sc);
+    }));
+  }
+  function drawMermaid(box) {
+    const code = box.querySelector("pre").textContent;
+    mermaidLib().then(m => m.render(`mm${++mmN}`, code)).then(r => { if (box.isConnected) { box.innerHTML = r.svg; box.classList.add("ok") } })
+      .catch(() => box.classList.add("raw"));
+  }
   function openProc(id) {
     const c = PROC[id], t = TASK[c.task], L = LAYER[c.layer], P = c.params || {};
     const row = k => (P[k] || []).length ? `<div class="pp"><span>${PNAME[k]}</span><ul>${P[k].map(it => `<li>${mdInline(it.t)}${it.r.length ? " " + it.r.map(idChip).join(" ") : ""}</li>`).join("")}</ul></div>` : "";
-    const lnk = refList([t ? `Задача ${idChip(t.id)} ${esc(t.text)}` : "", ...c.docs.map(refItem), ...c.refs.map(refItem)].filter(Boolean));
-    const proc = (c.lead ? `<p class="tklead">${mdInline(c.lead)}</p>` : "") + ((c.proc || []).length ? `<div class="bpmnw">${BPK.bpmnSVG(c.proc, { uid: "c" })}</div>` : "");
-    side.innerHTML = `<div class="snbar"><h3>${esc(c.text)}</h3><button class="x" aria-label="Закрыть">×</button></div><div class="snbody">
-      <div class="tkmeta"><span class="lay" style="--c:${L[2]}">${L[0]}</span> · <span class="pteam" style="--c:${teamC(c)}"><i></i>${esc(teamN(c))}</span> · ${esc(COLS[colOf(c.stage)].name)} · ${esc(id)} · ${esc(c.status)}</div>
-      ${c.us ? `<blockquote class="us">${mdInline(c.us)}</blockquote>` : ""}
+    const lnk = refList([t ? `<span class="lk">Задача</span> ${idChip(t.id)} ${esc(t.text)}` : "", ...c.docs.map(refItem), ...c.refs.map(refItem)].filter(Boolean));
+    const proc = (c.lead ? `<p class="tklead">${mdInline(c.lead)}</p>` : "") + (c.bpmn ? `<div class="bpmnw"><pre>${esc(c.bpmn)}</pre></div><details class="mmcode"><summary>Текст схемы</summary><pre>${esc(c.bpmn)}</pre></details>` : "");
+    side.innerHTML = head(c.text, `<span class="lay" style="--c:${L[2]}">${L[0]}</span> · <span class="pteam" style="--c:${teamC(c)}"><i></i>${esc(teamN(c))}</span> · ${esc(COLS[colOf(c.stage)].name)} · ${esc(id)} · ${esc(c.status)}`) + `<div class="snbody">
+      ${sec("UserStory", c.us ? `<p>${mdInline(c.us)}</p>` : "")}
       ${sec("JobStory", (c.js || []).length ? `<ul class="js">${c.js.map(x => `<li>${mdInline(x)}</li>`).join("")}</ul>` : "")}
       ${sec("Процесс", proc)}${sec("Параметры", ["in", "ctl", "out", "mech"].map(row).join(""))}
-      ${sec("HowToDemo", mdHTML(c.demo || ""))}${sec("Вопросы", qList([...qOf(id), ...qOf(c.task)]))}${sec("Ссылки", lnk)}</div>`;
+      ${sec("HowToDemo", mdHTML(c.demo || ""))}${sec("Вопросы", qList(qsOf([id, c.task])))}${sec("Ссылки", lnk)}</div>`;
     body.classList.add("wide", "open"); side.scrollTop = 0;
     side.dataset.ctx = "proc:" + id; side.dataset.note = "";
+    const box = side.querySelector(".bpmnw"); if (box) drawMermaid(box);
   }
   function copyText(txt, btn) {
     const lab = btn.textContent, done = () => { btn.textContent = "Скопировано ✓"; setTimeout(() => btn.textContent = lab, 1600) };
@@ -347,14 +370,12 @@
   }
 
   /* ---------- инструкции, легенда, блокеры ---------- */
-  const DOCS = "https://github.com/po-helper-org/poh-bft-writer/blob/main/docs/guides/blueprint/";
-  const ARTICLES = [["service-blueprint.md", "#2563c9", "SB", "Методология Service Blueprint и карта опыта", "Откуда эта карта: Service Blueprint, карта процесса-опыта, линии взаимодействия, видимости и внутреннего взаимодействия."],
-    ["how-to-read.md", "#2f6b2a", "?", "Как читать карту", "Что видят, что делаем, как это работает — и куда нажимать."],
-    ["product-storytelling.md", "#6b3fd4", "PS", "Product Storytelling: история через экраны", "Как устроен сюжет «было → шаги → стало» и почему история помогает проектировать."],
-    ["bpmn.md", "#d06a12", "BP", "BPMN: процесс по дорожкам", "Кто что делает, где развилка и куда ведёт каждая ветка."],
-    ["bft.md", "#1c1c1c", "БФТ", "БФТ: бизнес-функциональные требования", "Откуда карта берёт каждый шаг и задачу и как вопросы с карты возвращаются в требования."]];
+  /* правила лежат в самом проекте (.blueprint/rules) — открываются без сети */
+  const ARTICLES = [["story_line.md", "#2f6b2a", "PS", "История через экраны", "Как устроен сюжет «было → шаги → стало» и откуда берутся экраны."],
+    ["backlog_rules.md", "#d06a12", "BL", "Карта в проекте Backlog.md", "Задачи, карточки, процесс и схема BPMN, вопросы, команды ./backlog.py и ./blueprint.py, коды проверки."],
+    ["screen_notes.md", "#6b3fd4", "UX", "Требования к экранам", "Документы экранов: Product, Design, Functions и картинки в backlog/assets/screens."]];
   function openGuide(kind) {
-    if (kind === "help") openSide("Инструкции", "#555", "Как работать с картой", "", ARTICLES.map(([f, c, ic, t, d], i) => `<a class="art" href="${DOCS + f}" target="_blank" rel="noopener"><span class="ic" style="background:${c}">${ic}</span><span><b>${i + 1}. ${esc(t)}</b><span>${esc(d)}</span><em>Читать на GitHub ↗</em></span></a>`).join(""));
+    if (kind === "help") openSide("Инструкции", "#555", "Как работать с картой", "", ARTICLES.map(([f, c, ic, t, d], i) => `<a class="art" href="${esc(fileURL(".blueprint/rules/" + f))}" target="_blank"><span class="ic" style="background:${c}">${ic}</span><span><b>${i + 1}. ${esc(t)}</b><span>${esc(d)}</span><em>.blueprint/rules/${f}</em></span></a>`).join(""));
     else if (kind === "blk") openSide("Блокеры", "var(--red)", `Блокеров: ${uniqBlk.length}`, "", D.questions.filter(q => q.open && q.kind === "блокер").map(q => `<div class="bcard" data-${TASK[q.where] ? "task" : "proc"}="${q.where}"><b>${esc(q.text)}</b><small>${esc(q.to)} · ${esc(TASK[q.where] ? TASK[q.where].text : PROC[q.where].text)}</small></div>`).join(""));
     else openSide("Легенда", "#555", "Условные обозначения", "", `<div class="lg"><h4>Колонки</h4><div class="row"><i><span class="mh" style="position:static;padding:0!important;background:none"><span class="n">1</span></span></i><span>Шаг пути<small>слева направо — от подготовки до итога</small></span></div>
       <h4>Что видят</h4><div class="row"><i><span class="box" style="background:#fff;border:1px solid var(--line)"></span></i><span>Экран и фраза гостя или ресторана<small>по клику — все шаги этапа, экраны, вопросы</small></span></div>
@@ -369,7 +390,7 @@
   let showP = D.personas[0].id, showI = 0; const show = document.getElementById("show");
   function scene() {
     const steps = D.story.filter(s => s.persona === showP), s = steps[showI], p = D.personas.find(x => x.id === showP);
-    const vis = s.screens.length ? `<div class="vis2">${s.screens.map(id => mockSVG(D.screens[id], D.screens[id].contour)).join("")}</div>` : s.big ? `<div class="big">${esc(s.big)}</div>` : "<div></div>";
+    const vis = s.screens.length ? `<div class="vis2">${s.screens.map(scrPic).join("")}</div>` : s.big ? `<div class="big">${esc(s.big)}</div>` : "<div></div>";
     show.querySelector(".stage").innerHTML = `<div class="scene">${vis}<div><div class="n">${esc(s.label)}</div><h2>${esc(s.title)}</h2><p class="say">${esc(s.text)}</p>${s.was ? `<div class="was"><b>Раньше</b>${esc(s.was)}</div>` : ""}</div></div>`;
     show.querySelector(".whos").innerHTML = D.personas.map(x => `<button data-p="${x.id}" class="${x.id === showP ? "on" : ""}">${esc(x.lane)}</button>`).join("");
     show.querySelector(".prev").disabled = showI === 0; show.querySelector(".next").disabled = showI === steps.length - 1;
@@ -417,19 +438,24 @@
     if (e.key === "Enter" && e.target.matches && e.target.matches("[data-snnote]")) openNote(+e.target.dataset.snnote);
     if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches("[data-seen]")) { e.preventDefault(); openSeen(e.target.dataset.seen) }
   });
-  /* ---------- замечания: правой кнопкой по любой секции → список → промпт для ИИ-агента ----------
-     Как в bft-writer: замечания хранятся в браузере; пересобранная карта (новая ревизия) закрывает
-     открытые замечания — они ушли в доработку и в следующий промпт не попадают. */
-  const CM_KEY = `bp-cm-${D.epic}`, CM_REV = CM_KEY + "-rev", CM_ITER = CM_KEY + "-iter";
-  const cmLoad = () => { try { return JSON.parse(localStorage.getItem(CM_KEY) || "[]") } catch (e) { return [] } };
-  const cmSave = list => { try { localStorage.setItem(CM_KEY, JSON.stringify(list)) } catch (e) { } };
-  const cmOpen = () => cmLoad().filter(c => !c.closedAt);
+  /* ---------- замечания и уточнения → промпт для ИИ-агента ----------
+     Замечание — правой кнопкой по любой секции. Уточнение — ответ PO на открытый вопрос карты или
+     истории (иконка «?» справа сверху или вопрос в карточке). Как в bft-writer: всё хранится в браузере;
+     пересобранная карта (новая ревизия) закрывает открытые замечания и ответы — они ушли в доработку. */
+  const CM_KEY = `bp-cm-${D.epic}`, ANS_KEY = `bp-ans-${D.epic}`, CM_REV = CM_KEY + "-rev", CM_ITER = CM_KEY + "-iter";
+  const load = k => { try { return JSON.parse(localStorage.getItem(k) || "[]") } catch (e) { return [] } };
+  const store = (k, list) => { try { localStorage.setItem(k, JSON.stringify(list)) } catch (e) { } };
+  const cmLoad = () => load(CM_KEY), cmSave = list => store(CM_KEY, list), cmOpen = () => cmLoad().filter(c => !c.closedAt);
+  const ansOpen = () => load(ANS_KEY).filter(a => !a.closedAt && QK[a.key]);
+  const ansOf = key => ansOpen().find(a => a.key === key);
+  /* состояние вопроса: ждёт ответа, отвечен сейчас (в промпт), отвечен в проекте */
+  const qState = q => ansOf(q.key) ? "done" : q.open === false ? "past" : "todo";
   (function syncRevision() {
     let seen = null; try { seen = localStorage.getItem(CM_REV) } catch (e) { return }
     if (seen && seen !== D.rev) {
-      const now = new Date().toISOString(), iter = +(localStorage.getItem(CM_ITER) || 1), list = cmLoad(); let n = 0;
-      list.forEach(c => { if (!c.closedAt) { c.closedAt = now; c.iteration = iter; n++ } });
-      if (n) { cmSave(list); try { localStorage.setItem(CM_ITER, String(iter + 1)) } catch (e) { } }
+      const now = new Date().toISOString(), iter = +(localStorage.getItem(CM_ITER) || 1); let n = 0;
+      [CM_KEY, ANS_KEY].forEach(k => { const list = load(k); list.forEach(c => { if (!c.closedAt) { c.closedAt = now; c.iteration = iter; n++ } }); store(k, list) });
+      if (n) try { localStorage.setItem(CM_ITER, String(iter + 1)) } catch (e) { }
     }
     try { localStorage.setItem(CM_REV, D.rev) } catch (e) { }
   })();
@@ -454,11 +480,14 @@
     const row = el.closest(".hl,.ml"); if (row) { const name = row.textContent.trim().split("\n")[0].slice(0, 40); return { key: "row:" + name, label: `Ряд «${name}»`, file: row.closest(".hero") ? storyDoc : mapDoc } }
     return { key: "map", label: "Карта", file: mapDoc };
   }
+  /* счётчики на иконках справа сверху: «?» — вопросов без ответа, облачко — замечаний */
   function cmPaint() {
     const open = cmOpen(), keys = new Set(open.map(c => c.key));
     document.querySelectorAll("[data-cmk]").forEach(x => x.classList.toggle("cm-has", keys.has(x.dataset.cmk)));
-    const n = open.length, cmn = document.getElementById("cmn"), chip = document.getElementById("cmchip");
-    cmn.hidden = !n; cmn.textContent = n; chip.hidden = !n; chip.textContent = `Замечания · ${n}`;
+    const n = open.length, cmn = document.getElementById("cmn"), todo = QS.filter(q => qState(q) === "todo").length;
+    cmn.hidden = !n; cmn.textContent = n;
+    document.getElementById("icm").innerHTML = n ? `<b>${n}</b>` : "";
+    document.getElementById("iq").innerHTML = todo ? `<b>${todo}</b>` : "";
   }
   /* поле замечания у курсора */
   let cmPop = null;
@@ -485,34 +514,106 @@
     const sel = String(window.getSelection() || "").trim().replace(/\s+/g, " ").slice(0, 200);
     cmAsk(e.clientX, e.clientY, cmTarget(e.target), sel);
   });
-  document.addEventListener("mousedown", e => { if (cmPop && !e.target.closest(".cmpop")) cmClose() });
-  function cmPrompt(list) {
-    if (!list.length) return "";
-    const files = [...new Set(list.flatMap(c => c.file.split(", ")))], proj = F.project || "<epic>-blueprint";
-    return [`Доработай Service Blueprint «${D.title}» (${D.epic}) по замечаниям с карты. Данные — проект Backlog.md ${proj}:`, "",
-      ...list.map((c, i) => `${i + 1}. [${c.label}]${c.quote ? ` (по фрагменту «${c.quote}»)` : ""} ${c.text}\n   Файл: ${c.file}`), "",
+  document.addEventListener("mousedown", e => { if (cmPop && !e.target.closest(".cmpop")) cmClose(); if (srcPop && !e.target.closest(".srcpop,[data-src]")) srcClose() });
+  /* где вопрос: задача, карточка, экран или шаг истории */
+  const whereOf = q => TASK[q.where] ? `Задача ${q.where} «${TASK[q.where].text}»` : PROC[q.where] ? `Карточка ${q.where} «${PROC[q.where].text}»`
+    : D.screens[q.where] ? `Экран ${q.where} · ${D.screens[q.where].contour}` : `Шаг истории ${q.where}`;
+  function cmPrompt(list, answers) {
+    answers = answers || [];
+    if (!list.length && !answers.length) return "";
+    const files = [...new Set([...list.flatMap(c => c.file.split(", ")), ...answers.flatMap(a => { const q = QK[a.key], w = TASK[q.where] || PROC[q.where]; return [q.doc === "map" ? mapDoc : storyDoc, ...(w ? [w.file] : [])] })])], proj = F.project || "<epic>-blueprint";
+    const out = [`Доработай Service Blueprint «${D.title}» (${D.epic}) по замечаниям и ответам PO с карты. Данные — проект Backlog.md ${proj}.`, ""];
+    if (list.length) out.push("Замечания:", ...list.map((c, i) => `${i + 1}. [${c.label}]${c.quote ? ` (по фрагменту «${c.quote}»)` : ""} ${c.text}\n   Файл: ${c.file}`), "");
+    if (answers.length) out.push("Ответы на вопросы:", ...answers.map((a, i) => { const q = QK[a.key];
+      return `${i + 1}. ${q.id} · ${q.to} · ${whereOf(q)}\n   Вопрос: ${q.text}\n   Ответ: ${a.text}\n   Файл: ${q.doc === "map" ? mapDoc : storyDoc} — таблица «Вопросы», колонка «Ответ»` }), "",
+      "Ответ впиши в колонку «Ответ» строки вопроса; затем перепиши затронутые задачи, карточки и экраны: [УТОЧНИТЬ у …] по этому вопросу замени ответом.", "");
+    return [...out,
       "Правь только названное и только через встроенный CLI: `./backlog.py task edit <ID> …`, `./backlog.py doc update <doc-id> --content …`; файлы руками не правь.",
-      `Источник фактов — БФТ ${F.source || ""}; чего в нём нет — [УТОЧНИТЬ у {кого}] и строка в «Вопросах» документа «Карта». Схему процесса не рисуй: она собирается из раздела «Процесс».`,
+      `Источник фактов — БФТ ${F.source || ""} и ответы PO выше; чего нет — [УТОЧНИТЬ у {кого}] и строка в «Вопросах» документа «Карта». Схему процесса не рисуй: она собирается из раздела «Процесс».`,
       `Файлы к правке: ${files.join(", ")}.`, "",
       "После правок — обязательно, из папки проекта:",
       "1. ./blueprint.py lint   (0 ошибок)",
       "2. ./blueprint.py build   (пересобрать страницу и архив — без этого замечания придут повторно)"].join("\n");
   }
+  const promptNow = () => cmPrompt(cmOpen(), ansOpen());
+  const copyBar = () => { const n = cmOpen().length, a = ansOpen().length;
+    return n || a ? `<div class="cpbar"><span>В промпт: ${[n ? `замечаний ${n}` : "", a ? `ответов ${a}` : ""].filter(Boolean).join(", ")}</span><button class="tool pri" data-cmcopy>Скопировать промпт</button></div>` : "" };
+  function panel(title, html, ctx) {
+    side.innerHTML = `<div class="snbar"><h3>${title}</h3><button class="x" aria-label="Закрыть">×</button></div><div class="snbody">${html}</div>${copyBar()}`;
+    side.dataset.ctx = ctx; side.dataset.note = ""; body.classList.remove("wide"); body.classList.add("open");
+  }
   function cmPanel() {
     const list = cmOpen(), past = cmLoad().filter(c => c.closedAt);
-    side.innerHTML = `<div class="snbar"><h3>Замечания${list.length ? " · " + list.length : ""}</h3><button class="x" aria-label="Закрыть">×</button></div><div class="snbody">
-      ${list.length ? `<ul class="cmlist">${list.map(c => `<li><small>${esc(c.label)}</small>${c.quote ? `<i>«${esc(c.quote)}»</i>` : ""}<span>${esc(c.text)}</span><button data-cmdel="${esc(c.ts)}">удалить</button></li>`).join("")}</ul>
-      <h4 class="cmh">Промпт для ИИ-агента</h4><textarea class="cmout" readonly>${esc(cmPrompt(list))}</textarea><button class="tool pri" data-cmcopy>Скопировать промпт</button>`
-      : '<p class="cmempty">Замечаний нет. Правой кнопкой мыши по кадру, этапу, задаче, карточке или заметке — оставить замечание.</p>'}
-      ${past.length ? `<details class="cmpast"><summary>Учтено в прошлых кругах · ${past.length}</summary><ul class="cmlist">${past.map(c => `<li><small>${esc(c.label)} · круг ${c.iteration || 1}</small><span>${esc(c.text)}</span></li>`).join("")}</ul></details>` : ""}</div>`;
-    side.dataset.ctx = "cm"; body.classList.remove("wide"); body.classList.add("open"); side.scrollTop = 0;
+    panel(`Замечания${list.length ? " · " + list.length : ""}`, (list.length ? `<ul class="cmlist">${list.map(c => `<li><small>${esc(c.label)}</small>${c.quote ? `<i>«${esc(c.quote)}»</i>` : ""}<span>${esc(c.text)}</span><button data-cmdel="${esc(c.ts)}" aria-label="Удалить замечание">×</button></li>`).join("")}</ul>`
+      : '<p class="cmempty">Замечаний нет. Правой кнопкой мыши по кадру, этапу, задаче, карточке или заметке — оставить замечание.</p>') +
+      (past.length ? `<details class="cmpast"><summary>Учтено в прошлых кругах · ${past.length}</summary><ul class="cmlist">${past.map(c => `<li><small>${esc(c.label)} · круг ${c.iteration || 1}</small><span>${esc(c.text)}</span></li>`).join("")}</ul></details>` : ""), "cm");
+    side.scrollTop = 0;
+  }
+  /* «Уточнить»: открытые вопросы сверху, отвеченные сейчас — с ответом и ✓, отвеченные в проекте — свёрнуты */
+  let qEdit = "";
+  function qItem(q) {
+    const st = qState(q), a = ansOf(q.key), ed = qEdit === q.key;
+    return `<li class="qi ${st}${ed ? " ed" : ""}" data-qkey="${esc(q.key)}"><button class="qh" data-q="${esc(q.key)}">${st === "todo" ? '<i class="qd"></i>' : '<i class="ok">✓</i>'}<span><small title="${esc(whereOf(q))}">${esc(q.id)} · ${esc(q.to)} · ${esc(whereOf(q))}</small>${q.kind === "блокер" ? "<b>Блокер.</b> " : ""}${esc(q.text)}</span></button>
+      ${ed ? `<div class="qa"><textarea placeholder="Ответ — уйдёт агенту в промпт (Ctrl+Enter — сохранить)">${esc(a ? a.text : "")}</textarea><div class="cmrow"><button class="cmsave" data-qsave>Сохранить</button><button class="cmcancel" data-qcancel>Отмена</button>${a ? '<button class="cmcancel" data-qdel>Убрать ответ</button>' : ""}</div></div>`
+        : a ? `<p class="said">${esc(a.text)}</p>` : st === "past" ? `<p class="said past">${esc(q.answer)}</p>` : ""}</li>`;
+  }
+  function qPanel(key) {
+    if (key != null) qEdit = key;
+    const todo = QS.filter(q => qState(q) === "todo"), done = QS.filter(q => qState(q) === "done"), past = QS.filter(q => qState(q) === "past");
+    const closed = load(ANS_KEY).filter(a => a.closedAt && QK[a.key]);
+    panel(`Уточнить · ${todo.length}`, (todo.length ? `<ul class="qul">${todo.map(qItem).join("")}</ul>` : '<p class="cmempty">Открытых вопросов нет.</p>') +
+      (done.length ? `<div class="qdiv">Отвечено сейчас · ${done.length}</div><ul class="qul">${done.map(qItem).join("")}</ul>` : "") +
+      (past.length || closed.length ? `<details class="cmpast"${past.some(q => q.key === qEdit) ? " open" : ""}><summary>Отвечено в проекте · ${past.length}${closed.length ? `, в прошлых кругах · ${closed.length}` : ""}</summary><ul class="qul">${past.map(qItem).join("")}${closed.map(a => `<li class="qi past"><span class="qh"><i class="ok">✓</i><span><small>${esc(QK[a.key].id)} · круг ${a.iteration || 1}</small>${esc(QK[a.key].text)}</span></span><p class="said past">${esc(a.text)}</p></li>`).join("")}</ul></details>` : ""), "q");
+    const ta = side.querySelector(".qa textarea");
+    if (ta) { ta.focus(); ta.closest(".qi").scrollIntoView({ block: "nearest" }) } else side.scrollTop = 0;
+  }
+  function qSave(key, text) {
+    const list = load(ANS_KEY).filter(a => !(a.key === key && !a.closedAt));
+    if (text) list.push({ key, text, ts: new Date().toISOString() });
+    store(ANS_KEY, list); qEdit = ""; cmPaint(); qPanel();
+  }
+  document.addEventListener("keydown", e => {
+    const ta = e.target.closest && e.target.closest(".qa textarea"); if (!ta) return;
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) qSave(ta.closest(".qi").dataset.qkey, ta.value.trim());
+    if (e.key === "Escape") { e.stopPropagation(); qEdit = ""; qPanel() }
+  }, true);
+
+  /* «!» в шапке панели: из каких файлов проекта собрано то, что открыто, — ссылки и пути */
+  let srcPop = null;
+  const srcClose = () => { if (srcPop) { srcPop.remove(); srcPop = null } };
+  function srcFiles() {
+    const [kind, id] = (side.dataset.ctx || ":").split(":"), out = [], add = (what, file, note) => file && !out.some(x => x[1] === file) && out.push([what, file, note || ""]);
+    const docs = ds => ds.forEach(d => { const x = D.docs[String(d).toLowerCase().split(" ")[0]]; if (x) add("Документ", x.file) });
+    const qdoc = ids => { const qs = qsOf(ids); if (qs.some(q => q.doc === "map")) add("Вопросы", mapDoc, "таблица «Вопросы»"); if (qs.some(q => q.doc === "story")) add("Вопросы", storyDoc, "таблица «Вопросы»") };
+    if (kind === "proc") { const c = PROC[id]; add("Карточка", c.file, "UserStory, JobStory, Параметры, Процесс, HowToDemo; схема — раздел «BPMN», текст mermaid"); if (TASK[c.task]) add("Задача", TASK[c.task].file); docs(c.docs); qdoc([id, c.task]) }
+    else if (kind === "task") { const t = TASK[id]; add("Задача", t.file, "постановка, чеклист, исполнение — references и Implementation Notes"); D.cards.filter(c => c.task === id).forEach(c => add("Карточка", c.file)); docs(t.docs); qdoc([id, ...D.cards.filter(c => c.task === id).map(c => c.id)]) }
+    else if (kind === "screen") { add("Требования к экрану", (D.noteFiles || {})[id]); (SCR[id] ? SCR[id].images : []).forEach(im => add("Картинка", im.src)); add("История", storyDoc, "таблица «Экраны»: из неё собраны картинки") }
+    else if (kind === "seen") { const s = D.seen.find(x => x.key === id); add("История", storyDoc, "таблица «Шаги»"); (s ? s.steps.flatMap(st => st.screens) : []).forEach(x => add("Картинка", D.screens[x].img)); qdoc((s ? s.steps.flatMap(st => [st.id, ...st.screens]) : [])) }
+    return out;
+  }
+  function srcOpen(btn) {
+    srcClose();
+    const files = srcFiles(); if (!files.length) return;
+    srcPop = document.createElement("div"); srcPop.className = "srcpop";
+    srcPop.innerHTML = `<div class="srch">Источник — файлы проекта ${esc(F.project || "")}</div>${files.map(([what, f, note]) => `<div class="srci"><small>${esc(what)}</small><a href="${esc(fileURL(f))}" target="_blank">${esc(f)}</a>${note ? `<em>${esc(note)}</em>` : ""}</div>`).join("")}<button class="tool" data-srccopy>Скопировать пути</button>`;
+    document.body.appendChild(srcPop);
+    const r = btn.getBoundingClientRect();
+    srcPop.style.top = r.bottom + 6 + "px"; srcPop.style.left = Math.max(8, Math.min(r.right - srcPop.offsetWidth, innerWidth - srcPop.offsetWidth - 8)) + "px";
+    srcPop.dataset.paths = files.map(x => x[1]).join("\n");
   }
   document.addEventListener("click", e => {
     const p = e.target.closest("[data-cmpanel]"); if (p) { menu(false); return cmPanel() }
+    if (e.target.closest("[data-qpanel]")) { menu(false); return qPanel("") }
+    const sb = e.target.closest("[data-src]"); if (sb) return srcPop ? srcClose() : srcOpen(sb);
+    const sc = e.target.closest("[data-srccopy]"); if (sc) return copyText(srcPop.dataset.paths, sc);
+    const qq = e.target.closest("[data-q]"); if (qq) { const k = qq.dataset.q; return qPanel(qEdit === k && side.dataset.ctx === "q" ? "" : k) }
+    if (e.target.closest("[data-qsave]")) { const li = e.target.closest(".qi"); return qSave(li.dataset.qkey, li.querySelector("textarea").value.trim()) }
+    if (e.target.closest("[data-qdel]")) return qSave(e.target.closest(".qi").dataset.qkey, "");
+    if (e.target.closest("[data-qcancel]")) { qEdit = ""; return qPanel() }
     const tt = e.target.closest("[data-tktab]"); if (tt) return openTask(side.dataset.ctx.split(":")[1], +tt.dataset.tktab);
     const xc = e.target.closest("[data-excopy]"); if (xc) return copyText(execCmd(xc.dataset.excopy), xc);
     const d = e.target.closest("[data-cmdel]"); if (d) { cmSave(cmLoad().filter(c => c.ts !== d.dataset.cmdel)); cmPaint(); return cmPanel() }
-    const c = e.target.closest("[data-cmcopy]"); if (c) return copyText(side.querySelector(".cmout").value, c);
+    const c = e.target.closest("[data-cmcopy]"); if (c) return copyText(promptNow(), c);
   });
   /* метки на элементах с замечаниями: ключи проставляются заранее */
   hero.querySelectorAll(".fr").forEach(f => f.dataset.cmk = "fr:" + f.querySelector(".cap").textContent);
@@ -521,5 +622,5 @@
   document.querySelectorAll(".hh,.mh:not(.corner)").forEach(x => x.dataset.cmk = "stage:" + x.querySelector("b").textContent);
   cmPaint();
 
-  window.BPMAP = { setView, cmPanel, cmTarget, cmPrompt, execCmd, openProc, openTask, openSeen, openScreen, openNote, zoom };
+  window.BPMAP = { setView, cmPanel, qPanel, qSave, cmTarget, cmPrompt, promptNow, execCmd, openProc, openTask, openSeen, openScreen, openNote, zoom, srcFiles };
 })();

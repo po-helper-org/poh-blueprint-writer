@@ -7,7 +7,7 @@ updated_date: '2026-10-19 19:07'
 ---
 # Письмо с билетом
 
-![Письмо](screen:C1)
+![Письмо](../../assets/screens/C1.svg)
 
 ## Product
 
