@@ -338,6 +338,14 @@ python3 "$DIR/scripts/bft-reqs.py" "$FIX/golden_deep_document.md" > "$tmp/reqs.m
   && ( for id in БТ-1 ПТ-1 ПТ-2 ИТ-1 ИТ-2 ФТ-1 ФТ-2 ФТ-3 ФТ-4 НФТ-1; do grep -q "^| $id |" "$tmp/reqs.md" || exit 1; done ) \
   && grep -q "Контент-менеджер Direct" "$tmp/reqs.md" && grep -q "Контент-менеджер → Карточка в Direct" "$tmp/reqs.md" \
   && ok "автопилот · bft-reqs: 10 требований, акторы, сценарий с участниками" || fail "автопилот · bft-reqs"
+# БФТ из Word (pandoc): шапка таблицы пустая, ID с буквой группы; латинская A вместо кириллической — BL016 с подсказкой
+{ cat "$FIX/golden_deep_document.md"; printf '\n|  |  |\n|---|---|\n| Идентификатор | Наименование требования |\n| ПТ-А1 | Роль А: найти договор |\n| ПТ-B2 | Роль B: сверить акт |\n'; } > "$tmp/word.md"
+python3 "$DIR/scripts/bft-reqs.py" "$tmp/word.md" > "$tmp/word-reqs.md" \
+  && grep -q "^| ПТ-А1 | Роль А: найти договор |" "$tmp/word-reqs.md" && grep -q "^| ПТ-B2 | Роль B: сверить акт |" "$tmp/word-reqs.md" \
+  && ok "автопилот · bft-reqs: таблица из Word, ID ПТ-А1 и ПТ-B2" || fail "автопилот · bft-reqs: таблица из Word"
+cp -r "$BGOLD" "$tmp/homo" && sed -i '0,/^Требования БФТ: ПТ-1, /s//Требования БФТ: ПТ-1, ПТ-A1, /' "$tmp/homo/backlog/tasks/"*.md
+python3 "$DIR/scripts/bft-backlog-lint.py" "$tmp/homo" --source "$tmp/word.md" 2>&1 | grep -q "BL016.*ПТ-A1 нет в БФТ.*пишется ПТ-А1" \
+  && ok "автопилот · BL016: латинская буква в ID — подсказка, как пишется в БФТ" || fail "автопилот · BL016 не видит латиницу в ID"
 
 # план карты: экспорт эталона = образец в examples; apply того же плана ничего не меняет; с нуля — та же карта
 PL="$tmp/plan"; mkdir -p "$PL" && cp -r "$BGOLD" "$PL/g" && rm -rf "$PL/g/plan"
@@ -408,6 +416,22 @@ out="$(python3 "$DIR/scripts/bft-plan.py" apply "$PL/qual" 2>&1)"
 sed 's/^| guest | Гость Acme Tickets |/| guest | Гость, кассир и администратор |/' "$DIR/examples/golden_story.md" > "$tmp/merged-story.md"
 python3 "$DIR/scripts/bft-story-lint.py" "$tmp/merged-story.md" --no-source 2>&1 | grep -q " ST025 " \
   && ok "автопилот · ST025: персонаж из нескольких ролей" || fail "автопилот · ST025"
+
+# груминг роем: пакеты обеих волн; слияние берёт годную замену, а ломающую карту и теряющую требование — отклоняет
+GR="$tmp/groom" && cp -r "$BGOLD" "$GR" && rm -rf "$GR/plan"
+python3 "$DIR/scripts/bft-groom.py" audit "$GR" >/dev/null 2>&1 && python3 "$DIR/scripts/bft-groom.py" refine "$GR" >/dev/null 2>&1
+O="$GR/groom/2-refine/out" && mkdir -p "$O"
+blk() { awk -v h="^## $1 " '$0 ~ h {f=1; print; next} f && /^## / {exit} f' "$GR/plan/map.md"; }
+{ printf '## Вопросы\n| Кому | Вопрос | Где | Тип |\n| --- | --- | --- | --- |\n| PO | Кто проверяет заявку ресторана? | BP-1.1 | вопрос |\n\n## Замены\n'
+  blk BP-1.1 | sed '1s/.*/## BP-1.1 · Ресторан подаёт заявку и попадает в каталог/'; } > "$O/r-BP-1.1.md"
+{ printf '## Замены\n'; blk BP-2 | sed 's/^Требования БФТ: ФТ-3, ФТ-4, НФТ-2/Требования БФТ: ФТ-3/'; } > "$O/r-BP-2.md"
+{ printf '## Замены\n'; blk BP-2.1 | sed '/^### Процесс/,/^### HowToDemo/{/^- /d}'; } > "$O/r-BP-2.1.md"
+python3 "$DIR/scripts/bft-groom.py" merge "$GR" >/dev/null 2>&1
+R="$GR/groom/report.md"
+[ -f "$GR/groom/1-audit/a-coverage.md" ] && ls "$GR/groom/2-refine/r-BP-1.1.md" >/dev/null \
+  && grep -q "^## BP-1.1 · Ресторан подаёт заявку и попадает в каталог" "$GR/plan/map.md" && grep -q "Кто проверяет заявку ресторана?" "$GR/plan/map.md" \
+  && grep -q "BP-2 из r-BP-2.md: теряет НФТ-2, ФТ-4" "$R" && grep -q "BP-2.1 из r-BP-2.1.md: .*BL" "$R" \
+  && ok "груминг · audit → refine → merge: годная замена и вопрос — в план, ломающие — в отчёт" || fail "груминг · audit/refine/merge"
 
 # встроенный CLI и настоящий Backlog.md читают файлы друг друга — если npm-пакет установлен
 if command -v backlog >/dev/null 2>&1; then

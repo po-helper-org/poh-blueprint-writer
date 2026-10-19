@@ -14,11 +14,14 @@ elif cmd in ("apply", "export", "next"):
     run = ["bft-plan.py", cmd, here]
 elif cmd == "reqs":
     run = ["bft-reqs.py", "--project", here]
+elif cmd == "groom":
+    run = ["bft-groom.py", rest.pop(0) if rest else "help", here]
 else:
     print("./blueprint.py reqs   — инвентарь БФТ: требования, акторы, сценарий, зависимости и куда они ложатся на карте")
     print("./blueprint.py apply  — план plan/map.md и plan/screens/*.md → задачи, карточки, документы; затем проверка")
     print("./blueprint.py next   — что исправить дальше: ошибки по строкам плана и как их исправить")
     print("./blueprint.py export — план из бэклога (правки одним файлом)")
+    print("./blueprint.py groom audit|refine|merge — груминг роем агентов (.blueprint/rules/grooming.md)")
     print("./blueprint.py lint   — проверить карту (коды BL, SN; правила — .blueprint/rules/backlog_rules.md)")
     print("./blueprint.py build  — схемы BPMN из «Процесса», страница <epic>-map.html и архив <epic>-blueprint.zip")
     print("./blueprint.py check  — проверка без записи: схемы и скрипты проекта актуальны")

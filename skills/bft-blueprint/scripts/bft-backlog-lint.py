@@ -104,6 +104,14 @@ def check(pr: bl.Project, source: Path | None, no_source: bool, explicit: bool =
     reqs, src_text = bb.load_requirements(source)
     if pr.meta.get("source_rev") and pr.meta["source_rev"] != bb.source_rev(source):
         pr.warn(pr.map_doc.rel, 1, "BL026", "БФТ изменился после сборки (source_rev не совпадает) — пересверь карту")
+    by_key = {bb.req_key(r): r for r in reqs}
+
+    def unknown(rid: str) -> str:
+        twin = by_key.get(bb.req_key(rid))
+        if twin:  # латинская буква вместо кириллической: связь с БФТ молча теряется
+            return f"{rid} нет в БФТ {source.name} — в БФТ пишется {twin} (буква другого алфавита)"
+        return f"{rid} нет в БФТ {source.name}"
+
     cited: set[str] = set()
     texts = []
     for t in pr.tasks + pr.cards:
@@ -111,14 +119,14 @@ def check(pr: bl.Project, source: Path | None, no_source: bool, explicit: bool =
         texts.append((t, body))
         for rid in sorted(set(bb.REQ_RE.findall(body))):
             if rid not in reqs:
-                pr.err(t.rel, 1, "BL016", f"{t.id}: {rid} нет в БФТ {source.name}")
+                pr.err(t.rel, 1, "BL016", f"{t.id}: {unknown(rid)}")
             else:
                 cited.add(rid)
     for d in pr.screens.values():
         for x in d.notes:
             for rid in bb.REQ_RE.findall(x.md):
                 if rid not in reqs:
-                    pr.err(d.rel, x.line, "BL016", f"«{x.title}»: {rid} нет в БФТ {source.name}")
+                    pr.err(d.rel, x.line, "BL016", f"«{x.title}»: {unknown(rid)}")
     for rid in reqs:
         if rid.split("-")[0] in ("ФТ", "ИТ", "НФТ") and rid not in cited:
             pr.err(pr.map_doc.rel, 1, "BL017", f"{rid} не попало ни в одну задачу и ни в одну карточку — где эта работа на карте?")
@@ -171,7 +179,7 @@ HINTS = {
     "BL011": "документы: — ID существующего документа (doc-5); экраны: — ID экрана, для которого есть plan/screens/F3.md",
     "BL014": "сократи название: задача до 80 знаков, карточка до 90 — детали в описание",
     "BL015": "положи БФТ рядом с папкой проекта под именем из source_doc паспорта или передай --source",
-    "BL016": "этого ID нет в БФТ — убери его или исправь опечатку (ФТ-1, ИТ-2, НФТ-1)",
+    "BL016": "этого ID нет в БФТ — убери его или исправь опечатку (ФТ-1, ИТ-2, ПТ-А1); ID копируй из БФТ, не набирай",
     "BL017": "требование БФТ не попало на карту — допиши его в «Требования БФТ:» подходящей задачи или в текст карточки (./blueprint.py reqs — список)",
     "BL018": "убери из названия и сути API, протоколы, таблицы БД — это высота СА, не карты",
     "BL020": "у этапа истории нет задач — что на нём делают команды? добавь задачу с «этап: X» или объясни в итоге",
