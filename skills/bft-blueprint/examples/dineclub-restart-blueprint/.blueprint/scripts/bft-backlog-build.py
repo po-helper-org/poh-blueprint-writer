@@ -180,7 +180,8 @@ def provenance(m: dict, pr: bl.Project) -> list[str]:
             for x in v:
                 walk(x, key)
         elif isinstance(v, str) and key.lstrip("#") not in DERIVED:
-            for line in v.split("\n"):
+            # кандидаты «Витрина или UnitB» склеивает сама сборка — в проекте каждое имя по отдельности
+            for line in (v.split(" или ") if key == "cand" else v.split("\n")):
                 ln = norm(line)
                 im = bsn.IMG_RE.match(ln)
                 if im and not re.match(r"^(https?:|data:)", im.group(2)):

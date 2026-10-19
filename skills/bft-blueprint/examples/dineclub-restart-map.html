@@ -316,7 +316,7 @@ const BPK = (function () {
   };
   function contourIcon(c) {
     const s = c.toLowerCase();
-    const rules = [[/sms|смс/, "sms"], [/email|e-mail|письм/, "mail"], [/push|пуш|оповещ|уведомл/, "bell"], [/витрин|сайт/, "web"],
+    const rules = [[/sms|смс/, "sms"], [/email|e-mail|письм/, "mail"], [/push|пуш|оповещ|уведомл/, "bell"], [/витрин|сайт|админк|кабинет/, "web"],
       [/билет/, "ticket"], [/сканер/, "scan"], [/приложен/, "app"], [/офлайн/, "pin"], [/звонок/, "call"], [/чат/, "chat"]];
     for (const [re, k] of rules) if (re.test(s)) return k;
     return "dot";

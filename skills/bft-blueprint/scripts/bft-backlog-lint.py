@@ -50,6 +50,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -62,7 +63,7 @@ _spec = importlib.util.spec_from_file_location("bp_lint", HERE / "bft-blueprint-
 _bp_lint = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_bp_lint)
 API_PATTERNS = _bp_lint.API_PATTERNS
-NUM_RE = _bp_lint.NUM_RE
+NUM_RE = re.compile(r"\d[\d \u00a0.,:%]*\d|\d")   # число в одной строке: перенос строки его не склеивает
 
 
 def check(pr: bl.Project, source: Path | None, no_source: bool, explicit: bool = False) -> None:

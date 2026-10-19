@@ -65,7 +65,7 @@ TECH_RE = re.compile(
     r"API|SDK|интерфейс программ\w*|деплой\w*|команда\w*|бэклог\w*)"
 )
 # Контуры, для которых у страницы есть иконка (story_page.js, `contourIcon`).
-CONTOUR_RE = re.compile(r"(?i)витрин|сайт|email|e-mail|письм|sms|смс|push|пуш|оповещ|уведомл|билет|сканер|приложен|офлайн|звонок|чат")
+CONTOUR_RE = re.compile(r"(?i)витрин|сайт|админк|кабинет|email|e-mail|письм|sms|смс|push|пуш|оповещ|уведомл|билет|сканер|приложен|офлайн|звонок|чат")
 
 
 def team_story(src_text: str, rid: str) -> bool:

@@ -376,6 +376,12 @@ out="$(python3 "$DIR/scripts/bft-plan.py" apply "$PL/bad" 2>&1)"; rc=$?
 after="$(cd "$PL/bad/backlog" && find . -type f -exec md5sum {} + | sort | md5sum)"
 ( [ "$rc" -eq 1 ] && [ "$before" = "$after" ] && for c in PL002 PL003 PL004 PL007; do grep -q " $c " <<<"$out" || exit 1; done ) \
   && ok "автопилот · ошибки плана PL002 PL003 PL004 PL007 — бэклог не тронут" || fail "автопилот · ошибки плана"
+# кандидаты вместо команды: страница пишет «X или Y» — это не выдумка (BL032), сборка проходит
+cp -r "$PL/g" "$PL/cand" && sed -i '0,/^команда: vit$/s//кандидаты: vit, unitb/' "$PL/cand/plan/map.md" \
+  && python3 "$DIR/scripts/bft-plan.py" apply "$PL/cand" >/dev/null 2>&1 \
+  && python3 "$BBUILD" "$PL/cand" --no-source --no-zip --out-dir "$PL/cand-out" >/dev/null 2>&1 \
+  && grep -q "Витрина или UnitB" "$PL/cand-out/dineclub-restart-map.html" \
+  && ok "автопилот · кандидаты «Витрина или UnitB» — сборка проходит (BL032 не ложный)" || fail "автопилот · кандидаты валят сборку"
 # BL033: история от лица команды-исполнителя
 cp -r "$PL/g" "$PL/role" && sed -i '0,/^Как официант, я хочу получать ответ/s//Как команда TeamA, я хочу получать ответ/' "$PL/role/plan/map.md" \
   && python3 "$DIR/scripts/bft-plan.py" apply "$PL/role" 2>&1 | grep -q " BL033 BP-16.1" \
