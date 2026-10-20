@@ -301,7 +301,7 @@ def main() -> int:
     backlog(root, "doc", "update", "doc-2", "--content", story_body)
     install(root, title, epic, st.meta.get("source_doc", ""))
     print(f"backlog-init: {root} — автономный проект Backlog.md: документы «Карта» и «История», ./backlog.py, ./blueprint.py, инструкции агенту")
-    print("дальше: ./blueprint.py reqs — инвентарь БФТ; план карты — plan/map.md по .blueprint/templates/map.md; ./blueprint.py apply "
+    print("дальше: ./blueprint.py reqs — инвентарь БФТ; ./blueprint.py skeleton — каркас plan/map.md из БФТ; groom fill — заполнить; ./blueprint.py apply "
           "(методология — .blueprint/rules/autopilot.md)")
     return 0
 
