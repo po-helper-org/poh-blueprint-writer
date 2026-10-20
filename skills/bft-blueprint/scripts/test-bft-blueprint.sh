@@ -428,6 +428,8 @@ assert len(ids) == 22 and ids["ПТ-B1"]["role"] == "Бухгалтер сети
 assert {k: len(v) for k, v in g["families"].items()} == {"P": 8, "I": 4, "G": 3}
 assert g["matrices"][0]["applies"][0] == "ФТ-2" and len(g["matrices"][0]["columns"]) == 3
 PY
+python3 "$DIR/scripts/bft-story-lint.py" "$FIX/roles_story.md" --source "$RF" >/dev/null 2>&1 \
+  && ok "каркас · история фикстуры без ошибок" || fail "каркас · история фикстуры с ошибками"
 python3 "$DIR/scripts/bft-backlog-init.py" "$SK/club-partners-story.md" --dir "$SK/p" --auto >/dev/null 2>&1
 python3 "$DIR/scripts/bft-skeleton.py" "$SK/p" >/dev/null 2>&1; M="$SK/p/plan/map.md"
 ( for x in БТ-1 ПТ-А1 ПТ-А3 ПТ-B1 ПТ-B2 ПТ-C2 ИТ-3 ФТ-1 ФТ-6 НФТ-1 НФТ-3 P1 P3 P8 I1 I4 G1 G3; do grep -q "$x" "$M" || exit 1; done ) \
