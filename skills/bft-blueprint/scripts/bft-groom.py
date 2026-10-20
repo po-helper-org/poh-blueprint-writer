@@ -367,10 +367,21 @@ def fill(root: Path) -> int:
     return 0
 
 
-def _kept_ids(text: str) -> set[str]:
-    """Что блок обязан сохранить: ID требований и ID семейств (P7, I2) — они пришли из БФТ."""
+def _kept_ids(text: str, members: set[str] | None = None) -> set[str]:
+    """Что блок обязан сохранить: ID требований и ID семейств БФТ (P7, I2); «C2» вне семейств — не ID."""
     solid = bp.STUB.sub("", text)   # ID в подсказке {{…}} — ещё не факт блока
-    return set(bb.REQ_RE.findall(solid)) | {f"{x}{y}" for x, y in bg.MEMBER_RE.findall(solid)}
+    fam = {f"{x}{y}" for x, y in bg.MEMBER_RE.findall(solid)}
+    return set(bb.REQ_RE.findall(solid)) | (fam & members if members is not None else fam)
+
+
+def _stems(q: str) -> set[str]:
+    return {w[:5] for w in re.findall(r"[а-яёa-z0-9-]{3,}", q.lower())}
+
+
+def _dup(q: str, seen: list[set[str]]) -> bool:
+    """Тот же вопрос другими словами: две трети основ слов общие."""
+    s = _stems(q)
+    return any(s and len(s & t) >= 0.66 * min(len(s), len(t)) for t in seen)
 
 
 # --- слияние -----------------------------------------------------------------------------------------
@@ -417,6 +428,8 @@ def merge(root: Path, wave: str = REFINE) -> int:
     sand = Path(tmp.name) / "p"
     shutil.copytree(root, sand, ignore=shutil.ignore_patterns(GROOM, ".git"))
     base_pl, base_map = _map_errors(sand, before)
+    src = _mod("bl_lint", "bft-backlog-lint.py").resolve_source(bl.parse(root), None)
+    members = set(bg.build(src).members) if src and src.is_file() else None
     applied, rejected, skipped = [], [], []
     outs = sorted((root / GROOM / wave / "out").glob("*.md"))
     for f in outs:
@@ -438,7 +451,7 @@ def merge(root: Path, wave: str = REFINE) -> int:
                 kids = [i for i in spans if i == owner or i.startswith(owner + ".")]
                 end = max(spans[i][1] for i in kids)
                 trial[end:end] = text.split("\n") + [""]
-            lost = _kept_ids(old) - _kept_ids(text)  # ID требований и семейств старого блока остаются в новом
+            lost = _kept_ids(old, members) - _kept_ids(text, members)  # ID требований и семейств старого блока остаются в новом
             pl_errs, map_errs = _map_errors(sand, "\n".join(trial))
             # чужие ошибки не в счёт: пока в плане были {{…}}, полная проверка не шла, и они всплывают только сейчас
             new = {e for e in map_errs - base_map if e.split(":", 1)[0] == bid or e.startswith(bid + ".")}
@@ -460,14 +473,16 @@ def merge(root: Path, wave: str = REFINE) -> int:
     text = "\n".join(lines)
     qsec = section(lines, "Вопросы")
     have = {re.sub(r"\W+", " ", r.split("|")[3]).strip().lower() for r in qsec.split("\n") if r.startswith("| В")}
+    seen = [_stems(r.split("|")[3]) for r in qsec.split("\n") if r.startswith("| В")]
     nums = [int(m) for m in re.findall(r"^\| В(\d+) \|", qsec, re.M)]
     added = []
     for who, q, where, kind in q1 + q2:
         key = re.sub(r"\W+", " ", q).strip().lower()
         where = where.upper().strip()
-        if not q or key in have or where not in spans:
+        if not q or key in have or where not in spans or _dup(q, seen):
             continue
         have.add(key)
+        seen.append(_stems(q))
         n = max(nums + [0]) + 1
         nums.append(n)
         added.append(f"| В{n} | {who} | {q} | {where} | {'блокер' if 'блок' in kind.lower() else 'вопрос'} | — |")

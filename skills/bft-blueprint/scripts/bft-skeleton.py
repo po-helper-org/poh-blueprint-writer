@@ -212,7 +212,7 @@ class Skeleton:
     # --- текст плана --------------------------------------------------------------------------------
     def team_line(self, t: dict) -> str:
         if not self.teams or not self.sure:
-            return "команда: " + stub("id из «Команд»: кто делает — по «Зависимостям» БФТ; не ясно — «кандидаты: id1, id2»")
+            return stub("строка «команда: id» из «Команд» — кто делает, по «Зависимостям» БФТ; не ясно — «кандидаты: id1, id2»")
         tw = words(" ".join(self._atom_text(x) for x in t["atoms"]))
         inner = [x for x in self.teams if not re.search(r"внешн", x[1] + " " + x[2], re.I)] or self.teams  # внешняя система не исполнитель
         scored = sorted(inner, key=lambda x: -len(words(x[1] + " " + x[2]) & tw))

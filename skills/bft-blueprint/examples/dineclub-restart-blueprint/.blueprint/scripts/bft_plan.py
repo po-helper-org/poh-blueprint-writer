@@ -126,6 +126,8 @@ def parse(root: Path) -> Plan:
             if not mm:
                 break
             key, val = mm.group(1), mm.group(2).strip()
+            if key == "команда" and val.startswith("кандидаты:"):   # «команда: кандидаты: a, b» — это кандидаты
+                key, val = "кандидаты", val.split(":", 1)[1].strip()
             allowed = CARD_KEYS if b.card else TASK_KEYS
             if key not in allowed:
                 pl.err(rel, n + 1 + i, "PL003", f"{b.id}: ключ «{key}» — нужен один из: {', '.join(sorted(allowed))}")

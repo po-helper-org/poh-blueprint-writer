@@ -460,12 +460,17 @@ python3 "$DIR/scripts/bft-groom.py" fill "$SK/p" >/dev/null 2>&1; FO="$SK/p/groo
 n_pk=$(ls "$SK/p/groom/0-fill"/f-*.md | wc -l); n_bl=$(grep -c "^## BP-" "$M")
 fblk() { awk -v h="^## $1 " '$0 ~ h {f=1; print; next} f && /^## / {exit} f' "$SK/f/plan/map.md"; }
 { printf '## Замены\n'; fblk BP-1.1; } > "$FO/f-BP-1.1.md"
-{ printf '## Замены\n'; fblk BP-1.2; } > "$FO/f-BP-1.2.md"
+{ printf '## Вопросы\n| Кому | Вопрос | Где | Тип |\n| --- | --- | --- | --- |\n| PO | Кто подтверждает договор партнёра перед активацией? | BP-1.2 | вопрос |\n| PO | Кто подтверждает договор партнёра до активации профиля? | BP-1.2 | вопрос |\n\n## Замены\n'; fblk BP-1.2; } > "$FO/f-BP-1.2.md"
 { printf '## Замены\n'; fblk BP-2.1 | sed 's/P3 цена закупки[^;]*;//'; } > "$FO/f-BP-2.1.md"
 python3 "$DIR/scripts/bft-groom.py" merge "$SK/p" fill >/dev/null 2>&1
 [ "$n_pk" -eq "$n_bl" ] && grep -q "^- BP-1.1 ← f-BP-1.1.md" "$SK/p/groom/report.md" && grep -q "^- BP-1.2 ← f-BP-1.2.md" "$SK/p/groom/report.md" && grep -q "BP-2.1 из f-BP-2.1.md: теряет P3" "$SK/p/groom/report.md" \
   && grep -q "Осталось незаполненным" "$SK/p/groom/report.md" && ! awk '/^## BP-1.1 /{f=1;next} f&&/^## /{exit} f' "$M" | grep -q "{{" \
-  && ok "каркас · groom fill: пакет на блок; merge fill берёт заполненный блок, потерю P3 отклоняет" || fail "каркас · groom fill/merge fill"
+  && [ "$(grep -c 'Кто подтверждает договор партнёра' "$M")" -eq 1 ] \
+  && ok "каркас · groom fill: пакет на блок; merge fill берёт заполненный блок, потерю P3 отклоняет, повтор вопроса — одной строкой" || fail "каркас · groom fill/merge fill"
+cp -r "$SK/f" "$SK/cand" && sed -i '0,/^команда: prodazh$/s//команда: кандидаты: prodazh, kataloga/' "$SK/cand/plan/map.md"
+out="$(python3 "$DIR/scripts/bft-plan.py" apply "$SK/cand" 2>&1)"
+! grep -qE "PL003|BL006" <<<"$out" && grep -rq "кандидат:kataloga" "$SK/cand/backlog/tasks" \
+  && ok "план · «команда: кандидаты: a, b» читается как кандидаты" || fail "план · «команда: кандидаты:»"
 
 # груминг роем: пакеты обеих волн; слияние берёт годную замену, а ломающую карту и теряющую требование — отклоняет
 GR="$tmp/groom" && cp -r "$BGOLD" "$GR" && rm -rf "$GR/plan"
