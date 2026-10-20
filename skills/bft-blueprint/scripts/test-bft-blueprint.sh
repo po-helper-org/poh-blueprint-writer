@@ -433,7 +433,8 @@ python3 "$DIR/scripts/bft-skeleton.py" "$SK/p" >/dev/null 2>&1; M="$SK/p/plan/ma
 ( for x in БТ-1 ПТ-А1 ПТ-А3 ПТ-B1 ПТ-B2 ПТ-C2 ИТ-3 ФТ-1 ФТ-6 НФТ-1 НФТ-3 P1 P3 P8 I1 I4 G1 G3; do grep -q "$x" "$M" || exit 1; done ) \
   && grep -q "^- Повторная передача чека не создаёт вторую продажу (ФТ-3)" "$M" \
   && grep -q "^- Когда месяц закончился, хочу сформировать акты всем партнёрам одной операцией, чтобы не сводить таблицы. (ПТ-B1)" "$M" \
-  && grep -q "^P[0-9]\|P3 цена закупки: Агентская –, Комиссионная –, Перепродажа ●" "$M" \
+  && grep -q "P3 цена закупки: Агентская –, Комиссионная –, Перепродажа ●" "$M" \
+  && grep -qF "Экран «Закрытие месяца»: Список партнёров периода, статус акта, расхождения сверки (ИТ-3)" "$M" \
   && [ -z "$(python3 "$DIR/scripts/bft-plan.py" apply "$SK/p" 2>&1 | grep ERROR | grep -v PL007 | grep -v 'вид «{{')" ] \
   && ok "каркас · каждый атом и ID семейства на месте; критерии, JobStory, матрица — дословно; ошибки только {{…}}" || fail "каркас · раскладка"
 cp -r "$SK/p" "$SK/f" && python3 - "$SK/f/plan/map.md" <<'PY'
@@ -457,9 +458,10 @@ python3 "$DIR/scripts/bft-groom.py" fill "$SK/p" >/dev/null 2>&1; FO="$SK/p/groo
 n_pk=$(ls "$SK/p/groom/0-fill"/f-*.md | wc -l); n_bl=$(grep -c "^## BP-" "$M")
 fblk() { awk -v h="^## $1 " '$0 ~ h {f=1; print; next} f && /^## / {exit} f' "$SK/f/plan/map.md"; }
 { printf '## Замены\n'; fblk BP-1.1; } > "$FO/f-BP-1.1.md"
+{ printf '## Замены\n'; fblk BP-1.2; } > "$FO/f-BP-1.2.md"
 { printf '## Замены\n'; fblk BP-2.1 | sed 's/P3 цена закупки[^;]*;//'; } > "$FO/f-BP-2.1.md"
 python3 "$DIR/scripts/bft-groom.py" merge "$SK/p" fill >/dev/null 2>&1
-[ "$n_pk" -eq "$n_bl" ] && grep -q "^- BP-1.1 ← f-BP-1.1.md" "$SK/p/groom/report.md" && grep -q "BP-2.1 из f-BP-2.1.md: теряет P3" "$SK/p/groom/report.md" \
+[ "$n_pk" -eq "$n_bl" ] && grep -q "^- BP-1.1 ← f-BP-1.1.md" "$SK/p/groom/report.md" && grep -q "^- BP-1.2 ← f-BP-1.2.md" "$SK/p/groom/report.md" && grep -q "BP-2.1 из f-BP-2.1.md: теряет P3" "$SK/p/groom/report.md" \
   && grep -q "Осталось незаполненным" "$SK/p/groom/report.md" && ! awk '/^## BP-1.1 /{f=1;next} f&&/^## /{exit} f' "$M" | grep -q "{{" \
   && ok "каркас · groom fill: пакет на блок; merge fill берёт заполненный блок, потерю P3 отклоняет" || fail "каркас · groom fill/merge fill"
 

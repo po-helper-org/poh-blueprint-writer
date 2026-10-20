@@ -368,7 +368,8 @@ def fill(root: Path) -> int:
 
 def _kept_ids(text: str) -> set[str]:
     """Что блок обязан сохранить: ID требований и ID семейств (P7, I2) — они пришли из БФТ."""
-    return set(bb.REQ_RE.findall(text)) | {f"{x}{y}" for x, y in bg.MEMBER_RE.findall(bp.STUB.sub("", text))}
+    solid = bp.STUB.sub("", text)   # ID в подсказке {{…}} — ещё не факт блока
+    return set(bb.REQ_RE.findall(solid)) | {f"{x}{y}" for x, y in bg.MEMBER_RE.findall(solid)}
 
 
 # --- слияние -----------------------------------------------------------------------------------------
@@ -438,7 +439,8 @@ def merge(root: Path, wave: str = REFINE) -> int:
                 trial[end:end] = text.split("\n") + [""]
             lost = _kept_ids(old) - _kept_ids(text)  # ID требований и семейств старого блока остаются в новом
             pl_errs, map_errs = _map_errors(sand, "\n".join(trial))
-            new = map_errs - base_map
+            # чужие ошибки не в счёт: пока в плане были {{…}}, полная проверка не шла, и они всплывают только сейчас
+            new = {e for e in map_errs - base_map if e.split(":", 1)[0] == bid or e.startswith(bid + ".")}
             if lost or len(pl_errs) > len(base_pl) or new:
                 why = (f"теряет {', '.join(sorted(lost))}" if lost else
                        "; ".join(f"{i.code} {i.msg}" for i in pl_errs[len(base_pl):][:3]) if len(pl_errs) > len(base_pl) else

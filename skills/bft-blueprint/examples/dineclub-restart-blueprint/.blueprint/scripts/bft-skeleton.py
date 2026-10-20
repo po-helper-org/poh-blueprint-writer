@@ -262,6 +262,8 @@ class Skeleton:
         if jobs:
             lines.append(f"- {stub('исключение или отказ из БФТ, если есть: Когда …, хочу …, чтобы …; нет — удали строку')}")
         rules = [self.rule_line(a.id) for a in atoms if a.kind in ("ФТ",)]
+        rules += [f"{a.name}: {a.cols['Требование к пользовательскому интерфейсу']} ({a.id})" for a in atoms
+                  if a.kind == "ИТ" and a.cols.get("Требование к пользовательскому интерфейсу")]
         rules += [f"{a.cols['Параметры, ограничения']}" for a in atoms if a.kind == "ФТ" and a.cols.get("Параметры, ограничения")]
         rules += [self.rule_line(x) for x in c["rules"]]
         rules += [f"{a.cols['Комментарий']} ({a.id})" for a in atoms if a.kind == "ПТ" and a.cols.get("Комментарий")]
