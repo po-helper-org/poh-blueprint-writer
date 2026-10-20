@@ -318,6 +318,10 @@ def parse(path: Path, text: str | None = None) -> Story:
         text = path.read_text(encoding="utf-8")
     lines = text.splitlines()
     st.meta, _ = bb.frontmatter(text)
+    for n, line in enumerate(lines, 1):
+        hit = re.search(r"\{\{[^}]*\}\}", line)
+        if hit:
+            st.err(n, "ST024", f"шаблон не заполнен: {hit.group(0)} — templates/story.md")
 
     for key in REQUIRED_FRONTMATTER:
         if not st.meta.get(key):

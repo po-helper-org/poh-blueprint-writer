@@ -48,6 +48,8 @@ BRIEF = ("ASIS", "GAP", "TOBE", "HowToDemo", "Дополнительно")
 BRIEF_OPTIONAL = {"Дополнительно"}
 CARD = ("UserStory", "JobStory", "Параметры", "Процесс", "BPMN", "HowToDemo")
 CARD_REQUIRED = ("UserStory", "JobStory", "Параметры", "Процесс", "HowToDemo")
+# участники процесса, которые строят сервис, а не работают в нём: такая карточка — о проекте, а не о сервисе
+PROJECT_ROLE = re.compile(r"^(?:PO|СА|PM|PO .+|СА .+|продакт.*|владелец продукта|(?:системный |бизнес-)?аналитик|разработ\w*|команда.*|архитектор)$", re.I)
 MAX_STEPS = 12          # шагов процесса — дальше схема не читается, карточку делят на две
 MAX_LANES = 6
 PARAM_KEYS = {"вход": "in", "входы": "in", "управление": "ctl", "выход": "out", "выходы": "out",
@@ -697,6 +699,8 @@ def _check_task(pr: Project, t: BTask, stages: set, team_ids: set) -> None:
     for c in cand:
         if c not in team_ids:
             pr.err(rel, 1, "BL006", f"{t.id}: кандидата {c} нет в «Командах»")
+    if not who and len(cand) == 1:
+        pr.warn(rel, 1, "BL035", f"{t.id}: один кандидат {cand[0]} — это и есть исполнитель: `команда: {cand[0]}`, сомнение — строкой «Вопросов»")
     pre, secs, order = _subsections(t.desc, t.off)
     t.sections = secs
     why = []
@@ -758,11 +762,19 @@ def _check_card(pr: Project, c: BTask, stages: set, team_ids: set, task_ids: set
         c.user_story = secs["UserStory"][1].strip()
         if c.user_story and not re.match(r"^Как .+,\s*я хочу .+,\s*чтобы .+", c.user_story.replace("**", ""), re.S):
             pr.warn(rel, secs["UserStory"][0], "BL030", f"{c.id}: UserStory — «Как <роль>, я хочу <действие>, чтобы <ценность>»")
+        role = re.match(r"^Как\s+(.+?),\s*я хочу", c.user_story.replace("**", ""))
+        if role:
+            r = role.group(1).lower()
+            teams = {t.id.lower() for t in pr.teams} | {t.name.lower() for t in pr.teams}
+            if re.search(r"\bкоманд|разработ|исполнител", r) or r in teams:
+                pr.warn(rel, secs["UserStory"][0], "BL033", f"{c.id}: UserStory от лица исполнителя «{role.group(1)}» — роль: тот, кто пользуется результатом (гость, официант, PO)")
     if "JobStory" in secs:
         c.job_stories = [re.sub(r"^[-*]\s+", "", x.strip()) for x in secs["JobStory"][1].split("\n") if re.match(r"^\s*[-*]\s+\S", x)]
         if secs["JobStory"][1].strip() and not c.job_stories:
             pr.err(rel, secs["JobStory"][0], "BL009", f"{c.id}: JobStory — список «- Когда …, хочу …, чтобы …»")
         for js in c.job_stories:
+            if re.match(r"^Когда [А-ЯЁ][а-яё]", js.replace("**", "")):
+                pr.warn(rel, secs["JobStory"][0], "BL030", f"{c.id}: JobStory «{js[:40]}…» — после «Когда» строчная буква: «Когда нужно …», «Когда распространитель …»")
             if not re.match(r"^Когда .+,\s*хочу .+,\s*чтобы .+", js.replace("**", "")):
                 pr.warn(rel, secs["JobStory"][0], "BL030", f"{c.id}: JobStory «{js[:40]}…» — «Когда …, хочу …, чтобы …»")
     if "Параметры" in secs:
@@ -771,6 +783,10 @@ def _check_card(pr: Project, c: BTask, stages: set, team_ids: set, task_ids: set
             pr.err(rel, secs["Параметры"][0], "BL009", f"{c.id}: у функции нет выхода — `- **Выход:** …`")
     if "Процесс" in secs:
         parse_process(pr, c, *secs["Процесс"])
+        builders = [ln for ln in lanes_of(c.proc) if PROJECT_ROLE.match(ln.strip())]
+        if builders:
+            pr.warn(rel, secs["Процесс"][0], "BL034", f"{c.id}: в процессе участвует {', '.join(builders)} — это работа над проектом, а карточка "
+                    "показывает, как сервис работает после запуска: участники — пользователь, сотрудник, система")
     if "HowToDemo" in secs and sum(bool(STEP_RE.match(x.strip())) for x in secs["HowToDemo"][1].split("\n")) < 2:
         pr.err(rel, secs["HowToDemo"][0], "BL009", f"{c.id}: HowToDemo — хотя бы два шага «1. …»")
     if "BPMN" in secs:

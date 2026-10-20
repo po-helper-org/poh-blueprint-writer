@@ -46,7 +46,16 @@ HEADERS = {
     "Связи": ("Откуда", "Куда", "Тип"),
 }
 
-REQ_RE = re.compile(r"(?<![А-Яа-яЁё])(?:НФТ|БТ|ПТ|ИТ|ФТ)-\d+")
+# ID требования: ФТ-12, а в больших БФТ и с буквой группы — ПТ-А1, ИТ-B3.
+REQ_RE = re.compile(r"(?<![А-Яа-яЁё])(?:НФТ|БТ|ПТ|ИТ|ФТ)-[A-Za-zА-Яа-яЁё]?\d+")
+
+# Латиница, неотличимая на глаз от кириллицы: «ПТ-A1» (латинская A) и «ПТ-А1» — для человека одно и то же.
+_HOMOGLYPH = str.maketrans("ABCEHKMOPTXaceopxy", "АВСЕНКМОРТХасеорху")
+
+
+def req_key(rid: str) -> str:
+    """Ключ сравнения ID требования без латинских двойников и регистра буквы группы."""
+    return rid.translate(_HOMOGLYPH).upper()
 MARKER = "[УТОЧНИТЬ"
 EMPTY = {"", "—", "-", "–"}
 
@@ -177,6 +186,8 @@ def tables(lines: list[str], first_lineno: int = 1):
             while j < len(lines) and lines[j].lstrip().startswith("|"):
                 rows.append((first_lineno + j, split_row(lines[j])))
                 j += 1
+            if not any(header) and rows:  # таблица из Word через pandoc: шапка пустая, заголовки — в первой строке
+                header = rows.pop(0)[1]
             out.append((header, rows))
             i = j
         else:
