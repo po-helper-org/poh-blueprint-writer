@@ -10,12 +10,15 @@
   4. сценарий приёмки → шаги истории и «Процесс» карточек;
   5. зависимости → команды «Карты»;
   6. ограничения → «Управление» карточек;
-  7. `[УТОЧНИТЬ]` документа → «Вопросы».
+  7. `[УТОЧНИТЬ]` документа → «Вопросы»;
+  8. роли групп ПТ, семейства ID (параметры P1…, инварианты I1…), матрицы вариантов, критерии приёмки.
+
+`--json` — граф требований целиком (`bft_graph.py`): по нему строит каркас `bft-skeleton.py`.
 
 Ничего не придумывает и не пишет: только раскладывает текст БФТ по местам карты.
 
 Использование:
-    python3 bft-reqs.py <БФТ.md> [--out ФАЙЛ]
+    python3 bft-reqs.py <БФТ.md> [--out ФАЙЛ] [--json]
 В проекте: ./blueprint.py reqs   (БФТ — `source_doc` паспорта рядом с проектом)
 """
 from __future__ import annotations
@@ -27,6 +30,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import bft_blueprint as bb  # noqa: E402
+import bft_graph as bg  # noqa: E402
 
 # тип требования → где он живёт на карте
 PLACE = {
@@ -172,6 +176,23 @@ def inventory(path: Path) -> str:
           "Открытое в БФТ остаётся открытым на карте: строка «Вопросов» с «Кому» из метки, не ответ.", ""]
     o += list(dict.fromkeys(asks))[:60] or ["- нет"]
     o.append("")
+
+    # 8. граф: роли, семейства, матрицы, критерии
+    g = bg.build(path)
+    o += ["## 8. Роли, семейства ID, матрицы и критерии приёмки", "",
+          "Каждый ПТ — UserStory карточки от лица своей роли; каждый ID семейства — правило в «Управлении» (BL037); "
+          "критерий приёмки требования переносится в «Критерии приемки» задачи дословно (BL038).", ""]
+    if g.roles:
+        o += ["Роли групп ПТ:", ""] + [f"- {k}. {v} — {', '.join(a.id for a in g.by_kind('ПТ') if a.role == v)}" for k, v in g.roles.items()] + [""]
+    for fam, ids in g.families().items():
+        o += [f"Семейство {fam}: " + "; ".join(f"{i} {g.members[i].label}".strip() for i in ids), ""]
+    for fam, ids in g.external.items():
+        o += [f"Семейство {fam}: {ids[0]}–{ids[-1]} — списка в БФТ нет, только ссылка: вопрос PO, где он и что входит в карту", ""]
+    for m in g.matrices:
+        o += [f"Матрица «{m.caption}» — варианты: {', '.join(m.columns)}; строка — правило «Управления» с вариантами", ""]
+    acs = [a for a in g.atoms.values() if a.ac]
+    if acs:
+        o += ["| ID | Критерий приёмки из БФТ |", "| --- | --- |"] + [f"| {a.id} | {a.ac.replace('|', '/')} |" for a in acs] + [""]
     return "\n".join(o)
 
 
@@ -180,6 +201,7 @@ def main() -> int:
     ap.add_argument("bft", type=Path, nargs="?")
     ap.add_argument("--project", type=Path, help="проект Backlog.md: БФТ — `source_doc` паспорта рядом с ним")
     ap.add_argument("--out", type=Path)
+    ap.add_argument("--json", action="store_true", help="граф требований JSON вместо рабочего листа")
     a = ap.parse_args()
     if a.project and not a.bft:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -192,7 +214,11 @@ def main() -> int:
     if not a.bft.is_file():
         print(f"bft-reqs: нет файла {a.bft}", file=sys.stderr)
         return 2
-    page = inventory(a.bft)
+    if a.json:
+        import json
+        page = json.dumps(bg.to_json(bg.build(a.bft)), ensure_ascii=False, indent=1)
+    else:
+        page = inventory(a.bft)
     if a.out:
         a.out.write_text(page, encoding="utf-8")
         print(f"bft-reqs: {a.out}")

@@ -37,6 +37,9 @@
   BL033  UserStory от лица команды-исполнителя, а не того, кто пользуется результатом
   BL034  в процессе карточки участвует PO, СА, разработка: карточка о работе над проектом, а не о сервисе
   BL035  у задачи один кандидат — это исполнитель
+  BL036  ПТ из БФТ нет ни в одной задаче и ни в одной карточке: роль осталась без своей истории
+  BL037  ID семейства из БФТ (параметр P7, инвариант I2, разрыв G1) нет на карте
+  BL038  критерий приёмки требования из БФТ не перенесён в «Критерии приемки» задачи (предупреждение)
 
   СБОРКА (`bft-backlog-build.py`)
   BL029  `--check`: скрипты, правила или инструкции проекта устарели
@@ -60,6 +63,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import bft_blueprint as bb  # noqa: E402
 import bft_backlog as bl  # noqa: E402
+import bft_graph as bg  # noqa: E402
 
 _spec = importlib.util.spec_from_file_location("bp_lint", HERE / "bft-blueprint-lint.py")
 _bp_lint = importlib.util.module_from_spec(_spec)
@@ -130,6 +134,7 @@ def check(pr: bl.Project, source: Path | None, no_source: bool, explicit: bool =
     for rid in reqs:
         if rid.split("-")[0] in ("ФТ", "ИТ", "НФТ") and rid not in cited:
             pr.err(pr.map_doc.rel, 1, "BL017", f"{rid} не попало ни в одну задачу и ни в одну карточку — где эта работа на карте?")
+    graph_gates(pr, source, texts)
     answers = " ".join(q.answer for q in pr.questions if not q.open)
     for t, body in texts:
         clean = pr.id_re.sub("", bb.REQ_RE.sub("", body))
@@ -137,6 +142,29 @@ def check(pr: bl.Project, source: Path | None, no_source: bool, explicit: bool =
             num = m.group(0).strip(" .,:")
             if num and num not in src_text and num not in answers:
                 pr.warn(t.rel, 1, "BL027", f"{t.id}: число «{num}» не найдено ни в БФТ, ни в ответах")
+
+
+def _norm(s: str) -> str:
+    return re.sub(r"[^\w%]+", " ", s.lower().replace("ё", "е")).strip()
+
+
+def graph_gates(pr: bl.Project, source: Path, texts: list) -> None:
+    """Полнота по графу БФТ: роли (ПТ), семейства ID, критерии приёмки."""
+    g = bg.build(source)
+    alltext = "\n".join(body for _, body in texts)
+    on_map = set(bb.REQ_RE.findall(alltext))
+    for a in g.by_kind("ПТ"):
+        if a.id not in on_map:
+            who = f" — роль «{a.role}»" if a.role else ""
+            pr.err(pr.map_doc.rel, 1, "BL036", f"{a.id} «{a.name}»{who}: нет ни в задаче, ни в карточке — чья это история на карте?")
+    members = {f"{x}{y}" for x, y in bg.MEMBER_RE.findall(alltext)}   # «P1–P8» в тексте не исполняет P3: нужен каждый ID
+    for mid, m in g.members.items():
+        if mid not in members:
+            pr.err(pr.map_doc.rel, 1, "BL037", f"{mid} «{m.label[:60]}» ({m.source} БФТ) нет на карте — правило «Управления» карточки, которую оно касается")
+    acs = " ".join(_norm(x) for t in pr.tasks for _, x in t.ac)
+    for a in g.atoms.values():
+        if a.ac and a.kind != "БТ" and _norm(a.ac)[:40] not in acs:
+            pr.warn(pr.map_doc.rel, 1, "BL038", f"{a.id}: критерий приёмки из БФТ «{a.ac[:70]}» — нет в «Критериях приемки» задач; перенеси дословно")
 
 
 def tech(pr: bl.Project, t: bl.BTask, text: str) -> None:
@@ -179,6 +207,9 @@ HINTS = {
     "BL011": "документы: — ID существующего документа (doc-5); экраны: — ID экрана, для которого есть plan/screens/F3.md",
     "BL014": "сократи название: задача до 80 знаков, карточка до 90 — детали в описание",
     "BL015": "положи БФТ рядом с папкой проекта под именем из source_doc паспорта или передай --source",
+    "BL036": "ПТ — история роли: карточка с UserStory от этой роли и ID ПТ в тексте; ./blueprint.py skeleton раскладывает ПТ сам",
+    "BL037": "ID из БФТ (P7, I2, G1) — строкой в «Управлении» карточки: «P7 эксклюзив тарифа: …»; разрыв — ещё и вопрос",
+    "BL038": "критерий приёмки требования из БФТ — строкой в «Критерии приемки» задачи, дословно и с ID: «- … (ФТ-3)»",
     "BL016": "этого ID нет в БФТ — убери его или исправь опечатку (ФТ-1, ИТ-2, ПТ-А1); ID копируй из БФТ, не набирай",
     "BL017": "требование БФТ не попало на карту — допиши его в «Требования БФТ:» подходящей задачи или в текст карточки (./blueprint.py reqs — список)",
     "BL018": "убери из названия и сути API, протоколы, таблицы БД — это высота СА, не карты",

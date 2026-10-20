@@ -417,6 +417,52 @@ sed 's/^| guest | Гость Acme Tickets |/| guest | Гость, кассир �
 python3 "$DIR/scripts/bft-story-lint.py" "$tmp/merged-story.md" --no-source 2>&1 | grep -q " ST025 " \
   && ok "автопилот · ST025: персонаж из нескольких ролей" || fail "автопилот · ST025"
 
+# граф требований и каркас: роли, буквенные ID, параметры матрицы, инварианты, разрывы, критерии приёмки
+RF="$FIX/roles_deep_document.md"; SK="$tmp/sk" && mkdir -p "$SK" && cp "$RF" "$SK/" && cp "$FIX/roles_story.md" "$SK/club-partners-story.md"
+python3 "$DIR/scripts/bft-reqs.py" "$RF" --json > "$tmp/graph.json" && python3 - "$tmp/graph.json" <<'PY' \
+  && ok "каркас · граф БФТ: 22 требования, роли A–C, P1–P8, I1–I4, G1–G3, матрица к ФТ-2" || fail "каркас · граф БФТ"
+import json, sys
+g = json.load(open(sys.argv[1], encoding="utf-8"))
+ids = {a["id"]: a for a in g["atoms"]}
+assert len(ids) == 22 and ids["ПТ-B1"]["role"] == "Бухгалтер сети" and ids["ФТ-3"]["ac"].startswith("Повторная передача")
+assert {k: len(v) for k, v in g["families"].items()} == {"P": 8, "I": 4, "G": 3}
+assert g["matrices"][0]["applies"][0] == "ФТ-2" and len(g["matrices"][0]["columns"]) == 3
+PY
+python3 "$DIR/scripts/bft-backlog-init.py" "$SK/club-partners-story.md" --dir "$SK/p" --auto >/dev/null 2>&1
+python3 "$DIR/scripts/bft-skeleton.py" "$SK/p" >/dev/null 2>&1; M="$SK/p/plan/map.md"
+( for x in БТ-1 ПТ-А1 ПТ-А3 ПТ-B1 ПТ-B2 ПТ-C2 ИТ-3 ФТ-1 ФТ-6 НФТ-1 НФТ-3 P1 P3 P8 I1 I4 G1 G3; do grep -q "$x" "$M" || exit 1; done ) \
+  && grep -q "^- Повторная передача чека не создаёт вторую продажу (ФТ-3)" "$M" \
+  && grep -q "^- Когда месяц закончился, хочу сформировать акты всем партнёрам одной операцией, чтобы не сводить таблицы. (ПТ-B1)" "$M" \
+  && grep -q "^P[0-9]\|P3 цена закупки: Агентская –, Комиссионная –, Перепродажа ●" "$M" \
+  && [ -z "$(python3 "$DIR/scripts/bft-plan.py" apply "$SK/p" 2>&1 | grep ERROR | grep -v PL007 | grep -v 'вид «{{')" ] \
+  && ok "каркас · каждый атом и ID семейства на месте; критерии, JobStory, матрица — дословно; ошибки только {{…}}" || fail "каркас · раскладка"
+cp -r "$SK/p" "$SK/f" && python3 - "$SK/f/plan/map.md" <<'PY'
+import re, sys
+p = sys.argv[1]; t = open(p, encoding="utf-8").read()
+t = re.sub(r"^вид: \{\{.*\}\}$", "вид: создать", t, flags=re.M)
+t = re.sub(r"^- \{\{4–10 шагов.*\}\}$", "- Менеджер партнёров: Открывает профиль\n- ? Данные полные\n  - да → Система продаж: Сохраняет профиль\n  - нет → конец\n- Менеджер партнёров: Видит результат", t, flags=re.M)
+t = re.sub(r"^- \{\{исключение.*\}\}\n", "", t, flags=re.M)
+t = re.sub(r"\{\{[^}]*\}\}", "работа сервиса", t)
+open(p, "w", encoding="utf-8").write(t)
+PY
+out="$(python3 "$DIR/scripts/bft-plan.py" apply "$SK/f" 2>&1)"
+! grep -q " ERROR " <<<"$out" && ! grep -qE "BL03[678]" <<<"$out" \
+  && ok "каркас · заполненный каркас проходит apply: готовое из БФТ не ломает правил" || fail "каркас · заполненный каркас с ошибками"
+cp -r "$SK/f" "$SK/gate" && sed -i 's/, ПТ-C2//g; s/ (ПТ-C2)//g; s/P3 цена закупки[^;]*;//; s/^- Повторная передача чека не создаёт вторую продажу (ФТ-3)$/- Повтор не создаёт продажу (ФТ-3)/' "$SK/gate/plan/map.md"
+out="$(python3 "$DIR/scripts/bft-plan.py" apply "$SK/gate" 2>&1)"
+grep -q "BL036 .*ПТ-C2" <<<"$out" && grep -q "BL037 .*P3" <<<"$out" && grep -q "WARN BL038 .*ФТ-3" <<<"$out" \
+  && ok "каркас · BL036 роль без истории, BL037 параметр не на карте, BL038 критерий не перенесён" || fail "каркас · гейты BL036–BL038"
+# пакеты заполнения: по блоку с {{…}}; слияние берёт заполненный блок и отклоняет потерю параметра
+python3 "$DIR/scripts/bft-groom.py" fill "$SK/p" >/dev/null 2>&1; FO="$SK/p/groom/0-fill/out"
+n_pk=$(ls "$SK/p/groom/0-fill"/f-*.md | wc -l); n_bl=$(grep -c "^## BP-" "$M")
+fblk() { awk -v h="^## $1 " '$0 ~ h {f=1; print; next} f && /^## / {exit} f' "$SK/f/plan/map.md"; }
+{ printf '## Замены\n'; fblk BP-1.1; } > "$FO/f-BP-1.1.md"
+{ printf '## Замены\n'; fblk BP-2.1 | sed 's/P3 цена закупки[^;]*;//'; } > "$FO/f-BP-2.1.md"
+python3 "$DIR/scripts/bft-groom.py" merge "$SK/p" fill >/dev/null 2>&1
+[ "$n_pk" -eq "$n_bl" ] && grep -q "^- BP-1.1 ← f-BP-1.1.md" "$SK/p/groom/report.md" && grep -q "BP-2.1 из f-BP-2.1.md: теряет P3" "$SK/p/groom/report.md" \
+  && grep -q "Осталось незаполненным" "$SK/p/groom/report.md" && ! awk '/^## BP-1.1 /{f=1;next} f&&/^## /{exit} f' "$M" | grep -q "{{" \
+  && ok "каркас · groom fill: пакет на блок; merge fill берёт заполненный блок, потерю P3 отклоняет" || fail "каркас · groom fill/merge fill"
+
 # груминг роем: пакеты обеих волн; слияние берёт годную замену, а ломающую карту и теряющую требование — отклоняет
 GR="$tmp/groom" && cp -r "$BGOLD" "$GR" && rm -rf "$GR/plan"
 python3 "$DIR/scripts/bft-groom.py" audit "$GR" >/dev/null 2>&1 && python3 "$DIR/scripts/bft-groom.py" refine "$GR" >/dev/null 2>&1

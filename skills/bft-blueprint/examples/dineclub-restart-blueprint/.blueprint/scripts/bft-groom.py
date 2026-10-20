@@ -28,10 +28,12 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import bft_backlog as bl  # noqa: E402
 import bft_blueprint as bb  # noqa: E402
+import bft_graph as bg  # noqa: E402
 import bft_plan as bp  # noqa: E402
 
 GROOM = "groom"
-AUDIT, REFINE = "1-audit", "2-refine"
+FILL, AUDIT, REFINE = "0-fill", "1-audit", "2-refine"
+WAVES = {"fill": FILL, "refine": REFINE}
 GLOBAL = (("coverage", "Аудитор покрытия"), ("fabrication", "Охотник за выдумками"), ("failures", "Архитектор надёжности"),
           ("teams", "Архитектор границ"), ("questions", "Куратор вопросов"))
 FINDING = re.compile(r"^-\s*(критично|важно|мелочь)\s*·\s*([^·]+?)\s*·\s*(.+)$")
@@ -283,6 +285,92 @@ def refine(root: Path) -> int:
     return 0
 
 
+# --- заполнение каркаса --------------------------------------------------------------------------------
+
+def _graph_context(g: bg.Graph, ids: list[str], fams: list[str]) -> list[str]:
+    out = ["### Требования БФТ этого блока — все колонки", ""]
+    for rid in ids:
+        a = g.atoms.get(rid)
+        if a:
+            role = f" · роль: {a.role}" if a.role else ""
+            out.append(f"- **{a.id}** {a.name}{role} — " + "; ".join(f"{k}: {v}" for k, v in a.cols.items() if k != "Наименование требования"))
+    if fams:
+        out += ["", "### Параметры, инварианты и разрывы БФТ в этом блоке", ""]
+        for mid in fams:
+            m = g.members[mid]
+            vals = "; ".join(f"{k}: {v}" for k, v in m.values.items())
+            out.append(f"- **{mid}** {m.label}" + (f" — {vals}" if vals else "") + (f" ({m.caption[:80]})" if m.caption else ""))
+    return out
+
+
+def fill(root: Path) -> int:
+    """Пакет на каждый блок каркаса с `{{…}}`: блок, атомы БФТ со всеми колонками, этап истории, соседи."""
+    pr = bl.parse(root)
+    lint = _mod("bl_lint", "bft-backlog-lint.py")
+    src = lint.resolve_source(pr, None)
+    parts = bft_parts(src)
+    g = bg.build(src) if src and src.is_file() else None
+    lines = plan_lines(root)
+    spans = block_spans(lines)
+    gd = guide()
+    pl = bp.parse(root)
+    teams = section(lines, "Команды")
+    qtable = section(lines, "Вопросы")
+    story = pr.story
+    packs = {}
+    for b in pl.blocks:
+        own = block_text(lines, spans, b.id)
+        if not bp.STUB.search(own):
+            continue
+        parent = b.id.rsplit(".", 1)[0] if b.card else ""
+        kids = [x.id for x in pl.blocks if x.card and x.id.rsplit(".", 1)[0] == b.id]
+        ids = ids_in(own)
+        found = [f"{x}{y}" for x, y in bg.MEMBER_RE.findall(own)]
+        found += [f"{x}{i}" for x, lo, hi in bg.RANGE_RE.findall(own) if 0 < int(hi) - int(lo) <= 60 for i in range(int(lo), int(hi) + 1)]
+        fams = [m for m in dict.fromkeys(found) if g and m in g.members]
+        near = [x for x in dict.fromkeys(re.findall(r"BP-\d+\.\d+", own)) if x != b.id and x in spans]
+        ctx = (_graph_context(g, ids, fams) if g else req_context(parts, ids)) + [""]
+        wi = [w for w in parts["whatif"] if any(i in w for i in ids)]
+        if wi:
+            ctx += ["### «Что если» из БФТ", ""] + [f"- {w}" for w in wi] + [""]
+        stage = b.meta.get("этап", "")
+        if story:
+            st = next((x for x in story.stages if x.id == stage), None)
+            steps = [x for x in story.steps if x.stage_from == stage]
+            if st:
+                ctx += ["### Этап истории", "", f"**{st.id} · {st.name}** — {st.when}", ""]
+                ctx += [f"- {x.id} · {next((p.name for p in story.personas if p.id == x.persona), x.persona)}: {x.title} — {x.text}"
+                        f"{' · экраны ' + ', '.join(x.screens) if x.screens else ''} · источник: {x.source}" for x in steps] + [""]
+        ctx += ["### Блок — заполни его целиком", ""] + fence(own)
+        if parent and parent in spans:
+            ctx += ["", "### Задача-родитель (не переписывай)", ""] + fence(re.sub(r"^### (ASIS|GAP|TOBE|HowToDemo)\n\{\{.*?\}\}\n", "", block_text(lines, spans, parent), flags=re.M))
+        if kids:
+            ctx += ["", "### Карточки задачи — что они делают (TOBE задачи собирается из них)", ""]
+            for k in kids:
+                kt = block_text(lines, spans, k)
+                head = kt.split("\n", 1)[0][3:]
+                rule = re.search(r"^- \*\*Управление:\*\* (.*)$", kt, re.M)
+                ctx.append(f"- {head}" + (f" — {rule.group(1)[:220]}" if rule and not bp.STUB.fullmatch(rule.group(1).strip()) else ""))
+        if near:
+            ctx += ["", "### Связанные блоки — адреса для «Входа» и «Выхода»", ""]
+            ctx += [f"- {block_text(lines, spans, x).split(chr(10), 1)[0][3:]}" for x in near]
+        ctx += ["", "### Команды", ""] + teams.split("\n")[1:]
+        qs = [ln for ln in qtable.split("\n") if ln.startswith("| В") and f"| {b.id} |" in ln]
+        if qs:
+            ctx += ["", "### Вопросы-заготовки этого блока — перепиши в «Вопросы» ответа одной фразой", ""] + qs
+        name = f"f-{b.id}.md"
+        packs[name] = packet(gd, "fill", "Аналитик каркаса", f"{b.id} · {b.title}", f"{GROOM}/{FILL}/out/{name}", ctx)
+    d = write_packets(root, FILL, packs)
+    print(f"groom fill: {len(packs)} пакетов — {d}")
+    print(f"дальше: по агенту на каждый пакет (ответ — {GROOM}/{FILL}/out/<имя пакета>), затем ./blueprint.py groom merge fill")
+    return 0
+
+
+def _kept_ids(text: str) -> set[str]:
+    """Что блок обязан сохранить: ID требований и ID семейств (P7, I2) — они пришли из БФТ."""
+    return set(bb.REQ_RE.findall(text)) | {f"{x}{y}" for x, y in bg.MEMBER_RE.findall(bp.STUB.sub("", text))}
+
+
 # --- слияние -----------------------------------------------------------------------------------------
 
 def replacements(text: str) -> list[tuple[str, str]]:
@@ -316,7 +404,7 @@ def _map_errors(sand: Path, plan: str) -> tuple[list, set[str]] | None:
     return [], {f"{by_rel.get(i.path, '—')}: {i.code} {i.msg}" for i in pr.errors}
 
 
-def merge(root: Path) -> int:
+def merge(root: Path, wave: str = REFINE) -> int:
     pf = root / bp.PLAN_DIR / "map.md"
     before = pf.read_text(encoding="utf-8")
     (root / GROOM).mkdir(exist_ok=True)
@@ -328,9 +416,9 @@ def merge(root: Path) -> int:
     shutil.copytree(root, sand, ignore=shutil.ignore_patterns(GROOM, ".git"))
     base_pl, base_map = _map_errors(sand, before)
     applied, rejected, skipped = [], [], []
-    outs = sorted((root / GROOM / REFINE / "out").glob("*.md"))
+    outs = sorted((root / GROOM / wave / "out").glob("*.md"))
     for f in outs:
-        owner = f.stem[2:].upper() if f.stem.startswith("r-") else ""
+        owner = f.stem[2:].upper() if f.stem[:2] in ("r-", "f-") else ""
         for bid, text in replacements(f.read_text(encoding="utf-8")):
             spans = block_spans(lines)
             own_task = owner and "." not in owner
@@ -348,7 +436,7 @@ def merge(root: Path) -> int:
                 kids = [i for i in spans if i == owner or i.startswith(owner + ".")]
                 end = max(spans[i][1] for i in kids)
                 trial[end:end] = text.split("\n") + [""]
-            lost = set(bb.REQ_RE.findall(old)) - set(bb.REQ_RE.findall(text))  # ID старого блока остаются в новом
+            lost = _kept_ids(old) - _kept_ids(text)  # ID требований и семейств старого блока остаются в новом
             pl_errs, map_errs = _map_errors(sand, "\n".join(trial))
             new = map_errs - base_map
             if lost or len(pl_errs) > len(base_pl) or new:
@@ -359,11 +447,14 @@ def merge(root: Path) -> int:
                 continue
             lines, base_map = trial, map_errs
             applied.append(f"{bid} ← {f.name}" + ("" if bid in spans else " (новая карточка)"))
-    # вопросы обеих волн: без повторов, «Где» — существующий ID
-    _, _, q1 = findings(root, AUDIT)
-    _, _, q2 = findings(root, REFINE)
-    text = "\n".join(lines)
+    # вопросы волн: без повторов, «Где» — существующий ID; заготовки каркаса заменяют ответы заполнения
+    _, _, q1 = findings(root, AUDIT) if wave == REFINE else ({}, [], [])
+    _, _, q2 = findings(root, wave)
     spans = block_spans(lines)
+    if wave == FILL:
+        answered = {f.stem[2:].upper() for f in outs}
+        lines = [ln for ln in lines if not (ln.startswith("| В") and bp.STUB.search(ln) and any(f"| {x} |" in ln for x in answered))]
+    text = "\n".join(lines)
     qsec = section(lines, "Вопросы")
     have = {re.sub(r"\W+", " ", r.split("|")[3]).strip().lower() for r in qsec.split("\n") if r.startswith("| В")}
     nums = [int(m) for m in re.findall(r"^\| В(\d+) \|", qsec, re.M)]
@@ -384,13 +475,16 @@ def merge(root: Path) -> int:
     tmp.cleanup()
     # находки, которые не стали заменой, — ведущему агенту
     f1, g1, _ = findings(root, AUDIT)
-    f2, g2, _ = findings(root, REFINE)
+    f2, g2, _ = findings(root, wave)
     crit = sorted({f"{k}: {x}" for src in (f1, f2) for k, v in src.items() for x in v if x.startswith("критично")} |
                   {f"—: {x}" for x in g1 + g2 if x.startswith("критично")})
     pl = bp.parse(root)
     report = ["# Отчёт груминга", "",
-              f"Ответов доработки: {len(outs)}. Замен применено: {len(applied)}, отклонено: {len(rejected)}, "
+              f"Ответов волны {wave}: {len(outs)}. Замен применено: {len(applied)}, отклонено: {len(rejected)}, "
               f"не своих блоков: {len(skipped)}. Новых вопросов: {len(added)}. План до слияния — `{GROOM}/map.before.md`.", ""]
+    left = [b.id for b in pl.blocks if bp.STUB.search(block_text(text.split("\n"), block_spans(text.split("\n")), b.id))] if pl.blocks else []
+    if left:
+        report += ["## Осталось незаполненным — допиши сам или запусти пакеты этих блоков ещё раз", "", "- " + ", ".join(left), ""]
     report += ["## Применено", ""] + ([f"- {x}" for x in applied] or ["- нет"]) + [""]
     report += ["## Отклонено — исправь план руками", ""] + ([f"- {x}" for x in rejected] or ["- нет"]) + [""]
     if skipped:
@@ -413,8 +507,9 @@ def merge(root: Path) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("cmd", choices=("audit", "refine", "merge"))
+    ap.add_argument("cmd", choices=("fill", "audit", "refine", "merge"))
     ap.add_argument("project", type=Path)
+    ap.add_argument("wave", nargs="?", choices=tuple(WAVES), default="refine", help="merge: какую волну сливать")
     a = ap.parse_args()
     root = a.project.resolve()
     if bl.find_backlog(root) is None:
@@ -426,7 +521,9 @@ def main() -> int:
             (root / rel).parent.mkdir(parents=True, exist_ok=True)
             (root / rel).write_text(text, encoding="utf-8")
         print(f"groom: плана не было — выгружен из бэклога в {bp.PLAN_DIR}/")
-    return {"audit": audit, "refine": refine, "merge": merge}[a.cmd](root)
+    if a.cmd == "merge":
+        return merge(root, WAVES[a.wave])
+    return {"fill": fill, "audit": audit, "refine": refine}[a.cmd](root)
 
 
 if __name__ == "__main__":
