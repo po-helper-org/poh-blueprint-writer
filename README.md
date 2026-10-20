@@ -41,6 +41,8 @@ HTML без `npm` и CDN.
 эталон — [`examples/dineclub-restart-blueprint/`](skills/bft-blueprint/examples/dineclub-restart-blueprint)
 и его страница [`examples/dineclub-restart-map.html`](skills/bft-blueprint/examples/dineclub-restart-map.html).
 
+Пошагово, от БФТ до карты, — [`docs/step-by-step.md`](docs/step-by-step.md).
+
 ## Автопилот: один промпт
 
 `/bft-blueprint <epic> --auto` — история и карта за один заход без вопросов PO. Маршрут для агента —
