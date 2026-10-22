@@ -401,6 +401,59 @@ cp -r "$PL/g" "$PL/role" && sed -i '0,/^Как официант, я хочу п�
   && python3 "$DIR/scripts/bft-plan.py" apply "$PL/role" 2>&1 | grep -q " BL033 BP-16.1" \
   && ok "автопилот · BL033: UserStory от лица исполнителя, адрес — строка плана" || fail "автопилот · BL033"
 
+# стыки: документ «Стыки» в эталоне проходит строго; поломанные копии дают SM001/SM003/SM005; без стыков этап не включается
+expect_bl "стыки · эталон со «Стыками» проходит строго" 0 "$BGOLD" "" --no-source --strict
+SE="$tmp/seams" && mkdir -p "$SE" && cp -r "$BGOLD" "$SE/p"
+python3 - "$SE/p" <<'PY'
+import re, sys
+from pathlib import Path
+d = next(Path(sys.argv[1]).glob("backlog/docs/doc-* - Стыки.md"))
+t = d.read_text(encoding="utf-8")
+# смысл: обязательство от команды, которой нет ни в одном стыке; контракт на несуществующий стык
+t = t.replace("| D2 | teama |", "| D2 | nonexistent |", 1)
+t = t.replace("| S2 | Результаты проверок за день |", "| S99 | Результаты проверок за день |", 1)
+d.write_text(t, encoding="utf-8")
+PY
+expect_bl "стыки · смысл: обязательство мимо стыка, контракт без стыка" 1 "$SE/p" "SM003" --no-source
+python3 - "$SE/p" <<'PY'
+import sys
+from pathlib import Path
+d = next(Path(sys.argv[1]).glob("backlog/docs/doc-* - Стыки.md"))
+t = d.read_text(encoding="utf-8")
+# форма: не тот заголовок таблицы участников
+t = t.replace("| ID | Стык | Поставщик | Потребитель | Ответственный за контракт |", "| ID | Тип стыка | Кто | Кому | Владелец |", 1)
+d.write_text(t, encoding="utf-8")
+PY
+expect_bl "стыки · форма: не тот заголовок" 1 "$SE/p" "SM001" --no-source
+cp -r "$BGOLD" "$SE/w" && python3 - "$SE/w" <<'PY'
+import sys
+from pathlib import Path
+d = next(Path(sys.argv[1]).glob("backlog/docs/doc-* - Стыки.md"))
+t = d.read_text(encoding="utf-8")
+# стык без обязательств: убираем D4 (единственное для S3)
+lines = [ln for ln in t.split("\n") if not ln.startswith("| D4 |")]
+d.write_text("\n".join(lines), encoding="utf-8")
+PY
+expect_bl "стыки · предупреждения SM005" 1 "$SE/w" "SM005" --no-source --strict
+cp -r "$BGOLD" "$SE/none" && python3 - "$SE/none" <<'PY'
+import sys
+from pathlib import Path
+d = next(Path(sys.argv[1]).glob("backlog/docs/doc-* - Стыки.md"))
+d.unlink()
+PY
+expect_bl "стыки · без документа — предупреждение включения" 1 "$SE/none" "SM005" --no-source --strict
+# одна команда без стыков: этап не включается, предупреждения нет (фикстура backlog_ok — 2 команды, там SM005 не должен мешать)
+cp -r "$BOK" "$SE/one" && python3 - "$SE/one" <<'PY'
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+for f in (p / "backlog/tasks").glob("bp-2*.md"):
+    t = f.read_text(encoding="utf-8").replace("'@rest'", "'@web'")
+    f.write_text(t, encoding="utf-8")
+PY
+out="$(python3 "$BLINT" "$SE/one" --no-source 2>&1)"; rc=$?
+{ [ "$rc" -eq 0 ] && ! grep -q "SM005" <<<"$out"; } && ok "стыки · одна команда — этап не включается, тишина" || fail "стыки · одна команда даёт SM005"
+
 # качество: процесс о работе над проектом (BL034), один кандидат (BL035), «Когда» с заглавной (BL030)
 cp -r "$PL/g" "$PL/qual" && python3 - "$PL/qual/plan/map.md" <<'PY'
 import sys

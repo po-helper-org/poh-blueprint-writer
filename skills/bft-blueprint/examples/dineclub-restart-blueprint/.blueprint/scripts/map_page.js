@@ -44,6 +44,11 @@
   document.getElementById("teams").innerHTML = D.teams.filter(t => used[t.id]).map(t => `<button class="tchip" data-tf="${t.id}" style="--c:${TEAM[t.id].c}"><i></i>${esc(t.name)}<b>${nTasks(used[t.id])}</b></button>`).join("") +
     (used["?"] ? `<button class="tchip" data-tf="?" style="--c:var(--red)"><i class="u"></i>Команда не определена<b>${nTasks(used["?"])}</b></button>` : "");
   if (uniqBlk.length) document.getElementById("bdot").textContent = uniqBlk.length;
+  /* стыки: кнопка меню видна, только если в проекте есть документ «Стыки» */
+  if (D.seams && D.seams.items && D.seams.items.length) {
+    const sb = document.querySelector("[data-seamspanel]"), sc = document.getElementById("seamcnt");
+    sb.hidden = false; sc.hidden = false; sc.textContent = D.seams.items.length;
+  }
 
   /* ---------- меню: всё, что раньше было в шапке, — поверх карты ---------- */
   const burger = document.getElementById("burger");
@@ -369,6 +374,35 @@
     (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(done).catch(() => { const ta = document.createElement("textarea"); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); done() } catch (er) { } ta.remove() });
   }
 
+  /* ---------- стыки: панель «Контроль стыковочных работ» — из документа «Стыки» проекта ---------- */
+  function seamsPanel() {
+    const S = D.seams || null;
+    if (!S) return;
+    const TEAM_NAME = id => { const t = (D.teams || []).find(x => x.id === id); return t ? esc(t.name) : esc(id) };
+    const th = cols => `<tr>${cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr>`;
+    const td = cols => `<tr>${cols.map(c => `<td>${esc(c)}</td>`).join("")}</tr>`;
+    const table = (title, rows, cols) => `<details class="cmpast"${title === "Участники" ? " open" : ""}><summary>${esc(title)} · ${rows.length}</summary>`
+      + `<div class="tbl"><table><thead>${th(cols)}</thead><tbody>${rows.join("")}</tbody></table></div></details>`;
+    const KIND = { "fe-be": "FE↔BE", "be-be": "BE↔BE", "be-infra": "BE↔Infra", "внешний": "внешний сервис" };
+    const parts = [];
+    parts.push(table("Участники", S.items.map(s => td([s.id, KIND[s.kind] || s.kind, `${TEAM_NAME(s.supplier)} → ${TEAM_NAME(s.consumer)}`, s.owner])),
+      ["ID", "Стык", "Поставщик → потребитель", "Ответственный за контракт"]));
+    if (S.deliveries.length) parts.push(table("Обязательства · кто → что → кому → срок",
+      S.deliveries.map(d => td([d.id, TEAM_NAME(d.who), d.what, TEAM_NAME(d.to), d.when, d.where])),
+      ["ID", "Кто", "Что", "Кому", "Срок", "Формат/место"]));
+    if (S.contracts.length) parts.push(table("Контракты по слоям",
+      S.contracts.map(c => td([c.seam, c.aspect, c.req])), ["Стык", "Аспект", "Требование к фиксации"]));
+    if (S.checkpoints.length) parts.push(table("Контрольные точки",
+      S.checkpoints.map(k => td([k.id, k.name, k.when, k.what, k.who])), ["ID", "Точка", "Когда", "Что проверяется", "Кто проводит"]));
+    if (S.risks.length) parts.push(table("Риски", S.risks.map(r => td([r.id, r.text, r.effect, r.owner, r.mitigation])),
+      ["ID", "Риск", "Следствие", "Владелец", "Митигация"]));
+    const openQ = (D.questions || []).filter(q => q.open && /^S\d+/.test(q.where));
+    panel(`Стыки · ${S.items.length}`, parts.join("") + (openQ.length
+      ? `<div class="qdiv">Открытые вопросы стыков · ${openQ.length}</div><ul class="qul">${openQ.map(qItem).join("")}</ul>` : ""),
+      "seams");
+    side.scrollTop = 0;
+  }
+
   /* ---------- инструкции, легенда, блокеры ---------- */
   /* правила лежат в самом проекте (.blueprint/rules) — открываются без сети */
   const ARTICLES = [["story_line.md", "#2f6b2a", "PS", "История через экраны", "Как устроен сюжет «было → шаги → стало» и откуда берутся экраны."],
@@ -604,6 +638,7 @@
   document.addEventListener("click", e => {
     const p = e.target.closest("[data-cmpanel]"); if (p) { menu(false); return cmPanel() }
     if (e.target.closest("[data-qpanel]")) { menu(false); return qPanel("") }
+    if (e.target.closest("[data-seamspanel]")) { menu(false); return seamsPanel() }
     const sb = e.target.closest("[data-src]"); if (sb) return srcPop ? srcClose() : srcOpen(sb);
     const sc = e.target.closest("[data-srccopy]"); if (sc) return copyText(srcPop.dataset.paths, sc);
     const qq = e.target.closest("[data-q]"); if (qq) { const k = qq.dataset.q; return qPanel(qEdit === k && side.dataset.ctx === "q" ? "" : k) }

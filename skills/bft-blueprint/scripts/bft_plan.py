@@ -8,6 +8,11 @@
 
     ## Команды            таблица | ID | Команда |
     ## Вопросы            таблица | ID | Кому | Вопрос | Где | Тип | Ответ |
+    ## Стыки              таблица | ID | Стык | Поставщик | Потребитель | Ответственный за контракт |
+    ## Обязательства      таблица | ID | Кто | Что | Кому | Срок | Формат/место |
+    ## Контракты          таблица | Стык | Аспект | Требование к фиксации |
+    ## Контрольные точки  таблица | ID | Точка | Когда | Что проверяется | Кто проводит |
+    ## Риски              таблица | ID | Риск | Следствие | Владелец | Митигация |
     ## BP-3 · Название    задача: строки «ключ: значение», пустая строка, описание, ### Критерии приемки
     ## BP-3.1 · Название  карточка: строки «ключ: значение», пустая строка, описание карточки
 
@@ -70,6 +75,7 @@ class Plan:
     root: Path
     teams: str = ""          # таблица как текст
     questions: str = ""
+    seams: dict = field(default_factory=dict)   # {«Участники»: текст, «Обязательства»: …, …} — этап стыков
     blocks: list[Block] = field(default_factory=list)
     screens: dict = field(default_factory=dict)   # {F3: (заголовок, текст, путь)}
     issues: list = field(default_factory=list)
@@ -100,6 +106,10 @@ def parse(root: Path) -> Plan:
     for n, ln in enumerate(lines, 1):
         if STUB.search(ln):
             pl.err(rel, n, "PL007", f"шаблон не заполнен: {STUB.search(ln).group(0)}")
+    SEAM_SECTIONS = (("Участники", bl.SEAM_HEADER), ("Обязательства", bl.DELIVERY_HEADER),
+                     ("Контракты", bl.CONTRACT_HEADER), ("Контрольные точки", bl.CHECKPOINT_HEADER),
+                     ("Риски", bl.RISK_HEADER))
+    SEAM_SECTION_HEADERS = dict(SEAM_SECTIONS)
     seen: set[str] = set()
     for head, n, body in chunks:
         name = head[3:].strip()
@@ -109,9 +119,14 @@ def parse(root: Path) -> Plan:
         if name == "Вопросы":
             pl.questions = "\n".join(body).strip()
             continue
+        if name in SEAM_SECTION_HEADERS:
+            pl.seams[name] = "\n".join(body).strip()
+            if f"| {' | '.join(SEAM_SECTION_HEADERS[name])} |" not in pl.seams[name]:
+                pl.err(rel, n, "PL005", f"«## {name}»: таблица | {' | '.join(SEAM_SECTION_HEADERS[name])} |")
+            continue
         m = HEAD.match(head)
         if not m:
-            pl.err(rel, n, "PL002", f"«{name}» — заголовок блока: «## BP-3 · Название задачи» (или «## Команды», «## Вопросы»)")
+            pl.err(rel, n, "PL002", f"«{name}» — заголовок блока: «## BP-3 · Название задачи» (или «## Команды», «## Вопросы», «## Участники», «## Обязательства», «## Контракты», «## Контрольные точки», «## Риски»)")
             continue
         b = Block(m.group(1).upper(), m.group(2), n)
         if b.id in seen:
@@ -186,11 +201,42 @@ def _check_block(pl: Plan, b: Block, rel: str) -> None:
 
 # --- запись в проект -------------------------------------------------------------------------------
 
+SEAMS_DOC_TITLE = "Стыки"
+SEAM_DOC_SECTIONS = (("Участники", "кто поставщик и кто потребитель на каждом стыке"),
+                     ("Обязательства", "матрица «кто → что → кому → к какому сроку»"),
+                     ("Контракты", "что фиксировать на стыке по слоям (эндпоинты, схемы, ошибки, версии)"),
+                     ("Контрольные точки", "что и когда проверяется на стыке"),
+                     ("Риски", "риски стыка и их владельцы"))
+
+
+def seams_doc_text(title: str, pl: Plan, meta: dict) -> str:
+    """Текст документа «Стыки»: паспорт и таблицы этапа «Контроль стыковочных работ»."""
+    m = "\n".join(["<!-- bft-seams"] + [f"{k}: {meta[k]}" for k in bl.SEAMS_META] + ["-->", "",
+                   f"# Стыки: {title}", "",
+                   "Этап «Контроль стыковочных работ»: задача режется между командами и сервисами — здесь",
+                   "видно, кто кому что предоставляет по контракту, что и когда проверяется. Открытые вопросы",
+                   "и блокеры — в таблице «Вопросы» документа «Карта» («Где» — ID стыка S1…).", ""])
+    parts = [m]
+    for sec, why in SEAM_DOC_SECTIONS:
+        if pl.seams.get(sec):
+            parts += [f"## {sec}", "", pl.seams[sec], ""]
+    return "\n".join(parts).rstrip("\n") + "\n"
+
+
 def _replace_section(body: str, name: str, table: str) -> str:
     block = f"## {name}\n\n{table.strip()}\n"
     if re.search(rf"^## {name}\s*$", body, re.M):
         return re.sub(rf"^## {name}\s*\n.*?(?=^## |\Z)", lambda _: block + "\n", body, count=1, flags=re.S | re.M).rstrip("\n") + "\n"
     return body.rstrip("\n") + "\n\n" + block
+
+
+def _next_doc_num(nums: set) -> int:
+    """Первый свободный номер документа: apply с нуля занимает дырки, а не хвост диапазона."""
+    n = 1
+    while n in nums:
+        n += 1
+    nums.add(n)
+    return n
 
 
 def apply(pl: Plan, root: Path) -> list[str]:
@@ -214,6 +260,34 @@ def apply(pl: Plan, root: Path) -> list[str]:
         if new != body:
             f.write_text(head + new, encoding="utf-8")
             out.append(f"«Карта»: команды и вопросы — {f.relative_to(root)}")
+    # «Стыки»: этап «Контроль стыковочных работ» — условный документ (есть стыки → есть документ)
+    if pl.seams:
+        sdoc = next((d for d in pr.docs.values() if d.meta.get("_kind") == "bft-seams"), None)
+        meta = {"epic_slug": pr.meta.get("epic_slug", ""), "version": pr.meta.get("version", "1"),
+                "revised": cli.now()[:10], "status": "Черновик"}
+        if sdoc:
+            # паспорт существующего документа не переписываем: version/revised поднимает агент
+            # при правках по комментариям PO — как у «Карты»
+            meta = {k: str(sdoc.meta.get(k, meta[k])) for k in bl.SEAMS_META}
+        text = seams_doc_text(pr.title, pl, meta)
+        if sdoc is None:
+            snums = set(int(m.group(1)) for d in pr.docs for m in [re.fullmatch(r"doc-(\d+)", d)] if m)
+            did = f"doc-{_next_doc_num(snums)}"
+            fm = {"id": did, "title": SEAMS_DOC_TITLE, "type": "specification", "created_date": cli.now()}
+            p = bdir / "docs" / f"{did} - {cli.slug(SEAMS_DOC_TITLE)}.md"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(cli.dump_front(fm) + text, encoding="utf-8")
+            out.append(f"«Стыки»: создан {did} — {p.relative_to(root)}")
+        else:
+            did = sdoc.id
+            old = sdoc.path.read_text(encoding="utf-8") if sdoc.path.is_file() else ""
+            fm, off = bl.yaml_front(old) if old else ({}, 0)
+            fm = fm or {}
+            old_body = "\n".join(old.split("\n")[off:]) if old else ""
+            if old_body.lstrip("\n") != text:
+                fm["updated_date"] = cli.now()
+                sdoc.path.write_text(cli.dump_front(fm) + text, encoding="utf-8")
+                out.append(f"«Стыки»: обновлён {did} — {sdoc.path.relative_to(root)}")
     # экраны → документы
     docs = {fm["id"]: (p, fm) for p, fm, _ in cli.load_docs(bdir)}
     screen_doc = {}
@@ -221,13 +295,12 @@ def apply(pl: Plan, root: Path) -> list[str]:
         m = bl.SCREEN_TITLE.match(str(fm.get("title", "")))
         if m and "/docs/screens/" in "/" + p.relative_to(bdir).as_posix():
             screen_doc[m.group(1)] = did
-    nums = [int(m.group(1)) for d in docs for m in [re.fullmatch(r"doc-(\d+)", d)] if m]
+    nums = set(int(m.group(1)) for d in docs for m in [re.fullmatch(r"doc-(\d+)", d)] if m)
     for sid, (title, text, _) in sorted(pl.screens.items()):
         did = screen_doc.get(sid)
         full = f"{sid} · {title}"
         if not did:
-            did = f"doc-{max(nums, default=0) + 1}"
-            nums.append(int(did[4:]))
+            did = f"doc-{_next_doc_num(nums)}"
             fm = {"id": did, "title": full, "type": "specification", "created_date": cli.now()}
             p = bdir / "docs" / "screens" / f"{did} - {cli.slug(full)}.md"
             p.parent.mkdir(parents=True, exist_ok=True)
@@ -328,6 +401,16 @@ def export(root: Path) -> dict[str, str]:
         m = re.search(rf"^## {name}\s*\n(.*?)(?=^## |\Z)", body, re.S | re.M)
         return m.group(1).strip() if m else ""
     o = [f"# План карты: {pr.title}", "", "## Команды", "", table("Команды"), "", "## Вопросы", "", table("Вопросы"), ""]
+    if pr.seams_doc is not None and pr.seams is not None:
+        sbody = pr.seams_doc.body if pr.seams_doc else ""
+
+        def stable(name: str) -> str:
+            m = re.search(rf"^## {name}\s*\n(.*?)(?=^## |\Z)", sbody, re.S | re.M)
+            return m.group(1).strip() if m else ""
+        for sec in ("Участники", "Обязательства", "Контракты", "Контрольные точки", "Риски"):
+            t = stable(sec)
+            if t:
+                o += [f"## {sec}", "", t, ""]
     raw = {t.id: t for t in cli.load_tasks(bdir)}
     for t in sorted(pr.tasks, key=lambda x: x.ordinal):
         r = raw[t.id]
