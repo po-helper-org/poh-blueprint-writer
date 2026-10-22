@@ -8,6 +8,8 @@
 
     ## Команды            таблица | ID | Команда |
     ## Вопросы            таблица | ID | Кому | Вопрос | Где | Тип | Ответ |
+    ## Релиз              таблица шагов | ID | Стенд | Что сделать | Ответственный | Тип | Зависимости | Статус | Критерий готовности |
+    ## Ворота релиза      таблица | Ворота | Кто утверждает | Критерий перехода |
     ## BP-3 · Название    задача: строки «ключ: значение», пустая строка, описание, ### Критерии приемки
     ## BP-3.1 · Название  карточка: строки «ключ: значение», пустая строка, описание карточки
 
@@ -70,6 +72,8 @@ class Plan:
     root: Path
     teams: str = ""          # таблица как текст
     questions: str = ""
+    release: str = ""        # «## Релиз» — шаги плана релиза
+    gates: str = ""          # «## Ворота релиза» — кто утверждает переход между стендами
     blocks: list[Block] = field(default_factory=list)
     screens: dict = field(default_factory=dict)   # {F3: (заголовок, текст, путь)}
     issues: list = field(default_factory=list)
@@ -108,6 +112,12 @@ def parse(root: Path) -> Plan:
             continue
         if name == "Вопросы":
             pl.questions = "\n".join(body).strip()
+            continue
+        if name == "Релиз":
+            pl.release = "\n".join(body).strip()
+            continue
+        if name == "Ворота релиза":
+            pl.gates = "\n".join(body).strip()
             continue
         m = HEAD.match(head)
         if not m:
@@ -153,6 +163,10 @@ def parse(root: Path) -> Plan:
         pl.err(rel, 1, "PL005", "раздел «## Команды» с таблицей | ID | Команда |")
     if pl.questions and "| ID | Кому | Вопрос | Где | Тип | Ответ |" not in pl.questions:
         pl.err(rel, 1, "PL005", "«## Вопросы»: таблица | ID | Кому | Вопрос | Где | Тип | Ответ |")
+    if pl.release and "| ID | Стенд | Что сделать | Ответственный | Тип | Зависимости | Статус | Критерий готовности |" not in pl.release:
+        pl.err(rel, 1, "PL005", "«## Релиз»: таблица | ID | Стенд | Что сделать | Ответственный | Тип | Зависимости | Статус | Критерий готовности |")
+    if pl.gates and "| Ворота | Кто утверждает | Критерий перехода |" not in pl.gates:
+        pl.err(rel, 1, "PL005", "«## Ворота релиза»: таблица | Ворота | Кто утверждает | Критерий перехода |")
     sdir = root / PLAN_DIR / "screens"
     for sf in sorted(sdir.glob("*.md")) if sdir.is_dir() else []:
         srel = f"{PLAN_DIR}/screens/{sf.name}"
@@ -186,6 +200,23 @@ def _check_block(pl: Plan, b: Block, rel: str) -> None:
 
 # --- запись в проект -------------------------------------------------------------------------------
 
+RELEASE_DOC_TITLE = "План релиза"
+
+
+def release_doc_text(title: str, pl: Plan, meta: dict) -> str:
+    """Текст документа «План релиза»: паспорт, дорожки DEV/STAGE/PROD, шаги и ворота."""
+    m = "\n".join(["<!-- bft-release"] + [f"{k}: {meta[k]}" for k in bl.RELEASE_META] + ["-->", "",
+                   f"# План релиза: {title}", "",
+                   "Этап «План релиза / Delivery»: дорожки DEV / STAGE / PROD — что сделать на каждом стенде,",
+                   "кто отвечает и кто утверждает переход дальше. Шаги и ворота плана — в таблицах ниже.", ""])
+    parts = [m]
+    if pl.release:
+        parts += ["## Шаги", "", pl.release, ""]
+    if pl.gates:
+        parts += ["## Ворота", "", pl.gates, ""]
+    return "\n".join(parts).rstrip("\n") + "\n"
+
+
 def _replace_section(body: str, name: str, table: str) -> str:
     block = f"## {name}\n\n{table.strip()}\n"
     if re.search(rf"^## {name}\s*$", body, re.M):
@@ -214,6 +245,36 @@ def apply(pl: Plan, root: Path) -> list[str]:
         if new != body:
             f.write_text(head + new, encoding="utf-8")
             out.append(f"«Карта»: команды и вопросы — {f.relative_to(root)}")
+    # «План релиза»: дорожки DEV/STAGE/PROD, шаги и ворота
+    if pl.release or pl.gates:
+        rdoc = next((d for d in pr.docs.values() if d.meta.get("_kind") == "bft-release"), None)
+        meta = {"epic_slug": pr.meta.get("epic_slug", ""), "version": pr.meta.get("version", "1"),
+                "revised": cli.now()[:10], "status": "Черновик"}
+        if rdoc:
+            meta = {**{k: str(rdoc.meta.get(k, "")) for k in bl.RELEASE_META}, "revised": cli.now()[:10]}
+        text = release_doc_text(pr.title, pl, meta)
+        if rdoc is None:
+            num = 0
+            for d in pr.docs:
+                m = re.fullmatch(r"doc-(\d+)", d)
+                if m:
+                    num = max(num, int(m.group(1)))
+            did = f"doc-{num + 1}"
+            fm = {"id": did, "title": RELEASE_DOC_TITLE, "type": "specification", "created_date": cli.now()}
+            p = bdir / "docs" / f"{did} - {cli.slug(RELEASE_DOC_TITLE)}.md"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(cli.dump_front(fm) + text, encoding="utf-8")
+            out.append(f"«План релиза»: создан {did} — {p.relative_to(root)}")
+        else:
+            did = rdoc.id
+            old = rdoc.path.read_text(encoding="utf-8") if rdoc.path.is_file() else ""
+            fm, off = bl.yaml_front(old) if old else ({}, 0)
+            fm = fm or {}
+            old_body = "\n".join(old.split("\n")[off:]) if old else ""
+            if old_body.lstrip("\n") != text:
+                fm["updated_date"] = cli.now()
+                rdoc.path.write_text(cli.dump_front(fm) + text, encoding="utf-8")
+                out.append(f"«План релиза»: обновлён {did} — {rdoc.path.relative_to(root)}")
     # экраны → документы
     docs = {fm["id"]: (p, fm) for p, fm, _ in cli.load_docs(bdir)}
     screen_doc = {}
@@ -328,6 +389,15 @@ def export(root: Path) -> dict[str, str]:
         m = re.search(rf"^## {name}\s*\n(.*?)(?=^## |\Z)", body, re.S | re.M)
         return m.group(1).strip() if m else ""
     o = [f"# План карты: {pr.title}", "", "## Команды", "", table("Команды"), "", "## Вопросы", "", table("Вопросы"), ""]
+    if pr.release_doc is not None and pr.release is not None:
+        rbody = pr.release_doc.body if pr.release_doc else ""
+
+        def rtable(name: str) -> str:
+            m = re.search(rf"^## {name}\s*\n(.*?)(?=^## |\Z)", rbody, re.S | re.M)
+            return m.group(1).strip() if m else ""
+        rsteps, rgates = rtable("Шаги"), rtable("Ворота")
+        if rsteps or rgates:
+            o += ["## Релиз", "", rsteps, "", "## Ворота релиза", "", rgates, ""]
     raw = {t.id: t for t in cli.load_tasks(bdir)}
     for t in sorted(pr.tasks, key=lambda x: x.ordinal):
         r = raw[t.id]

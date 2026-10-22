@@ -8,6 +8,8 @@ markdown-файлы, которыми ИИ-агент управляет чер�
   backlog/config.yml                         task_prefix — префикс ID (bp → BP-12)
   backlog/docs/doc-… - Карта.md               паспорт <!-- bft-map … -->, «Команды», «Вопросы»
   backlog/docs/doc-… - История.md             история через экраны <!-- bft-story … -->
+  backlog/docs/doc-… - План-релиза.md         этап «План релиза / Delivery» <!-- bft-release … -->:
+                                             дорожки DEV/STAGE/PROD, шаги и ворота между стендами
   backlog/docs/screens/doc-… - F3 · ….md      требования к экрану для дизайнера
   backlog/tasks/bp-12 - ….md                  «Что делаем»: задача команды — постановка для техлида
   backlog/tasks/bp-12.1 - ….md                «Как это работает»: подзадача — техническая карточка
@@ -44,6 +46,19 @@ import bft_screens as bsn  # noqa: E402
 FINAL = bs.FINAL
 KINDS = ("создать", "доработать", "используем", "уточнить")
 LAYERS = ("employee", "technology", "backstage", "support")
+# Этап «План релиза / Delivery»: дорожки-стенды, шаги, ворота между стендами.
+RELEASE_META = ("epic_slug", "version", "revised", "status")
+RELEASE_TRACKS = ("dev", "stage", "prod")
+RELEASE_TRACK_TITLE = {"dev": "DEV", "stage": "STAGE", "prod": "PROD"}
+RELEASE_STEP_TYPES = ("согласование", "задача devops", "предоставление доступа или данных",
+                      "утверждение", "проверка")
+RELEASE_STATUSES = ("не начат", "в работе", "готово", "требует ответа")
+RELEASE_GATE_KEYS = ("с", "кто", "критерий")
+GATE_HEADER = ("Ворота", "Кто утверждает", "Критерий перехода")
+STEP_HEADER = ("ID", "Стенд", "Что сделать", "Ответственный", "Тип", "Зависимости",
+               "Статус", "Критерий готовности")
+GATE_ID = re.compile(r"^G-?(?P<num>\d+)$", re.I)
+STEP_ID = re.compile(r"^R-?(?P<num>\d+)$", re.I)
 BRIEF = ("ASIS", "GAP", "TOBE", "HowToDemo", "Дополнительно")
 BRIEF_OPTIONAL = {"Дополнительно"}
 CARD = ("UserStory", "JobStory", "Параметры", "Процесс", "BPMN", "HowToDemo")
@@ -69,7 +84,7 @@ LIST_RE = {k: re.compile(rf"<!-- {k}:BEGIN -->\n?(.*?)\n?<!-- {k}:END -->", re.S
 CHECK_ITEM = re.compile(r"^- \[([ xX])\] (?:#\d+ )?(.*)$")
 REQS_LINE = re.compile(r"^Требования(?: БФТ)?\s*:\s*(.*)$")
 STEP_RE = re.compile(r"^\d+\.\s+\S")
-META_OPEN = re.compile(r"^<!--\s*(bft-map|bft-story)\s*$")
+META_OPEN = re.compile(r"^<!--\s*(bft-map|bft-story|bft-release)\s*$")
 MERMAID = re.compile(r"```mermaid\n(.*?)\n```", re.S)
 
 
@@ -162,6 +177,45 @@ class Question:
 
 
 @dataclass
+class ReleaseStep:
+    """Шаг дорожки «План релиза»: что сделать на стенде, чтобы задача прошла дальше."""
+    id: str
+    track: str                      # dev | stage | prod
+    action: str                     # что сделать
+    owner: str                      # роль или команда
+    kind: str                       # тип шага из RELEASE_STEP_TYPES
+    deps: list
+    status: str                     # статус из RELEASE_STATUSES
+    ready: str                      # критерий готовности
+    line: int
+
+
+@dataclass
+class ReleaseGate:
+    """Ворота между стендами: кто утверждает переход на следующий стенд и по какому критерию."""
+    frm: str                        # dev | stage (ворота после стендов, кроме последнего)
+    who: str                        # кто утверждает
+    criterion: str
+    line: int
+
+
+@dataclass
+class Release:
+    """Этап «План релиза / Delivery»: дорожки DEV/STAGE/PROD, шаги и ворота между ними."""
+    meta: dict = field(default_factory=dict)
+    steps: list = field(default_factory=list)    # [ReleaseStep]
+    gates: list = field(default_factory=list)    # [ReleaseGate]
+    doc: Doc | None = None
+
+    @property
+    def errors(self) -> list:
+        return [i for i in self.meta.get("_issues", []) if i.level == "ERROR"]
+
+    def by_track(self, track: str) -> list:
+        return [s for s in self.steps if s.track == track]
+
+
+@dataclass
 class Project:
     root: Path
     bdir: Path | None = None
@@ -170,6 +224,8 @@ class Project:
     title: str = ""
     map_doc: Doc | None = None
     story_doc: Doc | None = None
+    release_doc: Doc | None = None
+    release: Release | None = None
     story: bs.Story | None = None
     teams: list[Team] = field(default_factory=list)
     questions: list[Question] = field(default_factory=list)
@@ -310,6 +366,92 @@ def _read_doc(pr: Project, f: Path) -> Doc | None:
         pr.err(rel, 1, "BL005", "документ без frontmatter Backlog.md (id, title) — создавай через `backlog doc create`")
         return None
     return Doc(str(fm["id"]), str(fm["title"]), f, rel, fm, "\n".join(text.split("\n")[off:]), off)
+
+
+def _norm_release_id(raw: str, pat: re.Pattern, tag: str) -> str:
+    m = pat.match(raw.strip())
+    return f"{tag}{int(m.group('num'))}" if m else ""
+
+
+def parse_release(pr: Project, d: Doc) -> Release:
+    """Документ «План релиза» (<!-- bft-release … -->): дорожки DEV/STAGE/PROD, шаги, ворота.
+
+    Разделы документа: «## Шаги» — таблица | ID | Стенд | Что сделать | Ответственный | Тип |
+    Зависимости | Статус | Критерий готовности |; «## Ворота» — | Ворота | Кто утверждает |
+    Критерий перехода |. Форма проверяется здесь; смысл (deps, статусы, чей переход) — гейтом BL.
+    """
+    rel = Release(meta={k: v for k, v in d.meta.items() if not k.startswith("_")})
+    rel.doc = d
+    issues: list[bb.Issue] = []
+    err = lambda ln, code, msg: issues.append(bb.Issue(ln, "ERROR", code, msg, d.rel))  # noqa: E731
+    for key in RELEASE_META:
+        if not rel.meta.get(key):
+            err(d.off + 1, "RL001", f"паспорт <!-- bft-release -->: нет ключа `{key}`")
+    body = d.body
+    lines = body.split("\n")
+    h1 = next((ln for ln in lines if ln.startswith("# ")), "")
+    if not h1:
+        err(d.off + 1, "RL001", "нет заголовка `# План релиза: <инициатива>`")
+    secs = bb._sections(lines)
+    step_ids: set[str] = set()
+    for name, header in (("Шаги", STEP_HEADER), ("Ворота", GATE_HEADER)):
+        if name not in secs:
+            if name == "Шаги":
+                err(d.off + 1, "RL001", f"нет раздела «## {name}» с таблицей шагов")
+            continue
+        ln0, tbody = secs[name]
+        found = bb.tables(tbody, first_lineno=d.off + ln0 + 1)
+        if not found:
+            err(d.off + ln0, "RL001", f"«{name}»: нет таблицы")
+            continue
+        hdr, rows = found[0]
+        if tuple(hdr) != header:
+            err(d.off + ln0, "RL001", f"«{name}»: заголовок таблицы — {' | '.join(header)}")
+            continue
+        for ln, c in rows:
+            if len(c) != len(header):
+                err(ln, "RL001", f"«{name}»: в строке {len(c)} колонок, нужно {len(header)}")
+                continue
+            if name == "Шаги":
+                sid = _norm_release_id(c[0], STEP_ID, "R")
+                if not sid or sid in step_ids:
+                    err(ln, "RL001", f"шаг: ID вида R1…, уникален — «{c[0]}»")
+                    continue
+                step_ids.add(sid)
+                track = c[1].strip().lower()
+                if track not in RELEASE_TRACKS:
+                    err(ln, "RL001", f"{sid}: стенд «{c[1]}» — один из dev, stage, prod")
+                    continue
+                if not c[2].strip() or not c[3].strip() or not c[4].strip():
+                    err(ln, "RL001", f"{sid}: нужны «Что сделать», «Ответственный», «Тип»")
+                    continue
+                kind = c[4].strip().lower()
+                if kind not in RELEASE_STEP_TYPES:
+                    err(ln, "RL001", f"{sid}: тип «{c[4]}» — один из: {', '.join(RELEASE_STEP_TYPES)}")
+                    continue
+                deps = [x.strip() for x in re.split(r"[;,]", c[5]) if x.strip() and x.strip() not in bb.EMPTY]
+                status = c[6].strip().lower()
+                if status not in RELEASE_STATUSES:
+                    err(ln, "RL001", f"{sid}: статус «{c[6]}» — один из: {', '.join(RELEASE_STATUSES)}")
+                    continue
+                if not c[7].strip():
+                    err(ln, "RL001", f"{sid}: нет критерия готовности")
+                    continue
+                rel.steps.append(ReleaseStep(sid, track, c[2].strip(), c[3].strip(), kind,
+                                             deps, status, c[7].strip(), ln))
+            else:
+                frm = c[0].strip().lower()
+                if frm not in RELEASE_TRACKS[:-1]:
+                    err(ln, "RL001", f"ворота «{c[0]}»: стенд — dev или stage (после PROD ворот нет)")
+                    continue
+                if not c[1].strip() or not c[2].strip():
+                    err(ln, "RL001", "воротам нужны «Кто утверждает» и «Критерий перехода»")
+                    continue
+                rel.gates.append(ReleaseGate(frm, c[1].strip(), c[2].strip(), ln))
+    if rel.steps and not any(s.track == "dev" for s in rel.steps):
+        err(d.off + 1, "RL001", "нет шагов на дорожке dev — с неё начинается путь задачи")
+    rel.meta["_issues"] = issues
+    return rel
 
 
 def _subsections(text: str, first: int) -> tuple[list[str], dict, list[tuple[int, str]]]:
@@ -548,14 +690,20 @@ def parse(root: Path) -> Project:
             pr.err(d.rel, 1, "BL005", f"второй документ с ID {d.id} — `backlog doctor`")
             continue
         pr.docs[d.id] = d
-        for kind in ("bft-map", "bft-story"):
+        for kind in ("bft-map", "bft-story", "bft-release"):
             mc = _meta_comment(d.body, kind)
             if mc:
-                d.meta = {**d.meta, "_kind": kind}
+                d.meta = {**d.meta, "_kind": kind, **mc[0]}
                 if kind == "bft-map":
                     if pr.map_doc:
                         pr.err(d.rel, 1, "BL002", f"второй паспорт карты — уже есть {pr.map_doc.rel}")
                     pr.map_doc, pr.meta = d, mc[0]
+                elif kind == "bft-release":
+                    if pr.release_doc:
+                        pr.err(d.rel, 1, "RL002", f"второй план релиза — уже есть {pr.release_doc.rel}")
+                    pr.release_doc = d
+                    pr.release = parse_release(pr, d)
+                    pr.issues.extend(pr.release.meta.pop("_issues"))
                 else:
                     if pr.story_doc:
                         pr.err(d.rel, 1, "BL003", f"вторая история — уже есть {pr.story_doc.rel}")

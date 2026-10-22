@@ -22,6 +22,10 @@
   BL016  требование из задачи, карточки или экрана не найдено в БФТ
   BL017  ФТ/ИТ/НФТ из БФТ не попало ни в одну задачу и ни в одну карточку
   BL018  технический язык в названии или сути: API, протоколы, БД
+  RL001  документ «План релиза» (<!-- bft-release -->): паспорт, дорожки DEV/STAGE/PROD, шаги, ворота
+  RL002  второй документ «План релиза»
+  RL003  план релиза: зависимости шагов, ворота между стендами
+  RL005  план релиза: предупреждения — шаг без зависимостей, дорожка без ворот
   SN0xx  требования к экранам — `bft_screens.py`, `resources/screen_notes.md`
 
   ПРЕДУПРЕЖДЕНИЯ (код выхода 1 только с --strict)
@@ -73,6 +77,9 @@ NUM_RE = re.compile(r"\d[\d \u00a0.,:%]*\d|\d")   # число в одной с�
 
 
 def check(pr: bl.Project, source: Path | None, no_source: bool, explicit: bool = False) -> None:
+    # --- план релиза / Delivery ----------------------------------------------------------------
+    check_release(pr)
+
     # --- полнота и связность -----------------------------------------------------------------
     if pr.story:
         for st in pr.story.stages:
@@ -146,6 +153,37 @@ def check(pr: bl.Project, source: Path | None, no_source: bool, explicit: bool =
 
 def _norm(s: str) -> str:
     return re.sub(r"[^\w%]+", " ", s.lower().replace("ё", "е")).strip()
+
+
+def check_release(pr: bl.Project) -> None:
+    """Смысл плана релиза: зависимости указывают на существующие шаги, ворота закрыты, статусы честные."""
+    rel = pr.release
+    if rel is None or rel.doc is None:
+        return
+    doc = rel.doc
+    ids = {s.id for s in rel.steps}
+    for s in rel.steps:
+        for d in s.deps:
+            if d.upper() not in ids:
+                pr.err(doc.rel, s.line, "RL003", f"{s.id}: зависимости «{d}» — ID шага R1… из «Шагов»")
+        if not s.deps and s.id != next((x.id for x in rel.steps if x.track == s.track), ""):
+            pr.warn(doc.rel, s.line, "RL005", f"{s.id}: без зависимостей — с чего начинается шаг?")
+    gates_by_from: dict[str, int] = {}
+    for g in rel.gates:
+        nxt = bl.RELEASE_TRACKS[bl.RELEASE_TRACKS.index(g.frm) + 1]
+        if not rel.by_track(g.frm):
+            pr.err(doc.rel, g.line, "RL003", f"ворота {g.frm.upper()} → {nxt.upper()}: на дорожке {g.frm.upper()} нет шагов")
+        gates_by_from[g.frm] = gates_by_from.get(g.frm, 0) + 1
+    for frm, n in gates_by_from.items():
+        if n > 1:
+            nxt = bl.RELEASE_TRACKS[bl.RELEASE_TRACKS.index(frm) + 1]
+            pr.err(doc.rel, rel.gates[0].line if n else 1, "RL003", f"ворот после {frm.upper()} — {n}: переход на {nxt.upper()} один")
+    if rel.by_track("stage") and "dev" not in gates_by_from:
+        pr.warn(doc.rel, 1, "RL005", "есть дорожка STAGE, но нет ворот dev → stage — кто утверждает переход?")
+    if rel.by_track("prod") and "stage" not in gates_by_from:
+        pr.warn(doc.rel, 1, "RL005", "есть дорожка PROD, но нет ворот stage → prod — кто утверждает переход?")
+    if rel.meta.get("status", "").lower() not in ("черновик", "согласован"):
+        pr.warn(doc.rel, 1, "RL005", f"статус плана релиза «{rel.meta.get('status')}» — Черновик или Согласован")
 
 
 def graph_gates(pr: bl.Project, source: Path, texts: list) -> None:
@@ -225,6 +263,10 @@ HINTS = {
     "BL035": "один кандидат — это исполнитель: «команда: id»; сомнение — строкой «Вопросов»",
     "BL033": "UserStory пишется от лица того, кто пользуется результатом карточки (гость, официант, контент-менеджер, PO), а не команды, которая её делает",
     "SN001": "файл экрана — plan/screens/<ID>.md, ID из таблицы «Экраны» «Истории»",
+    "RL001": "«План релиза»: паспорт <!-- bft-release --> (epic_slug, version, revised, status), «## Шаги» | ID | Стенд | Что сделать | Ответственный | Тип | Зависимости | Статус | Критерий готовности |, «## Ворота» | Ворота | Кто утверждает | Критерий перехода |",
+    "RL002": "план релиза один: документ с <!-- bft-release --> в проекте один",
+    "RL003": "шаг: зависимости — ID шагов R1… из «Шагов»; ворота — по одному на переход dev → stage и stage → prod",
+    "RL005": "дорожка без ворот: кто утверждает переход на следующий стенд? шаг без зависимостей: с чего начинается?",
     "SN003": "экран: «# Название», картинки, затем ## Product, ## Design, ## Functions — по порядку, заметки — ### под вкладкой",
     "SN004": "у заметки ### нужен заголовок и текст; заголовки во вкладке не повторяются",
     "SN005": "сценарий Functions: строки **Дано** / **Когда** / **Тогда** — без **Тогда** не сценарий",
