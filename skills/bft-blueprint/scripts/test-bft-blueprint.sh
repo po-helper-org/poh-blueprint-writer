@@ -524,6 +524,66 @@ out="$(python3 "$BLINT" "$RP" --no-source 2>&1)"; rc=$?
 [ "$rc" -eq 1 ] && grep -q "RL003.*R77" <<<"$out" && grep -q "RL003.*ворот после STAGE" <<<"$out" \
   && ok "план · релиз: RL003 — битая зависимость и дубль ворот" || fail "план · релиз: гейты RL003 ($rc)"
 
+# экран «Релиз» в меню карты: страница с планом релиза — слой с дорожками, шагами и воротами
+# (документ $RP сломан проверкой RL003 выше — пересобираем чистый план из демо)
+RP="$tmp/release-ui" && cp -r "$BOK" "$RP"
+python3 "$DIR/scripts/bft-plan.py" export "$RP" --force >/dev/null 2>&1
+cat >> "$RP/plan/map.md" <<'RL'
+
+## Релиз
+
+| ID | Стенд | Что сделать | Ответственный | Тип | Зависимости | Статус | Критерий готовности |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| R1 | dev | Собрать ветку и прогнать юнит-тесты | Команда разработки | проверка | — | готово | Тесты зелёные, сборка без ошибок |
+| R2 | dev | Поднять стенд DEV с новой версией | DevOps | задача devops | R1 | в работе | Сервис отвечает на health-check |
+| R3 | stage | Выдать тестовые данные и доступы тестировщикам | DevOps | предоставление доступа или данных | R2 | не начат | Тестировщик вошёл и видит данные |
+| R4 | stage | Прогнать регресс на STAGE | QA | проверка | R3 | не начат | Регресс пройден, дефектов P0-P1 нет |
+| R5 | prod | Согласовать окно релиза с бизнесом | PO | согласование | R4 | требует ответа | Окно утверждено, уведомления отправлены |
+| R6 | prod | Выложить релиз в PROD | DevOps | задача devops | R5 | не начат | Версия в PROD, метрики в норме |
+
+## Ворота релиза
+
+| Ворота | Кто утверждает | Критерий перехода |
+| --- | --- | --- |
+| dev | Тимлид разработки | Тесты зелёные, стенд DEV стабилен |
+| stage | Руководитель QA | Регресс пройден, остаточных дефектов нет |
+RL
+python3 "$DIR/scripts/bft-plan.py" apply "$RP" >/dev/null 2>&1
+python3 "$BBUILD" "$RP" --no-source --no-zip --out-dir "$tmp/rlout" >/dev/null 2>&1
+python3 - "$tmp/rlout/demo-story-map.html" <<'PY' && ok "экран · релиз: слой в меню, дорожки DEV/STAGE/PROD, шаги и ворота на демо-данных" || fail "экран · релиз: страница не собрана или данных нет"
+import json, re, sys
+page = open(sys.argv[1], encoding="utf-8").read()
+assert '<button data-view="rel">Релиз</button>' in page and 'data-rlmenu' in page and 'id="rel"' in page
+d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
+r = d["release"]
+assert r["doc"] and [t["id"] for t in r["tracks"]] == ["dev", "stage", "prod"]
+assert len(r["steps"]) == 6 and r["steps"][0]["id"] == "R1" and r["steps"][-1]["track"] == "prod"
+assert {s["kind"] for s in r["steps"]} >= {"проверка", "задача devops", "согласование"}
+assert r["steps"][4]["status"] == "требует ответа"
+assert [g["frm"] for g in r["gates"]] == ["dev", "stage"] and r["gates"][1]["who"] == "Руководитель QA"
+PY
+python3 - "$DIR/scripts" "$RP" "$tmp/rlout/demo-story-map.html" <<'PY' && ok "экран · релиз: текст слоя — только из проекта (BL032)" || fail "экран · релиз: BL032 не проходит"
+import importlib.util, json, re, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+spec = importlib.util.spec_from_file_location("b", Path(sys.argv[1]) / "bft-backlog-build.py"); b = importlib.util.module_from_spec(spec); spec.loader.exec_module(b)
+pr = b.lint.run(Path(sys.argv[2]).resolve(), None, True)
+assert b.provenance(b.model(pr), pr) == []
+PY
+# без документа «План релиза» кнопки и слоя на странице нет — эталон без релиза не меняется
+python3 - "$DIR/scripts" "$BGOLD" <<'PY' && ok "экран · релиз: без плана релиза слой не появляется" || fail "экран · релиз: слой протекает без документа"
+import importlib.util, json, re, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+spec = importlib.util.spec_from_file_location("b", Path(sys.argv[1]) / "bft-backlog-build.py"); b = importlib.util.module_from_spec(spec); spec.loader.exec_module(b)
+pr = b.lint.run(Path(sys.argv[2]).resolve(), None, True)
+page = b.render(pr, "")
+# литералы кнопок порождает сборка; в тексте map_page.js селекторы есть всегда
+assert 'data-view="rel">Релиз' not in page and 'class="mi" data-rlmenu' not in page
+m = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
+assert "release" not in m
+PY
+
 # груминг роем: пакеты обеих волн; слияние берёт годную замену, а ломающую карту и теряющую требование — отклоняет
 GR="$tmp/groom" && cp -r "$BGOLD" "$GR" && rm -rf "$GR/plan"
 python3 "$DIR/scripts/bft-groom.py" audit "$GR" >/dev/null 2>&1 && python3 "$DIR/scripts/bft-groom.py" refine "$GR" >/dev/null 2>&1
