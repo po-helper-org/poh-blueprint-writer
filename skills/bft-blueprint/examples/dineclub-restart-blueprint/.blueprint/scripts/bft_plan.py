@@ -8,6 +8,11 @@
 
     ## Команды            таблица | ID | Команда |
     ## Вопросы            таблица | ID | Кому | Вопрос | Где | Тип | Ответ |
+    ## Решение TO-BE      этап ADR: таблица | ID | Контракт | Суть решения | Обоснование |
+    ## Варианты           этап ADR: таблица | ID | Вариант | Надёжность | Скорость реализации | Соответствие требованиям | Почему нет |
+    ## Узкие места        этап ADR: таблица | ID | Узкое место | Тип | Нагрузка | Риск | Прощупывание |
+    ## Компромиссы        этап ADR: таблица | ID | Компромисс | Надёжность | Скорость реализации | Соответствие требованиям | Чем платим |
+    ## Контракты          системные требования: таблица | ID | Контракт | Потребитель | Данные контракту | Источник параметров | Преобразования |
     ## BP-3 · Название    задача: строки «ключ: значение», пустая строка, описание, ### Критерии приемки
     ## BP-3.1 · Название  карточка: строки «ключ: значение», пустая строка, описание карточки
 
@@ -70,6 +75,8 @@ class Plan:
     root: Path
     teams: str = ""          # таблица как текст
     questions: str = ""
+    adr: dict = field(default_factory=dict)      # {«Решение TO-BE»: текст, «Варианты»: …, «Узкие места»: …, «Компромиссы»: …} — этап ADR
+    sysreq: dict = field(default_factory=dict)   # {«Контракты»: текст} — системные требования
     blocks: list[Block] = field(default_factory=list)
     screens: dict = field(default_factory=dict)   # {F3: (заголовок, текст, путь)}
     issues: list = field(default_factory=list)
@@ -100,6 +107,11 @@ def parse(root: Path) -> Plan:
     for n, ln in enumerate(lines, 1):
         if STUB.search(ln):
             pl.err(rel, n, "PL007", f"шаблон не заполнен: {STUB.search(ln).group(0)}")
+    # этап «ADR и Системные требования»: секции документов ADR и «Системные требования»
+    ADR_SECTIONS = (("Решение TO-BE", bl.ADR_DECISION_HEADER), ("Варианты", bl.ADR_OPTION_HEADER),
+                    ("Узкие места", bl.BOTTLENECK_HEADER), ("Компромиссы", bl.COMPROMISE_HEADER))
+    SYSREQ_SECTIONS = (("Контракты", bl.CONTRACTS_HEADER),)
+    STAGE_SECTIONS = dict(ADR_SECTIONS + SYSREQ_SECTIONS)
     seen: set[str] = set()
     for head, n, body in chunks:
         name = head[3:].strip()
@@ -109,9 +121,15 @@ def parse(root: Path) -> Plan:
         if name == "Вопросы":
             pl.questions = "\n".join(body).strip()
             continue
+        if name in STAGE_SECTIONS:
+            text = "\n".join(body).strip()
+            (pl.sysreq if name in dict(SYSREQ_SECTIONS) else pl.adr)[name] = text
+            if f"| {' | '.join(STAGE_SECTIONS[name])} |" not in text:
+                pl.err(rel, n, "PL005", f"«## {name}»: таблица | {' | '.join(STAGE_SECTIONS[name])} |")
+            continue
         m = HEAD.match(head)
         if not m:
-            pl.err(rel, n, "PL002", f"«{name}» — заголовок блока: «## BP-3 · Название задачи» (или «## Команды», «## Вопросы»)")
+            pl.err(rel, n, "PL002", f"«{name}» — заголовок блока: «## BP-3 · Название задачи» (или «## Команды», «## Вопросы», «## Решение TO-BE», «## Варианты», «## Узкие места», «## Компромиссы», «## Контракты»)")
             continue
         b = Block(m.group(1).upper(), m.group(2), n)
         if b.id in seen:
@@ -186,11 +204,104 @@ def _check_block(pl: Plan, b: Block, rel: str) -> None:
 
 # --- запись в проект -------------------------------------------------------------------------------
 
+ADR_DOC_TITLE = "ADR"
+SYSREQ_DOC_TITLE = "Системные требования"
+
+
+def _stage_doc_text(marker: str, title: str, intro: list[str], sections: list[tuple[str, str]], meta: dict) -> str:
+    """Текст документа этапа: паспорт + заголовок + вводные строки + секции «## имя» с таблицами."""
+    m = "\n".join([f"<!-- {marker}"] + [f"{k}: {meta[k]}" for k in ("epic_slug", "version", "revised", "status")] + ["-->", "",
+                   f"# {title}: {title_of(meta)}", ""] + intro + [""])
+    parts = [m]
+    for name, text in sections:
+        if text:
+            parts += [f"## {name}", "", text, ""]
+    return "\n".join(parts).rstrip("\n") + "\n"
+
+
+def title_of(meta: dict) -> str:
+    return meta.get("_title", "")
+
+
 def _replace_section(body: str, name: str, table: str) -> str:
     block = f"## {name}\n\n{table.strip()}\n"
     if re.search(rf"^## {name}\s*$", body, re.M):
         return re.sub(rf"^## {name}\s*\n.*?(?=^## |\Z)", lambda _: block + "\n", body, count=1, flags=re.S | re.M).rstrip("\n") + "\n"
     return body.rstrip("\n") + "\n\n" + block
+
+
+def _next_doc_num(nums: set) -> int:
+    """Первый свободный номер документа: apply с нуля занимает дырки, а не хвост диапазона."""
+    n = 1
+    while n in nums:
+        n += 1
+    nums.add(n)
+    return n
+
+
+def _write_stage_doc(pr, bdir: Path, root: Path, doc, marker: str, title: str, text: str, plan_sections: set) -> list[str]:
+    """Создать или обновить документ этапа. Секции из плана (plan_sections) переписываются;
+    остальные («Контекст», «AS-IS», «Диаграмма», «Открытые вопросы»…) — остаются как в документе:
+    их пишет агент по скиллу, apply их не трогает. При создании рукописные разделы берутся
+    из шаблона этапа (templates/<adr|sysreq>.md), чтобы документ сразу проходил проверку формы.
+    Возвращает строки отчёта."""
+    out: list[str] = []
+    if doc is None:
+        snums = set(int(m.group(1)) for d in pr.docs for m in [re.fullmatch(r"doc-(\d+)", d)] if m)
+        for taken in getattr(pr, "_stage_doc_nums_taken", set()):
+            snums.add(taken)
+        did = f"doc-{_next_doc_num(snums)}"
+        taken = set(getattr(pr, "_stage_doc_nums_taken", set()))
+        taken.add(int(did[4:]))
+        pr._stage_doc_nums_taken = taken
+        # рукописные разделы — из шаблона: план их не знает, а форма документа требует
+        tmpl = (Path(__file__).resolve().parent.parent / "templates" / f"{marker.removeprefix('bft-')}.md")
+        body = text
+        if tmpl.is_file():
+            tt = tmpl.read_text(encoding="utf-8")
+            # из шаблона — только секции, которых нет в text (рукописные), и только при создании
+            have = set(re.findall(r"^## (.+?)\s*$", text, re.M))
+            for name in re.findall(r"^## (.+?)\s*$", tt, re.M):
+                if name in have:
+                    continue
+                m = re.search(rf"^## {re.escape(name)}\s*\n.*?(?=^## |\Z)", tt, re.S | re.M)
+                if m and name not in plan_sections:
+                    body = body.rstrip("\n") + "\n\n" + m.group(0).rstrip("\n") + "\n"
+        fm = {"id": did, "title": title, "type": "specification", "created_date": cli.now()}
+        p = bdir / "docs" / f"{did} - {cli.slug(title)}.md"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(cli.dump_front(fm) + body, encoding="utf-8")
+        return [f"«{title}»: создан {did} — {p.relative_to(root)}"]
+    did = doc.id
+    old = doc.path.read_text(encoding="utf-8") if doc.path.is_file() else ""
+    fm, off = bl.yaml_front(old) if old else ({}, 0)
+    fm = fm or {}
+    old_body = "\n".join(old.split("\n")[off:]) if old else ""
+    # собрать новое тело: секции плана — из text, остальные — из старого тела как есть
+    new_secs = {}
+    for name in re.findall(r"^## (.+?)\s*$", text, re.M):
+        m = re.search(rf"^## {re.escape(name)}\s*\n(.*?)(?=^## |\Z)", text, re.S | re.M)
+        new_secs[name] = m.group(0).rstrip("\n") if m else ""
+    body = old_body
+    changed = False
+    for name, block in new_secs.items():
+        if not block.strip():
+            continue
+        if name not in plan_sections:
+            continue           # рукописная секция — не трогаем
+        if re.search(rf"^## {re.escape(name)}\s*$", body, re.M):
+            cur = re.search(rf"^## {re.escape(name)}\s*\n.*?(?=^## |\Z)", body, re.S | re.M)
+            if cur and cur.group(0).rstrip("\n") == block.rstrip("\n"):
+                continue
+            body = re.sub(rf"^## {re.escape(name)}\s*\n.*?(?=^## |\Z)", lambda _: block + "\n\n", body, count=1, flags=re.S | re.M)
+        else:
+            body = body.rstrip("\n") + "\n\n" + block + "\n"
+        changed = True
+    if changed:
+        fm["updated_date"] = cli.now()
+        doc.path.write_text(cli.dump_front(fm) + body.rstrip("\n") + "\n", encoding="utf-8")
+        out.append(f"«{title}»: обновлён {did} — {doc.path.relative_to(root)}")
+    return out
 
 
 def apply(pl: Plan, root: Path) -> list[str]:
@@ -214,6 +325,38 @@ def apply(pl: Plan, root: Path) -> list[str]:
         if new != body:
             f.write_text(head + new, encoding="utf-8")
             out.append(f"«Карта»: команды и вопросы — {f.relative_to(root)}")
+    # «ADR» и «Системные требования»: этап «ADR и Системные требования» — условные документы
+    # (есть секции плана → есть документ); вход — БФТ, «История», задачи и карточки карты
+    if pl.adr:
+        adoc = next((d for d in pr.docs.values() if d.meta.get("_kind") == "bft-adr"), None)
+        ameta = {"epic_slug": pr.meta.get("epic_slug", ""), "version": pr.meta.get("version", "1"),
+                 "revised": cli.now()[:10], "status": "Черновик", "_title": pr.title}
+        if adoc:
+            ameta = {**{k: str(adoc.meta.get(k, "")) for k in ("epic_slug", "version", "revised", "status")}, "_title": pr.title}
+        atext = _stage_doc_text("bft-adr", ADR_DOC_TITLE,
+                                ["Этап «ADR и Системные требования», системный дизайн: как реализуем работу на карте —",
+                                 "контекст, ландшафт AS-IS, варианты, решение TO-BE, узкие места и компромиссы по осям",
+                                 "«надёжность vs скорость реализации vs соответствие требованиям». ADR-диаграмма AS-IS/TO-BE —",
+                                 "в разделе «Диаграмма AS-IS/TO-BE». Открытые вопросы и блокеры — в таблице «Вопросы»",
+                                 "документа «Карта» («Где» — ID варианта или компромисса V1, C1)."],
+                                [(s, pl.adr.get(s, "")) for s in ("Контекст", "AS-IS", "Варианты", "Решение TO-BE",
+                                                                  "Узкие места", "Компромиссы", "Диаграмма AS-IS/TO-BE")], ameta)
+        # «Контекст», «AS-IS» и «Диаграмма» живут в документе (руками/скиллом), apply не переписывает их
+        out += _write_stage_doc(pr, bdir, root, adoc, "bft-adr", ADR_DOC_TITLE, atext, {"Решение TO-BE", "Варианты", "Узкие места", "Компромиссы"})
+    if pl.sysreq:
+        sdoc = next((d for d in pr.docs.values() if d.meta.get("_kind") == "bft-sysreq"), None)
+        smeta = {"epic_slug": pr.meta.get("epic_slug", ""), "version": pr.meta.get("version", "1"),
+                 "revised": cli.now()[:10], "status": "Черновик", "_title": pr.title}
+        if sdoc:
+            smeta = {**{k: str(sdoc.meta.get(k, "")) for k in ("epic_slug", "version", "revised", "status")}, "_title": pr.title}
+        stext = _stage_doc_text("bft-sysreq", SYSREQ_DOC_TITLE,
+                                ["Этап «ADR и Системные требования», системная аналитика: контракты работы на карте —",
+                                 "по КАЖДОМУ контракту три вопроса: (1) какие данные нужны контракту; (2) источник каждого",
+                                 "параметра (система/сервис/поле/справочник); (3) какие преобразования над данными нужны для",
+                                 "контрактов и бизнес-логики. Дальше — AS-IS, изменения и открытые вопросы. Вопросы также",
+                                 "дублируются в таблицу «Вопросы» документа «Карта» («Где» — ID контракта K1)."],
+                                [(s, pl.sysreq.get(s, "")) for s in ("Контракты", "AS-IS", "Изменения", "Открытые вопросы")], smeta)
+        out += _write_stage_doc(pr, bdir, root, sdoc, "bft-sysreq", SYSREQ_DOC_TITLE, stext, {"Контракты"})
     # экраны → документы
     docs = {fm["id"]: (p, fm) for p, fm, _ in cli.load_docs(bdir)}
     screen_doc = {}
@@ -221,13 +364,12 @@ def apply(pl: Plan, root: Path) -> list[str]:
         m = bl.SCREEN_TITLE.match(str(fm.get("title", "")))
         if m and "/docs/screens/" in "/" + p.relative_to(bdir).as_posix():
             screen_doc[m.group(1)] = did
-    nums = [int(m.group(1)) for d in docs for m in [re.fullmatch(r"doc-(\d+)", d)] if m]
+    nums = set(int(m.group(1)) for d in docs for m in [re.fullmatch(r"doc-(\d+)", d)] if m)
     for sid, (title, text, _) in sorted(pl.screens.items()):
         did = screen_doc.get(sid)
         full = f"{sid} · {title}"
         if not did:
-            did = f"doc-{max(nums, default=0) + 1}"
-            nums.append(int(did[4:]))
+            did = f"doc-{_next_doc_num(nums)}"
             fm = {"id": did, "title": full, "type": "specification", "created_date": cli.now()}
             p = bdir / "docs" / "screens" / f"{did} - {cli.slug(full)}.md"
             p.parent.mkdir(parents=True, exist_ok=True)
@@ -328,6 +470,22 @@ def export(root: Path) -> dict[str, str]:
         m = re.search(rf"^## {name}\s*\n(.*?)(?=^## |\Z)", body, re.S | re.M)
         return m.group(1).strip() if m else ""
     o = [f"# План карты: {pr.title}", "", "## Команды", "", table("Команды"), "", "## Вопросы", "", table("Вопросы"), ""]
+    # этап «ADR и Системные требования»: секции документов ADR и «Системные требования»
+    if pr.adr_doc is not None and pr.adr is not None:
+        abody = pr.adr_doc.body
+
+        def stable(name: str, src: str = "") -> str:
+            m = re.search(rf"^## {name}\s*\n(.*?)(?=^## |\Z)", src or abody, re.S | re.M)
+            return m.group(1).strip() if m else ""
+        for sec in ("Решение TO-BE", "Варианты", "Узкие места", "Компромиссы"):
+            t = stable(sec)
+            if t:
+                o += [f"## {sec}", "", t, ""]
+    if pr.sysreq_doc is not None and pr.sysreq is not None:
+        sbody = pr.sysreq_doc.body
+        m = re.search(r"^## Контракты\s*\n(.*?)(?=^## |\Z)", sbody, re.S | re.M)
+        if m:
+            o += ["## Контракты", "", m.group(1).strip(), ""]
     raw = {t.id: t for t in cli.load_tasks(bdir)}
     for t in sorted(pr.tasks, key=lambda x: x.ordinal):
         r = raw[t.id]

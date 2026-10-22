@@ -61,19 +61,20 @@ PAGE = """<!doctype html>
 {css}</style></head>
 <body>
 <h1 class="ptitle">{h1}</h1>
-<div class="fab"><button class="burger" id="burger" aria-label="Меню карты" aria-expanded="false" aria-controls="menu"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg><span class="bdot" id="bdot"></span></button><nav class="views" aria-label="Слой карты"><button data-view="see" class="on">Что видят</button><button data-view="do">Что делаем</button><button data-view="how">Как это работает</button></nav><span id="fchip"></span></div>
+<div class="fab"><button class="burger" id="burger" aria-label="Меню карты" aria-expanded="false" aria-controls="menu"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg><span class="bdot" id="bdot"></span></button><nav class="views" aria-label="Слой карты"><button data-view="see" class="on">Что видят</button><button data-view="do">Что делаем</button><button data-view="how">Как это работает</button>{adr_btn}</nav><span id="fchip"></span></div>
 <div class="tr"><button class="ib iq" data-qpanel title="Уточнить: ответить на открытые вопросы" aria-label="Уточнить"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M6.2 6.1a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.6"/><circle cx="8" cy="11.6" r=".4"/></svg><span id="iq"></span></button><button class="ib icm" data-cmpanel title="Замечания" aria-label="Замечания"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7.5H7l-3 2.5V11H2.5z"/></svg><span id="icm"></span></button></div>
 <div class="mscrim"></div>
 <nav class="menu" id="menu" aria-label="Меню карты"><div class="mtop"><div><span class="draft{status_cls}">{status}</span><h1>{h1}</h1></div><button class="x" data-menu="close" aria-label="Закрыть">×</button></div>
 <button class="play" id="play">▶ Рассказать историю</button>
 <div class="mlist"><span id="blk"></span>
 <button class="mi" data-guide="help"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h4.5A1.5 1.5 0 0 1 8 4.5V14a1.5 1.5 0 0 0-1.5-1.5H2zM14 3H9.5A1.5 1.5 0 0 0 8 4.5V14a1.5 1.5 0 0 1 1.5-1.5H14z"/></svg>Инструкции</button>
-<button class="mi" data-guide="legend"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2.5" width="4" height="4" rx="1"/><path d="M8.5 4.5H14"/><circle cx="4" cy="11.5" r="2"/><path d="M8.5 11.5H14"/></svg>Легенда</button>
+<button class="mi" data-guide="legend"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2.5" width="4" height="4" rx="1"/><path d="M8.5 4.5H14"/><circle cx="4" cy="11.5" r="2"/><path d="M8.5 11.5H14"/></svg>Легенда</button>{adr_menu}
 <button class="mi" data-qpanel><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M6.2 6.1a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.6"/></svg>Уточнить</button>
 <button class="mi" data-cmpanel><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7.5H7l-3 2.5V11H2.5z"/></svg>Замечания<b class="cnt cmn" id="cmn" hidden></b></button></div>
 <div class="mlab">Команды — показать работу одной</div><div class="teams" id="teams"></div></nav>
 <section class="hero" id="hero" aria-label="Что видят люди — путь слева направо"></section>
 <div class="wrap" id="work"><div id="grid"></div></div>
+<section class="adrscr" id="adr" aria-label="ADR и Системные требования — как реализуем работу"></section>
 <div class="mstack" id="mstack"></div>
 <div class="scrim"></div><aside class="side" id="side" aria-label="Подробности"></aside><div class="zoombox" id="lb" hidden></div>
 <div class="show" id="show" role="dialog" aria-label="История по шагам"><div class="sbar"><div class="whos"></div><button class="x" aria-label="Закрыть">×</button></div>
@@ -152,6 +153,26 @@ def model(pr: bl.Project, base: str = "") -> dict:
         "links": [{"src": a, "dst": b, "what": w} for a, b, w in pr.links()],
         "questions": [{"id": q.id, "to": q.to, "text": q.text, "where": q.where, "kind": q.kind,
                        "open": q.open, "answer": q.answer} for q in pr.questions],
+        **({"adr": {"status": pr.adr.meta.get("status", ""), "version": pr.adr.meta.get("version", ""),
+                    "options": [{"id": o.id, "text": o.text, "rel": o.reliability, "speed": o.speed,
+                                 "fit": o.fit, "whyNot": o.why_not} for o in pr.adr.options],
+                    "decisions": [{"id": d.id, "contract": d.contract, "text": d.text, "why": d.why} for d in pr.adr.decisions],
+                    "bottlenecks": [{"id": n.id, "text": n.text, "kind": n.kind, "load": n.load,
+                                     "risk": n.risk, "probe": n.probe} for n in pr.adr.bottlenecks],
+                    "compromises": [{"id": c.id, "text": c.text, "rel": c.reliability, "speed": c.speed,
+                                     "fit": c.fit, "cost": c.cost} for c in pr.adr.compromises],
+                    "asis": pr.adr.asis, "context": pr.adr.context,
+                    "diagram": re.sub(r"^```mermaid\n|\n?```$", "", pr.adr.diagram.strip()),
+                    "file": pr.adr_doc.rel}}
+           if pr.adr is not None and pr.adr_doc is not None else {}),
+        **({"sysreq": {"status": pr.sysreq.meta.get("status", ""), "version": pr.sysreq.meta.get("version", ""),
+                       "contracts": [{"id": c.id, "contract": c.contract, "consumer": c.consumer, "data": c.data,
+                                      "source": c.source, "transform": c.transform} for c in pr.sysreq.contracts],
+                       "asis": [{"id": x.id, "text": x.text, "change": x.change} for x in pr.sysreq.asis],
+                       "changes": [{"id": x.id, "text": x.text, "why": x.why} for x in pr.sysreq.changes],
+                       "questions": [{"id": q.id, "to": q.to, "text": q.text, "open": q.open, "answer": q.answer} for q in pr.sysreq.questions],
+                       "file": pr.sysreq_doc.rel}}
+           if pr.sysreq is not None and pr.sysreq_doc is not None else {}),
         "files": {"map": pr.map_doc.rel, "story": pr.story_doc.rel, "source": pr.meta.get("source_doc", ""),
                   "project": f"{pr.meta.get('epic_slug', 'epic')}-blueprint"},
         "base": base, "mermaid": ".blueprint/vendor/mermaid.min.js",
@@ -205,9 +226,14 @@ def render(pr: bl.Project, base: str = "") -> str:
     m["rev"] = hashlib.sha1(json.dumps(m, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:12]
     data = json.dumps(m, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     status = pr.meta.get("status", "")
+    has_adr = m.get("adr") is not None or m.get("sysreq") is not None
+    adr_btn = '<button data-view="adr">Архитектура</button>' if has_adr else ""
+    adr_menu = ('<button class="mi" data-adrmenu><svg viewBox="0 0 16 16" aria-hidden="true">'
+                '<path d="M2 13.5L8 2l6 11.5M4.6 9h6.8" fill="none"/></svg>ADR и системные требования</button>') if has_adr else ""
     return PAGE.format(
         title_tag=html.escape(f"Карта · {pr.meta.get('epic_slug', '')}"), h1=html.escape(pr.title),
         status=html.escape(status), status_cls=" ok" if status.lower() == "согласован" else "",
+        adr_btn=adr_btn, adr_menu=adr_menu,
         css=(HERE / "map_page.css").read_text(encoding="utf-8"),
         kit=(HERE / "page_kit.js").read_text(encoding="utf-8"),
         js=(HERE / "map_page.js").read_text(encoding="utf-8"), data=data)

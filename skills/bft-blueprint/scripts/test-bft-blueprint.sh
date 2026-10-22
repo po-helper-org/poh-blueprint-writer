@@ -498,6 +498,104 @@ if command -v backlog >/dev/null 2>&1; then
     && ok "карта · встроенный CLI и npm-пакет backlog.md читают и правят одни файлы" || fail "карта · встроенный CLI разошёлся с Backlog.md"
 fi
 
+# --- этап «ADR и Системные требования»: форма, смысл, условие включения, план, страница ------
+# форма (AR001): битый паспорт, ID не V1…, пустые компромиссы — parse ловит без смысла
+cp -r "$BGOLD" "$tmp/adr-bad"
+python3 - "$tmp/adr-bad/backlog/docs/doc-15 - ADR.md" << 'PY'
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+t = p.read_text(encoding="utf-8")
+t = t.replace("revised: 2026-10-22", "")                                   # AR001: нет ключа паспорта
+t = t.replace("| V1 | Полка ресторанов", "| X9 | Полка ресторанов")        # AR001: ID не V1…
+p.write_text(t, encoding="utf-8")
+PY
+out="$(python3 "$BLINT" "$tmp/adr-bad" --no-source 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && grep -q " AR001 " <<<"$out" \
+  && ok "ADR · битая форма: AR001" || fail "ADR · битая форма не поймана"
+# смысл (AR003): решение мимо вариантов, пустое «Почему нет» — check ловит на целой форме
+cp -r "$BGOLD" "$tmp/adr-sense"
+python3 - "$tmp/adr-sense/backlog/docs/doc-15 - ADR.md" << 'PY'
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+t = p.read_text(encoding="utf-8")
+t = t.replace("| V1 | restaurant-shelf |", "| V7 | restaurant-shelf |")    # AR003: решение мимо вариантов
+t = t.replace("| сервис не оправдан объёмом акции, к запуску не успеть |", "| — |")  # AR003: пустое «Почему нет»
+p.write_text(t, encoding="utf-8")
+PY
+out="$(python3 "$BLINT" "$tmp/adr-sense" --no-source 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && grep -q " AR003 " <<<"$out" \
+  && ok "ADR · смысл: AR003 (выбор мимо вариантов, пустое «Почему нет»)" || fail "ADR · смысл не пойман"
+# AR002: второй ADR в проекте
+cp -r "$BGOLD" "$tmp/adr-dup"
+cp "$BGOLD/backlog/docs/doc-15 - ADR.md" "$tmp/adr-dup/backlog/docs/doc-50 - второй ADR.md"
+sed -i 's/^id: doc-15$/id: doc-50/' "$tmp/adr-dup/backlog/docs/doc-50 - второй ADR.md"
+python3 "$BLINT" "$tmp/adr-dup" --no-source 2>&1 | grep -q " AR002 " \
+  && ok "ADR · второй документ: AR002" || fail "ADR · второй документ не пойман"
+# AR005: слой Technology без документов этапа — этап включён не был
+cp -r "$BGOLD" "$tmp/adr-none"
+find "$tmp/adr-none/backlog/docs" -maxdepth 1 -name "doc-15*" -delete
+find "$tmp/adr-none/backlog/docs" -maxdepth 1 -name "doc-16*" -delete
+python3 "$BLINT" "$tmp/adr-none" --no-source 2>&1 | grep -q " AR005 " \
+  && ok "ADR · Technology без документов: AR005" || fail "ADR · условие включения не поймано"
+python3 "$BLINT" "$tmp/adr-none" --no-source >/dev/null 2>&1 && [ $? -eq 0 ] \
+  && ok "ADR · без документов этапа не Strict-ошибка" || fail "ADR · AR005 не должен валить без --strict"
+# план: секции этапа → apply создаёт документы; рукописные разделы не переписываются
+cp -r "$PL/g" "$tmp/adr-plan" 2>/dev/null || { cp -r "$BGOLD" "$tmp/adr-plan"; }
+python3 - "$tmp/adr-plan" << 'PY'
+import sys, re
+from pathlib import Path
+p = Path(sys.argv[1]) / "plan" / "map.md"
+t = p.read_text(encoding="utf-8")
+find = re.search(r"^## BP-1 ", t, re.M)
+block = """## Решение TO-BE
+
+| ID | Контракт | Суть решения | Обоснование |
+| --- | --- | --- | --- |
+| V1 | test-shelf | Полка на лету из каталога с кешем | Быстрее к запуску, пик покрывает кеш |
+
+## Варианты
+
+| ID | Вариант | Надёжность | Скорость реализации | Соответствие требованиям | Почему нет |
+| --- | --- | --- | --- | --- | --- |
+| V1 | Полка на лету с кешем | средняя | быстро | частичное | выбран |
+| V2 | Ночная сборка | высокая | долго | полное | не успеть к запуску |
+
+## Контракты
+
+| ID | Контракт | Потребитель | Данные контракту | Источник параметров | Преобразования |
+| --- | --- | --- | --- | --- | --- |
+| K1 | test-shelf | Витрина | Рестораны, рейтинг | Каталог: restaurants | Ранжирование по рейтингу |
+
+"""
+# план эталона уже несёт секции этапа — заменим их на тестовые (одна секция каждого вида)
+t = re.sub(r"^## (?:Решение TO-BE|Варианты|Узкие места|Компромиссы|Контракты)\n.*?(?=^## )", "", t, flags=re.S | re.M)
+find = re.search(r"^## BP-1 ", t, re.M)   # позиция заново: секции выше уже вырезаны
+t = t[:find.start()] + block + t[find.start():]
+p.write_text(t, encoding="utf-8")
+PY
+rm -f "$tmp/adr-plan/backlog/docs/doc-15 - ADR.md" "$tmp/adr-plan/backlog/docs/doc-16 - Системные требования.md"
+find "$tmp/adr-plan/backlog/docs" -maxdepth 1 -name "*- ADR.md" -delete
+find "$tmp/adr-plan/backlog/docs" -maxdepth 1 -name "*- Системные*.md" -delete
+python3 "$DIR/scripts/bft-plan.py" apply "$tmp/adr-plan" >/dev/null 2>&1
+ADRDOC=$(ls "$tmp/adr-plan/backlog/docs" | grep " - ADR" | head -1)
+SYSDOC=$(ls "$tmp/adr-plan/backlog/docs" | grep "Системные" | head -1)
+[ -n "$ADRDOC" ] && [ -n "$SYSDOC" ] && grep -q "test-shelf" "$tmp/adr-plan/backlog/docs/$ADRDOC" \
+  && grep -q "restaurants" "$tmp/adr-plan/backlog/docs/$SYSDOC" \
+  && ok "ADR · apply создаёт документы из секций плана" || fail "ADR · apply не создал документы"
+python3 "$BLINT" "$tmp/adr-plan" --no-source >/dev/null 2>&1 \
+  && ok "ADR · после apply линтер даёт 0" || python3 "$BLINT" "$tmp/adr-plan" --no-source 2>&1 | grep -E " AR00[13] " | fail "ADR · apply дал документ с ошибками AR"
+# страница: слой «Архитектура» есть с документами и нет без них
+python3 "$BBUILD" "$tmp/adr-plan" --out-dir "$tmp/adr-out" --no-zip >/dev/null 2>&1
+PAGE=$(ls "$tmp/adr-out"/*-map.html | head -1)
+grep -q '<button data-view="adr">' "$PAGE" && grep -q 'data-adrmenu' "$PAGE" && grep -q '"adr":{' "$PAGE" && grep -q '"sysreq":{' "$PAGE" \
+  && ok "ADR · страница: слой «Архитектура», данные adr и sysreq" || fail "ADR · на странице нет слоя архитектуры"
+python3 "$BBUILD" "$tmp/adr-none" --out-dir "$tmp/adr-out2" --no-zip >/dev/null 2>&1
+PAGE2=$(ls "$tmp/adr-out2"/*-map.html | head -1)
+grep -q '<button data-view="adr">' "$PAGE2" || grep -q '"adr":{' "$PAGE2" \
+  && fail "ADR · слой появился без документов" || ok "ADR · без документов слоя нет"
+
 echo
 [ "$fails" -eq 0 ] && echo "bft-blueprint: все проверки пройдены" || echo "bft-blueprint: провалено проверок — $fails"
 exit "$fails"
