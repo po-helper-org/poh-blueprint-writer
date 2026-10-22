@@ -1,5 +1,5 @@
 #!/bin/bash
-# Ставит навыки /bft-blueprint и /system-requirements в воркспейс: skills/ и commands/ (промпт-команды).
+# Ставит навыки /bft-blueprint, /system-requirements и /adr в воркспейс: skills/ и commands/ (промпт-команды).
 # Рядом обычно стоит poh-bft-writer — он пишет БФТ, который читает этот навык.
 set -e
 GREEN='\033[0;32m'; BLUE='\033[0;34m'; NC='\033[0m'
@@ -38,12 +38,14 @@ case "$choice" in
   *) echo "Неизвестный выбор"; exit 1 ;;
 esac
 
-mkdir -p "$ROOT/$CMD_DIR" "$ROOT/skills/bft-blueprint" "$ROOT/skills/system-requirements"
+mkdir -p "$ROOT/$CMD_DIR" "$ROOT/skills/bft-blueprint" "$ROOT/skills/system-requirements" "$ROOT/skills/adr"
 cp "$SRC/commands/bft-blueprint.md" "$ROOT/$CMD_DIR/bft-blueprint.md"
 cp -R "$SRC/skills/bft-blueprint"/. "$ROOT/skills/bft-blueprint"/
 cp "$SRC/commands/system-requirements.md" "$ROOT/$CMD_DIR/system-requirements.md"
 cp -R "$SRC/skills/system-requirements"/. "$ROOT/skills/system-requirements"/
+cp "$SRC/commands/adr.md" "$ROOT/$CMD_DIR/adr.md"
+cp -R "$SRC/skills/adr"/. "$ROOT/skills/adr"/
 
 [ -n "$TEMP_DIR" ] && rm -rf "$TEMP_DIR"
-echo -e "${GREEN}✔ /bft-blueprint и /system-requirements установлены в $ROOT/${NC}"
+echo -e "${GREEN}✔ /bft-blueprint, /system-requirements и /adr установлены в $ROOT/${NC}"
 [ -d "$ROOT/skills/bft-writer" ] || echo "Совет: БФТ для карты пишет poh-bft-writer — https://github.com/po-helper-org/poh-bft-writer"
