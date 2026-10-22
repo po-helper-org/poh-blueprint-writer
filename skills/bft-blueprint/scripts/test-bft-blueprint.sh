@@ -584,6 +584,63 @@ m = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
 assert "release" not in m
 PY
 
+# навык · release-plan: эталоны примеров — разделы эталона проходят apply/lint схемы Delivery,
+# известное взято из входа, неизвестное — [УТОЧНИТЬ] + «требует ответа» + вопрос; вход без данных — только вопросы
+RLS="$tmp/release-plan-skill" && rm -rf "$RLS"
+cp -r "$BOK" "$RLS"
+python3 "$DIR/scripts/bft-plan.py" export "$RLS" --force >/dev/null 2>&1
+# вырезаем из экспорта старые разделы релиза и вставляем разделы эталона навыка
+python3 - "$RLS/plan/map.md" "$DIR/../release-plan/examples/release-plan-output.md" <<'PY'
+import re, sys
+plan, golden = (open(p, encoding="utf-8").read() for p in sys.argv[1:3])
+rel = re.search(r"## Релиз\n.*?\n(?=^## |\Z)", golden, re.S | re.M).group(0)
+gates = re.search(r"## Ворота релиза\n.*?\n(?=^## |\Z)", golden, re.S | re.M).group(0)
+plan = re.sub(r"\n## Релиз\n.*?(?=^## |\Z)", "\n", plan, flags=re.S | re.M)
+plan = re.sub(r"\n## Ворота релиза\n.*?(?=^## |\Z)", "\n", plan, flags=re.S | re.M)
+plan = plan.rstrip("\n") + "\n\n" + rel.rstrip("\n") + "\n\n" + gates.strip() + "\n"
+open(sys.argv[1], "w", encoding="utf-8").write(plan)
+PY
+out="$(python3 "$DIR/scripts/bft-plan.py" apply "$RLS" 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && ! grep -qE " ERROR " <<<"$out" \
+  && ok "навык · release-plan: эталон валиден схемой (apply без ошибок)" || fail "навык · release-plan: apply эталона ($rc)"
+rdoc="$(ls "$RLS"/backlog/docs/doc-*План-релиза.md 2>/dev/null | head -1)"
+out="$(python3 "$BLINT" "$RLS" --no-source 2>&1)"; rc=$?
+n_rl="$(grep -c "RL00" <<<"$out" || true)"
+[ "$rc" -eq 0 ] && [ -n "$rdoc" ] && [ "$n_rl" -eq 0 ] \
+  && ok "навык · release-plan: линтер схемы — 0 ошибок RL по эталону" || fail "навык · release-plan: линтер RL по эталону ($rc, RL=$n_rl)"
+python3 - "$DIR/../release-plan/examples/release-plan-output.md" <<'PY' && ok "навык · release-plan: честность — известное из входа, неизвестное «требует ответа» с вопросом" || fail "навык · release-plan: контракт честности нарушен"
+import re, sys
+g = open(sys.argv[1], encoding="utf-8").read()
+rows = re.findall(r"^\| R\d+ \|.*\|$", g, re.M)
+assert rows, "нет шагов"
+for r in rows:
+    c = [x.strip() for x in r.strip("|").split("|")]
+    owner, status = c[3], c[6]
+    if "[УТОЧНИТЬ" in owner:
+        assert status == "требует ответа", f"{c[0]}: пометка без статуса"
+    assert status in ("не начат", "в работе", "готово", "требует ответа"), f"{c[0]}: статус {status}"
+qs = re.findall(r"^\d+\. (.*?) \(.*(R\d+|ворота.*?)\)$", g.split("## Вопросы")[1], re.M)
+assert qs, "нет вопросов"
+ids = {m.group(1) for m in (re.match(r"^\| (R\d+) \|", r) for r in rows) if m}
+for q, ref in qs:
+    assert ref == "ворота stage" or ref in ids, f"вопрос ведёт в никуда: {ref}"
+gates = re.search(r"## Ворота релиза.*", g, re.S).group(0)
+assert "[УТОЧНИТЬ" in gates, "ворота без пометки при неизвестном утверждающем"
+for m in re.finditer(r"\[УТОЧНИТЬ[^\]]*\]", g):
+    assert "Вопросы" in g, "нет блока вопросов"
+# каждый «требует ответа» покрыт вопросом с тем же R-ID
+for r in rows:
+    c = [x.strip() for x in r.strip("|").split("|")]
+    if c[6] == "требует ответа":
+        assert f"({c[0]})" in g.split("## Вопросы")[1], f"{c[0]}: статус без вопроса"
+PY
+sparse="$DIR/../release-plan/examples/release-plan-sparse-output.md"
+! grep -q "^## Релиз" "$sparse" && ! grep -q "^## Ворота релиза" "$sparse" && grep -q "^## Вопросы" "$sparse" && grep -cq "^[0-9]\+\. " "$sparse" \
+  && ok "навык · release-plan: вход без данных — только вопросы, плана нет" || fail "навык · release-plan: разреженный вход собрал план"
+# регистрация: команда и скилл ставятся установщиком
+[ -f "$DIR/../release-plan/SKILL.md" ] && [ -f "$DIR/../../commands/release-plan.md" ] && grep -q "release-plan" install.sh \
+  && ok "навык · release-plan: скилл, команда и install.sh на месте" || fail "навык · release-plan: регистрация неполна"
+
 # груминг роем: пакеты обеих волн; слияние берёт годную замену, а ломающую карту и теряющую требование — отклоняет
 GR="$tmp/groom" && cp -r "$BGOLD" "$GR" && rm -rf "$GR/plan"
 python3 "$DIR/scripts/bft-groom.py" audit "$GR" >/dev/null 2>&1 && python3 "$DIR/scripts/bft-groom.py" refine "$GR" >/dev/null 2>&1

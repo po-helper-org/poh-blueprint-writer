@@ -1,5 +1,5 @@
 #!/bin/bash
-# Ставит навык /bft-blueprint в воркспейс: skills/bft-blueprint и commands/bft-blueprint.md.
+# Ставит навыки /bft-blueprint и /release-plan в воркспейс: skills/ и commands/ (промпт-команды).
 # Рядом обычно стоит poh-bft-writer — он пишет БФТ, который читает этот навык.
 set -e
 GREEN='\033[0;32m'; BLUE='\033[0;34m'; NC='\033[0m'
@@ -38,10 +38,12 @@ case "$choice" in
   *) echo "Неизвестный выбор"; exit 1 ;;
 esac
 
-mkdir -p "$ROOT/$CMD_DIR" "$ROOT/skills/bft-blueprint"
+mkdir -p "$ROOT/$CMD_DIR" "$ROOT/skills/bft-blueprint" "$ROOT/skills/release-plan"
 cp "$SRC/commands/bft-blueprint.md" "$ROOT/$CMD_DIR/bft-blueprint.md"
 cp -R "$SRC/skills/bft-blueprint"/. "$ROOT/skills/bft-blueprint"/
+cp "$SRC/commands/release-plan.md" "$ROOT/$CMD_DIR/release-plan.md"
+cp -R "$SRC/skills/release-plan"/. "$ROOT/skills/release-plan"/
 
 [ -n "$TEMP_DIR" ] && rm -rf "$TEMP_DIR"
-echo -e "${GREEN}✔ /bft-blueprint установлен в $ROOT/${NC}"
+echo -e "${GREEN}✔ /bft-blueprint и /release-plan установлены в $ROOT/${NC}"
 [ -d "$ROOT/skills/bft-writer" ] || echo "Совет: БФТ для карты пишет poh-bft-writer — https://github.com/po-helper-org/poh-bft-writer"
