@@ -453,6 +453,78 @@ for f in (p / "backlog/tasks").glob("bp-2*.md"):
 PY
 out="$(python3 "$BLINT" "$SE/one" --no-source 2>&1)"; rc=$?
 { [ "$rc" -eq 0 ] && ! grep -q "SM005" <<<"$out"; } && ok "стыки · одна команда — этап не включается, тишина" || fail "стыки · одна команда даёт SM005"
+# apply с планом со «Стыками» восстанавливает удалённый документ — включение этапа идёт через план
+cp -r "$BGOLD" "$SE/restore" && python3 - "$SE/restore" <<'PY'
+import sys
+from pathlib import Path
+next(Path(sys.argv[1]).glob("backlog/docs/doc-* - Стыки.md")).unlink()
+PY
+python3 "$DIR/scripts/bft-plan.py" apply "$SE/restore" >/dev/null 2>&1 \
+  && python3 "$BLINT" "$SE/restore" --no-source --strict >/dev/null 2>&1 \
+  && grep -q "| S1 | fe-be | teama | vit |" "$SE/restore"/backlog/docs/doc-15*.md \
+  && ok "стыки · apply восстанавливает удалённый документ" || fail "стыки · apply не вернул документ «Стыки»"
+# все типы стыков: FE↔BE, BE↔BE, BE↔Infra, внешний — эталон с be-infra проходит строго
+cp -r "$BGOLD" "$SE/infra" && python3 - "$SE/infra" <<'PY'
+import sys
+from pathlib import Path
+d = next(Path(sys.argv[1]).glob("backlog/docs/doc-* - Стыки.md"))
+d.write_text(d.read_text(encoding="utf-8").replace("| S2 | be-be |", "| S2 | be-infra |", 1), encoding="utf-8")
+PY
+expect_bl "стыки · типы fe-be/be-infra/be-be/внешний" 0 "$SE/infra" "" --no-source --strict
+# нет раздела — не та структура: без «Контрольных точек» документ не проходит
+cp -r "$BGOLD" "$SE/nosec" && python3 - "$SE/nosec" <<'PY'
+import re, sys
+from pathlib import Path
+d = next(Path(sys.argv[1]).glob("backlog/docs/doc-* - Стыки.md"))
+d.write_text(re.sub(r"^## Контрольные точки\n.*?(?=^## )", "", d.read_text(encoding="utf-8"),
+                    count=1, flags=re.S | re.M), encoding="utf-8")
+PY
+expect_bl "стыки · нет раздела «Контрольные точки»" 1 "$SE/nosec" "SM001" --no-source
+# второй документ «Стыки» в проекте — SM002
+cp -r "$BGOLD" "$SE/dup" && python3 - "$SE/dup" <<'PY'
+import sys
+from pathlib import Path
+src = next(Path(sys.argv[1]).glob("backlog/docs/doc-* - Стыки.md"))
+(src.parent / "doc-16 - Стыки.md").write_text(
+    src.read_text(encoding="utf-8").replace("id: doc-15", "id: doc-16", 1), encoding="utf-8")
+PY
+expect_bl "стыки · второй документ «Стыки»" 1 "$SE/dup" "SM002" --no-source
+# открытые вопросы этапа: «Где» = ID стыка — валидно и доходит до страницы; несуществующий стык — BL010
+cp -r "$BGOLD" "$SE/q" && python3 - "$SE/q" <<'PY'
+import sys
+from pathlib import Path
+m = next(Path(sys.argv[1]).glob("backlog/docs/doc-1 - Карта.md"))
+lines = m.read_text(encoding="utf-8").split("\n")
+last = max(i for i, ln in enumerate(lines) if ln.startswith("| В") and " | " in ln)
+lines.insert(last + 1, "| В33 | PO | Кто отвечает за контракт стыка S1 | S1 | вопрос | — |")
+m.write_text("\n".join(lines), encoding="utf-8")
+PY
+expect_bl "стыки · вопрос со «Где» = стык проходит строго" 0 "$SE/q" "" --no-source --strict
+cp -r "$SE/q" "$SE/qbad" && sed -i 's/| S1 | вопрос | — |/| S99 | вопрос | — |/' "$SE/qbad"/backlog/docs/doc-1*.md
+expect_bl "стыки · «Где» = несуществующий стык" 1 "$SE/qbad" "BL010" --no-source
+# структура вывода: панель «Стыки» на странице — участники, обязательства, контракты, точки, риски и вопрос стыка
+python3 "$BBUILD" "$SE/q" --no-source --no-zip --out-dir "$SE/q-out" >/dev/null 2>&1 \
+  && python3 - "$SE/q-out/dineclub-restart-map.html" <<'PY' && ok "стыки · страница: панель со всеми таблицами и вопросом стыка" || fail "стыки · панель «Стыки» на странице не та"
+import json, re, sys
+page = open(sys.argv[1], encoding="utf-8").read()
+d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
+s = d["seams"]
+assert [i["id"] for i in s["items"]] == ["S1", "S2", "S3", "S4"], s["items"]
+assert {i["kind"] for i in s["items"]} <= {"fe-be", "be-be", "be-infra", "внешний"}
+assert len(s["deliveries"]) == 4 and len(s["contracts"]) == 5, (len(s["deliveries"]), len(s["contracts"]))
+assert len(s["checkpoints"]) == 2 and len(s["risks"]) == 2
+assert s["status"] == "Черновик" and s["file"].endswith("Стыки.md")
+q = [x for x in d["questions"] if x["id"] == "В33"]
+assert q and q[0]["where"] == "S1" and q[0]["open"], q
+PY
+# без стыков страница не получает панель: этап не включился — на выходе его нет
+python3 "$BBUILD" "$SE/one" --no-source --no-zip --out-dir "$SE/one-out" >/dev/null 2>&1 \
+  && python3 - "$SE/one-out/demo-story-map.html" <<'PY' && ok "стыки · без стыков панели на странице нет" || fail "стыки · панель без стыков не спрятана"
+import json, re, sys
+page = open(sys.argv[1], encoding="utf-8").read()
+d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
+assert not (d.get("seams") or {}).get("items"), d.get("seams")
+PY
 
 # качество: процесс о работе над проектом (BL034), один кандидат (BL035), «Когда» с заглавной (BL030)
 cp -r "$PL/g" "$PL/qual" && python3 - "$PL/qual/plan/map.md" <<'PY'
