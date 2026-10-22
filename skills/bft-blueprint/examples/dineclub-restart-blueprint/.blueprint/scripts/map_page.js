@@ -5,6 +5,10 @@
   "use strict";
   const D = JSON.parse(document.getElementById("map-data").textContent);
   const { esc, chip } = BPK;
+  /* слой «Архитектура»: данные ADR и системных требований — объявлены до первого
+     использования (mstack ниже читает AR/SR при загрузке, экран — по клику) */
+  const AR = D.adr || null, SR = D.sysreq || null;
+  let arCur = "adr"; /* активная вкладка слоя «Архитектура» — тоже до первого использования */
   /* файлы проекта — от страницы: страница лежит в папке проекта (blueprint.html) или рядом с ней */
   const B = D.base || "", fileURL = p => /^(https?:|data:)/.test(p) ? p : B + p.split("/").map(encodeURIComponent).join("/");
   const body = document.body, grid = document.getElementById("grid");
@@ -247,10 +251,14 @@
       <div class="wl">${seenHTML(c)}</div>${tasks.length ? `<span class="lb">Что делаем</span><div class="wl">${tasks.map(taskHTML).join("")}</div>` : ""}
       ${procs.length ? `<span class="lb">Как это работает</span><div class="wl">${procs.map(procHTML).join("")}</div>` : ""}</section>`;
   }).join("");
-  /* телефон: архитектура — те же вкладки и таблицы, диаграмма текстом mermaid */
-  if (AR || SR) {
+  /* телефон: архитектура — те же вкладки и таблицы, диаграмма текстом mermaid;
+     рендер отложен до конца файла (arInit) — adrOpen/sysOpen и табличные хелперы
+     объявлены ниже по файлу, при загрузке сразу их звать нельзя (TDZ) */
+  function arInit() {
+    if (!(AR || SR)) return;
     const mr = document.getElementById("madr");
-    if (mr) {
+    if (!mr) return;
+    {
       arCur = "adr";
       mr.innerHTML = `<div class="arwrap"><div class="arnav">${AR ? `<button data-artab="adr" class="on">ADR</button>` : ""}${SR ? `<button data-artab="sys">Системные требования</button>` : ""}</div>${AR ? adrOpen() : ""}${SR ? sysOpen() : ""}</div>`;
       mr.querySelectorAll("[data-artab]").forEach(b => b.addEventListener("click", () => {
@@ -370,8 +378,7 @@
      Данные — ключи adr и sysreq #map-data (появляются, когда в проекте есть документы «ADR»
      и «Системные требования»). Слой: варианты и явный выбор TO-BE, узкие места, компромиссы
      по трём осям, ADR-диаграмма AS-IS/TO-BE (mermaid из проекта), контракты с тремя вопросами
-     системной аналитики, AS-IS/изменения и открытые вопросы. */
-  const AR = D.adr || null, SR = D.sysreq || null;
+     системной аналитики, AS-IS/изменения и открытые вопросы. AR/SR объявлены рядом с D вверху файла. */
   const adrGrid = document.getElementById("adr");
   const AR_KIND = { "нагрузка": "нагрузка", "надёжность": "надёжность", "данные": "данные" };
   const th = cols => `<tr>${cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr>`;
@@ -413,7 +420,6 @@
     const box = adrGrid.querySelector(".bpmnw");
     if (box) drawMermaid(box);
   }
-  let arCur = "adr";
   function setArTab(t) { arCur = t; adrBoard(); adrGrid.scrollIntoView({ block: "start" }) }
 
   function openProc(id) {
@@ -691,5 +697,6 @@
   document.querySelectorAll(".hh,.mh:not(.corner)").forEach(x => x.dataset.cmk = "stage:" + x.querySelector("b").textContent);
   cmPaint();
 
+  arInit(); /* телефон: секция «Архитектура» — после объявления всех хелперов */
   window.BPMAP = { setView, cmPanel, qPanel, qSave, cmTarget, cmPrompt, promptNow, execCmd, openProc, openTask, openSeen, openScreen, openNote, zoom, srcFiles };
 })();
