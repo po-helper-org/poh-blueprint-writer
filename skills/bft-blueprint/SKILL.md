@@ -27,6 +27,7 @@ description: "Service Blueprint по БФТ в два согласуемых э�
 | Backstage | что происходит за кадром: каталог, проверка, триггеры | ФТ, «План демонстрации» |
 | ── линия внутреннего взаимодействия ── | | |
 | Support | общие ресурсы и внешние каналы: макеты, каналы, аналитика | НФТ, «Зависимости» |
+| Релиз (слой страницы) | дорожки DEV / STAGE / PROD, шаги и ворота | документ «План релиза» (`<!-- bft-release -->`), есть не в каждом проекте |
 
 Стандарт карты — `resources/backlog_rules.md`, истории — `resources/story_line.md`. Эталон — перезапуск акции DineClub (`examples/golden_story.md`, проект `examples/dineclub-restart-blueprint/`).
 
@@ -99,10 +100,10 @@ description: "Service Blueprint по БФТ в два согласуемых э�
 
 - `resources/story_line.md` — стандарт истории; `resources/story_interview.md` — вопросы к PO на этапе истории.
 - `resources/autopilot.md` — маршрут за один заход: шаги, таблицы решений, рубрика качества, формат плана карты; шаблоны — `templates/story.md`, `templates/map.md`, `templates/screen.md`; образец плана — `examples/dineclub-restart-plan/`.
-- `resources/backlog_rules.md` — стандарт карты в Backlog.md: задачи, карточки, слои, параметры, команды CLI, коды `BL`.
+- `resources/backlog_rules.md` — стандарт карты в Backlog.md: задачи, карточки, слои, параметры, команды CLI, план релиза, коды `BL` и `RL`.
 - `resources/screen_notes.md` — требования к экранам для дизайнера: документы `screens/`, вкладки Product, Design, Functions, коды `SN`.
 - `resources/document_assembly.md` — форма `-story.md`, проекта карты и прежнего `-blueprint.md`.
-- Гейты: `scripts/bft-story-lint.py` (`ST001`–`ST023`), `scripts/bft-backlog-lint.py` (`BL001`–`BL030`, `SN`), сборка — `BL029`, `BL031`, `BL032`; план — `scripts/bft-plan.py` (`PL001`–`PL007`); инвентарь БФТ — `scripts/bft-reqs.py`; груминг роем — `scripts/bft-groom.py`; граф требований — `scripts/bft_graph.py` (`bft-reqs.py --json`), каркас плана — `scripts/bft-skeleton.py`, полнота по графу — `BL036`–`BL038`. Проект: `scripts/bft-backlog-init.py`. Страницы: `scripts/bft-story-render.py`, `scripts/bft-backlog-build.py` (страница, BPMN из процесса, картинки экранов `backlog/assets/screens/` — `scripts/bft_mock.py`, автономный проект и zip; текст страницы — только из файлов проекта). Mermaid для страницы — `vendor/mermaid.min.js` (MIT), в проекте — `.blueprint/vendor/`.
+- Гейты: `scripts/bft-story-lint.py` (`ST001`–`ST023`), `scripts/bft-backlog-lint.py` (`BL001`–`BL038`, `RL001`–`RL005`, `SN`), сборка — `BL029`, `BL031`, `BL032`; план — `scripts/bft-plan.py` (`PL001`–`PL007`); инвентарь БФТ — `scripts/bft-reqs.py`; груминг роем — `scripts/bft-groom.py`; граф требований — `scripts/bft_graph.py` (`bft-reqs.py --json`), каркас плана — `scripts/bft-skeleton.py`, полнота по графу — `BL036`–`BL038`. План релиза по описанию задачи собирает соседний навык `skills/release-plan/` (`/release-plan`). Проект: `scripts/bft-backlog-init.py`. Страницы: `scripts/bft-story-render.py`, `scripts/bft-backlog-build.py` (страница, BPMN из процесса, картинки экранов `backlog/assets/screens/` — `scripts/bft_mock.py`, автономный проект и zip; текст страницы — только из файлов проекта). Mermaid для страницы — `vendor/mermaid.min.js` (MIT), в проекте — `.blueprint/vendor/`.
 - Эталоны: `examples/golden_story.md` и проект `examples/dineclub-restart-blueprint/` со страницей `examples/dineclub-restart-map.html` (DineClub: 2 персонажа, 6 этапов, 19 задач, 20 карточек, 12 экранов). БФТ эталона в репозиторий не входит — самотест сверяет эталон без него, сверку с источником проверяют фикстуры.
 - Backlog.md: встроенный `./backlog.py` (`scripts/backlog_cli.py`) — подмножество CLI 1.54 в том же формате; npm-пакет `backlog.md` (`backlog board`, `backlog browser`) работает с теми же файлами и рисует mermaid карточек.
 - Голос и стоп-слова: `../bft-writer/resources/writing_style.md`; высота БФТ — `../bft-writer/resources/bft_standards.md` §«Различение типов». Это навык [poh-bft-writer](https://github.com/po-helper-org/poh-bft-writer): он пишет БФТ, который читает этот навык, и ставится в тот же `<skills_path>`.
