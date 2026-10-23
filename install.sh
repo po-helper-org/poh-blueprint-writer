@@ -24,6 +24,7 @@ echo "  2) Codex         (.agents/)"
 echo "  3) Cline         (.clinerules/)"
 echo "  4) DevX          (.clinerules/)"
 echo "  5) Universal     (.agents/)"
+echo "  6) pi.dev        (.pi/)"
 choice="${BLUEPRINT_WRITER_AGENT:-${BFT_WRITER_AGENT:-}}"
 if [ -z "$choice" ] && [ -r /dev/tty ]; then
   read -rp "Выбор [1]: " choice < /dev/tty 2>/dev/null || choice=""
@@ -35,12 +36,27 @@ case "$choice" in
   3) ROOT=".clinerules"; CMD_DIR="workflows" ;;
   4) ROOT=".clinerules"; CMD_DIR="workflows" ;;
   5) ROOT=".agents";     CMD_DIR="commands" ;;
+  6) ROOT=".pi";         CMD_DIR="prompts" ;;
   *) echo "Неизвестный выбор"; exit 1 ;;
 esac
 
 mkdir -p "$ROOT/$CMD_DIR" "$ROOT/skills/bft-blueprint"
 cp "$SRC/commands/bft-blueprint.md" "$ROOT/$CMD_DIR/bft-blueprint.md"
 cp -R "$SRC/skills/bft-blueprint"/. "$ROOT/skills/bft-blueprint"/
+
+# Харнессы без слэш-команд читают AGENTS.md: без записи там агент не знает про маршрут и рисует HTML сам
+case "$choice" in 2|5|6)
+  if ! grep -q "bft-blueprint-rule" AGENTS.md 2>/dev/null; then
+    cat >> AGENTS.md <<RULE
+
+<!-- bft-blueprint-rule -->
+## Service Blueprint по БФТ
+Запрос «blueprint», «карта инициативы», «/bft-blueprint»: прочитай $ROOT/skills/bft-blueprint/SKILL.md и иди по $ROOT/skills/bft-blueprint/resources/autopilot.md.
+HTML руками не пиши — страницы дают только скрипты навыка. Задачи — проект Backlog.md (\`./backlog.py\`). Не отдавай результат, пока \`python3 $ROOT/skills/bft-blueprint/scripts/bft-blueprint-verify.py <docs_path>/<epic>\` не вернул 0.
+RULE
+    echo -e "${GREEN}✔ правило записано в AGENTS.md${NC}"
+  fi ;;
+esac
 
 [ -n "$TEMP_DIR" ] && rm -rf "$TEMP_DIR"
 echo -e "${GREEN}✔ /bft-blueprint установлен в $ROOT/${NC}"

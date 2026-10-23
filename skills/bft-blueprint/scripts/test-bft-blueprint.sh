@@ -488,6 +488,16 @@ R="$GR/groom/report.md"
   && grep -q "BP-2 из r-BP-2.md: теряет НФТ-2, ФТ-4" "$R" && grep -q "BP-2.1 из r-BP-2.1.md: .*BL" "$R" \
   && ok "груминг · audit → refine → merge: годная замена и вопрос — в план, ломающие — в отчёт" || fail "груминг · audit/refine/merge"
 
+# приёмка комплекта: страницы со штампом скрипта, проект с задачами, zip; рукописный HTML не принимается
+VD="$tmp/verify/dineclub-restart" && mkdir -p "$VD" && cp "$SGOLD" "$VD/dineclub-restart-story.md" && cp -r "$BGOLD" "$VD/dineclub-restart-blueprint"
+VF="$DIR/scripts/bft-blueprint-verify.py"
+python3 "$VF" "$VD" >/dev/null 2>&1; rc1=$?
+python3 "$SRENDER" "$VD/dineclub-restart-story.md" >/dev/null 2>&1 && python3 "$BBUILD" "$VD/dineclub-restart-blueprint" --no-source >/dev/null 2>&1
+python3 "$VF" "$VD" >/dev/null 2>&1; rc2=$?
+echo "<html>рукописная</html>" > "$VD/dineclub-restart-map.html"; python3 "$VF" "$VD" 2>&1 | grep -q "собрана не скриптом"; rc3=$?
+[ "$rc1" -eq 1 ] && [ "$rc2" -eq 0 ] && [ "$rc3" -eq 0 ] \
+  && ok "приёмка · без страниц и zip — отказ; собранное скриптами — принято; рукописная карта — отказ" || fail "приёмка · verify ($rc1/$rc2/$rc3)"
+
 # встроенный CLI и настоящий Backlog.md читают файлы друг друга — если npm-пакет установлен
 if command -v backlog >/dev/null 2>&1; then
   ( cd "$tmp/unz/dineclub-restart-blueprint" && [ "$(backlog task list --plain 2>/dev/null | grep -c 'BP-')" -eq 40 ] \

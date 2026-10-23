@@ -14,6 +14,20 @@ description: "Service Blueprint по БФТ в два согласуемых э�
 
 **Не источник требований.** Всё на карте уже есть в БФТ или в ответах PO. Нашёл дыру — `[УТОЧНИТЬ у {кого}]` и строка в «Вопросах»; требование не дописывается и не выдумывается.
 
+## Жёсткие правила (для любого харнесса, в том числе pi.dev)
+
+Результат навыка — **не любой HTML про инициативу**, а комплект, собранный скриптами навыка. Харнесс без слэш-команд тоже идёт этим маршрутом: прочитай этот файл целиком, затем `resources/autopilot.md`.
+
+1. **HTML руками не пишется.** Ни `service-blueprint.html`, ни «диаграмма» в `<svg>`/`<div>`, ни свой шаблон. Страницы дают только `bft-story-render.py` и `bft-backlog-build.py` (в страницах стоит `<meta name="generator" content="bft-blueprint …">`). Внешний вид — эталон `examples/dineclub-restart-map.html`; поменять его можно правкой проекта, а не страницы.
+2. **Карта — это проект Backlog.md.** Задачи, карточки «Как это работает» и документы создаются `./backlog.py` (или планом карты `./blueprint.py apply`). Файла `backlog.md` и списка задач в HTML недостаточно: в проекте должны лежать `backlog/tasks/*.md` и `backlog/docs/*.md`.
+3. **Имена фиксированы.** `<epic>-story.md`, `<epic>-story.html`, папка `<epic>-blueprint/`, `<epic>-map.html`, `<epic>-blueprint.zip`. Другие имена и лишние `.html` — признак обхода маршрута.
+4. **Не останавливайся, пока нет приёмки.** Последний шаг любого запуска:
+   ```bash
+   python3 <skills_path>/bft-blueprint/scripts/bft-blueprint-verify.py <docs_path>/<epic>
+   ```
+   Не ноль — исправь по строке «исправь:» и повтори. Пока не принято, пользователю не отдают ни страницу, ни «готово». С `--map` по чужой истории добавь `--no-story`.
+5. Нет доступа к скриптам или python3 — остановись и скажи об этом; не заменяй сборку рукописным HTML.
+
 ## Как читается карта
 
 | Слой | Что показывает | Откуда |
@@ -85,7 +99,8 @@ description: "Service Blueprint по БФТ в два согласуемых э�
       python3 <skills_path>/bft-blueprint/scripts/bft-backlog-build.py <docs_path>/<epic>/<epic>-blueprint --source <docs_path>/<epic>/<epic>.md
       ```
       Ненулевой код — исправь через `./backlog.py task edit` и прогони снова: проект с ошибками не собирается. Предупреждения исправь или назови в итоге. *Готово, когда* линтер даёт 0 и рядом лежат `<epic>-map.html` и `<epic>-blueprint.zip`.
-4. **STOP** — пути к `<epic>-map.html` и `<epic>-blueprint.zip`; по одной строке на команду: сколько задач и какие этапы; блокеры; открытые вопросы списком «кому — что». Жди PO.
+4. **приёмка** — `bft-blueprint-verify.py <docs_path>/<epic>` даёт 0: страницы со штампом скрипта, задачи и документы проекта, zip.
+5. **STOP** — пути к `<epic>-map.html` и `<epic>-blueprint.zip`; по одной строке на команду: сколько задач и какие этапы; блокеры; открытые вопросы списком «кому — что». Жди PO.
 
 ## Правки по комментариям PO
 
@@ -102,7 +117,7 @@ description: "Service Blueprint по БФТ в два согласуемых э�
 - `resources/backlog_rules.md` — стандарт карты в Backlog.md: задачи, карточки, слои, параметры, команды CLI, коды `BL`.
 - `resources/screen_notes.md` — требования к экранам для дизайнера: документы `screens/`, вкладки Product, Design, Functions, коды `SN`.
 - `resources/document_assembly.md` — форма `-story.md`, проекта карты и прежнего `-blueprint.md`.
-- Гейты: `scripts/bft-story-lint.py` (`ST001`–`ST023`), `scripts/bft-backlog-lint.py` (`BL001`–`BL030`, `SN`), сборка — `BL029`, `BL031`, `BL032`; план — `scripts/bft-plan.py` (`PL001`–`PL007`); инвентарь БФТ — `scripts/bft-reqs.py`; груминг роем — `scripts/bft-groom.py`; граф требований — `scripts/bft_graph.py` (`bft-reqs.py --json`), каркас плана — `scripts/bft-skeleton.py`, полнота по графу — `BL036`–`BL038`. Проект: `scripts/bft-backlog-init.py`. Страницы: `scripts/bft-story-render.py`, `scripts/bft-backlog-build.py` (страница, BPMN из процесса, картинки экранов `backlog/assets/screens/` — `scripts/bft_mock.py`, автономный проект и zip; текст страницы — только из файлов проекта). Mermaid для страницы — `vendor/mermaid.min.js` (MIT), в проекте — `.blueprint/vendor/`.
+- Приёмка комплекта — `scripts/bft-blueprint-verify.py`. Гейты: `scripts/bft-story-lint.py` (`ST001`–`ST023`), `scripts/bft-backlog-lint.py` (`BL001`–`BL030`, `SN`), сборка — `BL029`, `BL031`, `BL032`; план — `scripts/bft-plan.py` (`PL001`–`PL007`); инвентарь БФТ — `scripts/bft-reqs.py`; груминг роем — `scripts/bft-groom.py`; граф требований — `scripts/bft_graph.py` (`bft-reqs.py --json`), каркас плана — `scripts/bft-skeleton.py`, полнота по графу — `BL036`–`BL038`. Проект: `scripts/bft-backlog-init.py`. Страницы: `scripts/bft-story-render.py`, `scripts/bft-backlog-build.py` (страница, BPMN из процесса, картинки экранов `backlog/assets/screens/` — `scripts/bft_mock.py`, автономный проект и zip; текст страницы — только из файлов проекта). Mermaid для страницы — `vendor/mermaid.min.js` (MIT), в проекте — `.blueprint/vendor/`.
 - Эталоны: `examples/golden_story.md` и проект `examples/dineclub-restart-blueprint/` со страницей `examples/dineclub-restart-map.html` (DineClub: 2 персонажа, 6 этапов, 19 задач, 20 карточек, 12 экранов). БФТ эталона в репозиторий не входит — самотест сверяет эталон без него, сверку с источником проверяют фикстуры.
 - Backlog.md: встроенный `./backlog.py` (`scripts/backlog_cli.py`) — подмножество CLI 1.54 в том же формате; npm-пакет `backlog.md` (`backlog board`, `backlog browser`) работает с теми же файлами и рисует mermaid карточек.
 - Голос и стоп-слова: `../bft-writer/resources/writing_style.md`; высота БФТ — `../bft-writer/resources/bft_standards.md` §«Различение типов». Это навык [poh-bft-writer](https://github.com/po-helper-org/poh-bft-writer): он пишет БФТ, который читает этот навык, и ставится в тот же `<skills_path>`.
