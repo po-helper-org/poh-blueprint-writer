@@ -18,6 +18,9 @@ elif cmd == "skeleton":
     run = ["bft-skeleton.py", here]
 elif cmd == "groom":
     run = ["bft-groom.py", rest.pop(0) if rest else "help", here]
+elif cmd == "prototype":
+    sub = rest.pop(0) if rest and rest[0] in ("skeleton", "lint", "build", "review") else "lint"
+    run = ["bft-proto.py", sub, here]
 elif cmd == "contracts":
     run = ["bft-contracts.py", "skeleton", here] if rest[:1] == ["skeleton"] else ["bft-contracts.py", "lint", here, "--hints"]
     rest = rest[1:] if rest[:1] == ["skeleton"] else rest
@@ -31,6 +34,8 @@ else:
     print("./blueprint.py lint   — проверить карту (коды BL, SN; правила — .blueprint/rules/backlog_rules.md)")
     print("./blueprint.py contracts skeleton — каркас contracts/C-N.md на каждый стык карты без контракта")
     print("./blueprint.py contracts — проверить контракты стыков contracts/C-N.md (коды CT; правила — .blueprint/rules/contracts.md)")
+    print("./blueprint.py prototype skeleton|lint|build — прототип по контрактам: prototype/spec.md → web, MockAPI, docker-compose (.blueprint/rules/prototype.md)")
+    print("./blueprint.py prototype review review.json — замечания прототипа → «Вопросы» плана карты")
     print("./blueprint.py build  — схемы BPMN из «Процесса», страница <epic>-map.html и архив <epic>-blueprint.zip")
     print("./blueprint.py check  — проверка без записи: схемы и скрипты проекта актуальны")
     print("доп. ключи: --source БФТ.md — сверка с БФТ, --strict — предупреждения тоже ошибки")

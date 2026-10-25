@@ -47,7 +47,25 @@ HTML без `npm` и CDN.
 команд без контракта, поле без требования, вызов без ответа, вход цепочки ниоткуда, SQL в «Данных».
 Стандарт — [`resources/contracts.md`](skills/bft-blueprint/resources/contracts.md), эталон — семь
 контрактов DineClub в [`contracts/`](skills/bft-blueprint/examples/dineclub-restart-blueprint/contracts).
-Это первый шаг к команде «Прототип» — [`docs/prototype-design.md`](docs/prototype-design.md).
+## Прототип по контрактам
+
+`/bft-blueprint <epic> --prototype` — из карты и контрактов собирается показ для заказчика:
+история через экраны шаг за шагом, где на каждом стыке видно Sequence, метод, поля запроса и ответа
+с источником в БФТ, ошибки, цепочку за кадром и какие данные нужны из хранилища.
+
+```bash
+./blueprint.py prototype skeleton   # план показа prototype/spec.md: шаги, вызовы, экраны успеха и отказа
+./blueprint.py prototype lint       # коды PT
+./blueprint.py prototype build      # prototype/: web, api (FastAPI одним файлом), docker-compose.yml
+cd prototype && docker compose up   # http://localhost:8080, MockAPI — http://localhost:8000/docs
+```
+
+Экраны берутся из «Истории» как есть, данные — из контрактов, раскладку шагов и вызовов делает каркас:
+модель вписывает только значения для демо. Без Docker — `prototype/web/index.html`, MockAPI отвечает в
+браузере. Замечания — клик по точке экрана, выгрузка `review.json`, `./blueprint.py prototype review` —
+вопросы на карте. Правила — [`resources/prototype.md`](skills/bft-blueprint/resources/prototype.md),
+эталон — [`prototype/`](skills/bft-blueprint/examples/dineclub-restart-blueprint/prototype) DineClub,
+замысел — [`docs/prototype-design.md`](docs/prototype-design.md).
 
 Пошагово, от БФТ до карты, — [`docs/step-by-step.md`](docs/step-by-step.md).
 

@@ -11,7 +11,9 @@
       "Read(.blueprint/**)",
       "Read(backlog/**)",
       "Bash(python3 .blueprint/scripts/bft-contracts.py:*)",
-      "Read(contracts/**)"
+      "Read(contracts/**)",
+      "Bash(python3 .blueprint/scripts/bft-proto.py:*)",
+      "Read(prototype/**)"
     ]
   }
 }

@@ -1,6 +1,6 @@
 # Команда «Прототип»: Design First демо из Blueprint
 
-Статус: проект. Расширение `/bft-blueprint`: к истории и карте добавляются контракты и интерактивный прототип.
+Статус: реализовано (см. «План реализации»). Расширение `/bft-blueprint`: к истории и карте добавляются контракты и интерактивный прототип.
 
 ## Идея в одной строке
 
@@ -126,15 +126,20 @@ prototype/
 4. Любая ошибка ловится `lint` с кодом и подсказкой; агент чинит до нуля ошибок.
 5. Сборка прототипа вообще без LLM — одинаковый результат на любой модели.
 
-## План реализации (по PR)
+## План реализации
 
-1. ✅ `templates/contract.md`, `resources/contracts.md`, `./blueprint.py contracts` (CT001–CT022), самотест и семь контрактов DineClub.
-2. `skeleton` для контрактов и spec из карточек карты; `groom fill` для них.
-3. `catalog.md`, `spec` lint, `runtime.js` + `components.css`, генерация статики.
-4. Генерация `api/main.py` + `docker-compose.yml`; smoke-тест «compose up → все шаги отдают 200».
-5. Панель контракта: Sequence, поля, chain, data.
-6. Режим замечаний и `review import`.
-7. `--prototype` в SKILL.md, README, `docs/step-by-step.md`.
+1. ✅ Контракты: `templates/contract.md`, `resources/contracts.md`, `./blueprint.py contracts` (CT001–CT022), эталон DineClub.
+2. ✅ Каркас контрактов из стыков карты: `./blueprint.py contracts skeleton`, `not-seams.md`.
+3. ✅ Прототип: план показа `prototype/spec.md` (Markdown, не YAML — тот же довод, что у контрактов), каркас
+   `./blueprint.py prototype skeleton` раскладывает шаги и вызовы сам, проверка PT001–PT021.
+   Каталог компонентов — словарь экранов «Истории»: новых блоков модель не выбирает.
+4. ✅ Сборка `./blueprint.py prototype build`: `web/` (пошаговый показ без сборщиков и сети), `api/main.py`
+   (FastAPI одним файлом, маршрут на каждый `op`, ошибки по `X-Mock-Error`, 422 без обязательных полей),
+   `docker-compose.yml`; без Docker MockAPI отвечает в браузере. Проверено: файл, uvicorn, `docker compose up`.
+5. ✅ Панель «Как это работает»: Sequence (mermaid), метод, поля с источником в БФТ, сценарии ошибок,
+   цепочка, данные хранилища, живой запрос и ответ.
+6. ✅ Замечания: пин по клику, `review.json`/`review.md`, `./blueprint.py prototype review` → «Вопросы» карты.
+7. ✅ `--prototype` в SKILL.md, README, `resources/prototype.md`, самотест.
 
 ## Открытые вопросы к PO
 

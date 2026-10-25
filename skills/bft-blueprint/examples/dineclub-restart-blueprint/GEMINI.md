@@ -13,8 +13,9 @@
 | `backlog/tasks/` | задачи: «Что делаем» и их подзадачи «Как это работает» |
 | `backlog/docs/` | документы: «Карта» (команды, вопросы), «История» (этапы, шаги, экраны), `screens/` — требования к экранам |
 | `contracts/` | контракты стыков `C-N.md`: кто кого вызывает, поля с источником в БФТ, пример ответа, ошибки, Sequence, цепочка, данные. Шаблон — `.blueprint/templates/contract.md`, проверка — `./blueprint.py contracts` |
+| `prototype/` | прототип для заказчика: `spec.md` — план показа (правится), остальное собирает `./blueprint.py prototype build`: `web/` — пошаговый показ, `api/main.py` — MockAPI по контрактам, `docker-compose.yml`. Правила — `.blueprint/rules/prototype.md` |
 | `backlog/assets/screens/` | картинки экранов: `<ID>.svg` пишет `./blueprint.py build` из таблицы «Экраны» «Истории»; свой макет — `<ID>.png` рядом |
-| `.blueprint/rules/` | правила: `backlog_rules.md` — карта, `screen_notes.md` — экраны, `story_line.md` — история, `contracts.md` — контракты |
+| `.blueprint/rules/` | правила: `backlog_rules.md` — карта, `screen_notes.md` — экраны, `story_line.md` — история, `contracts.md` — контракты, `prototype.md` — прототип |
 | `.blueprint/vendor/` | `mermaid.min.js` — страница рисует схемы BPMN без сети |
 | `blueprint.html`, `dineclub-restart-map.html` | страница карты: текст — только из этих файлов, картинки и mermaid — из папки. Правой кнопкой — замечание, «?» — ответить на вопрос, «!» — файлы, откуда собрано; промпт агенту — кнопкой «Скопировать промпт» |
 

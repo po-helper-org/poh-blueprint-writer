@@ -566,6 +566,32 @@ out="$(python3 "$CTL" lint "$CW" 2>&1)"
 ! grep -q "CT020 BP-1.1 → BP-2.1" <<<"$out" && grep -q "ERROR CT013 BP-4.1 → BP-7.1" <<<"$out" \
   && ok "контракты · not-seams.md: связь с причиной — не стык, строка не про стык — CT013" || fail "контракты · not-seams.md"
 
+# прототип по контрактам: каркас раскладывает вызовы, коды PT, сборка байт в байт, замечания → вопросы карты
+PTL="$DIR/scripts/bft-proto.py"
+python3 "$PTL" lint "$BGOLD" --strict >/dev/null 2>&1 && ok "прототип · эталон DineClub: план показа без ошибок и предупреждений" || fail "прототип · эталон не проходит --strict"
+PB="$tmp/proto" && cp -r "$BGOLD" "$PB" && python3 "$PTL" build "$PB" >/dev/null 2>&1 \
+  && diff -r "$PB/prototype" "$BGOLD/prototype" >/dev/null && [ -z "$(python3 "$PTL" build "$PB" 2>&1 | grep -v 'обновлено файлов 0' | grep 'обновлено')" ] \
+  && python3 -m py_compile "$PB/prototype/api/main.py" && node --check "$PB/prototype/web/runtime.js" 2>/dev/null \
+  && grep -q '"C-3"' "$PB/prototype/api/spec.json" && grep -q "image: python:3.12-slim" "$PB/prototype/docker-compose.yml" \
+  && ok "прототип · сборка: web, api, docker-compose — совпадает с эталоном, повтор ничего не меняет, main.py и runtime.js компилируются" || fail "прототип · сборка"
+pblk() { awk -v h="^## $1 " '$0 ~ h {f=1; print; next} f && /^## / {exit} f' "$PB/prototype/spec.md"; }
+python3 "$PTL" skeleton "$PB" --force >/dev/null 2>&1
+pblk Ш13 | grep -q "^вызов: C-3$" && pblk Ш13 | grep -q "^экраны: F2$" && pblk Ш13 | grep -q "^успех: F3$" && pblk Ш13 | grep -q "^отказ: F4 = TICKET_NOT_FOUND$" \
+  && pblk Ш4 | grep -q "^вызов: C-1, C-2$" && pblk Ш5 | grep -q "^экраны: —$" && pblk Ш14 | grep -q "^вызов: —$" \
+  && [ -z "$(grep '{{' "$PB/prototype/spec.md" | grep -v '^ввод: ')" ] \
+  && ok "прототип · каркас: сканер запускает C-3 (успех F3, отказ F4), GET — на экранах данных, триггер — за кадром; модели — только значения" || fail "прототип · каркас"
+cp "$BGOLD/prototype/spec.md" "$PB/prototype/spec.md"
+sed -i '0,/^приложение: staff$/s//приложение: officiant/; s/^экраны: D1, D2$/экраны: D1, X9/; s/^вызов: C-4$/вызов: C-4, C-99/; s/^ввод: barcode = 4600123456789; restaurant_id = r-12; photo/ввод: barcode = 4600123456789; restaurant_id = r-12; color = red; photo/; s/^показать: receipt_id, compensation$/показать: receipt_id, compensation, price/; s/^отказ: — = RECEIPT_EXISTS$/отказ: — = NOPE/; s/^вызов: C-6$/вызов: —/' "$PB/prototype/spec.md"
+printf '\n## Ш99 · Лишний шаг\nприложение: client\nприложение: client\nэкраны: —\nвызов: {{C-1 или —}}\n' >> "$PB/prototype/spec.md"
+out="$(python3 "$PTL" lint "$PB" 2>&1)"; miss=""
+for c in PT001 PT002 PT003 PT004 PT005 PT006 PT007 PT008 PT009 PT020; do grep -q " $c " <<<"$out" || miss="$miss $c"; done
+[ -z "$miss" ] && ok "прототип · сломанный план показа: PT001–PT009, PT020" || fail "прототип · нет в выводе:$miss"
+PR="$tmp/proto-review" && cp -r "$BGOLD" "$PR" && python3 "$DIR/scripts/bft-plan.py" export "$PR" >/dev/null 2>&1
+printf '{"pins": [{"step": "Ш13", "screen": "F2", "block": "Сканировать", "text": "Кнопка мелкая для официанта", "x": 50, "y": 80}]}' > "$tmp/review.json"
+python3 "$PTL" review "$PR" "$tmp/review.json" >/dev/null 2>&1 \
+  && grep -q "^| В[0-9]* | PO | Кнопка мелкая для официанта (прототип Ш13, экран F2, «Сканировать») | BP-15.1 | вопрос | — |" "$PR/plan/map.md" \
+  && ok "прототип · замечание по точке экрана → вопрос карты на карточке экрана" || fail "прототип · review"
+
 # встроенный CLI и настоящий Backlog.md читают файлы друг друга — если npm-пакет установлен
 if command -v backlog >/dev/null 2>&1; then
   ( cd "$tmp/unz/dineclub-restart-blueprint" && [ "$(backlog task list --plain 2>/dev/null | grep -c 'BP-')" -eq 40 ] \
