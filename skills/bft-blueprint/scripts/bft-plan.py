@@ -38,7 +38,18 @@ def review(root: Path, source: str | None = None) -> int:
         print("карта: задач нет, плана plan/map.md нет — начни с каркаса")
         print("дальше: ./blueprint.py skeleton, затем ./blueprint.py groom fill (автопилот, шаг 4)")
         return 0
-    pl = bp.parse(root) if (root / bp.PLAN_DIR / "map.md").is_file() else None
+    pf = root / bp.PLAN_DIR / "map.md"
+    tasks_dir = (pr.bdir or root / "backlog") / "tasks"
+    newest = max([f.stat().st_mtime for f in tasks_dir.glob("*.md")] + [0]) if tasks_dir.is_dir() else 0
+    if pf.is_file() and pf.stat().st_mtime > newest + 1 and "{{" not in pf.read_text(encoding="utf-8"):
+        # план новее бэклога: проверка бэклога сказала бы про старую карту
+        print(f"карта: план {bp.PLAN_DIR}/map.md новее бэклога — ещё не применён")
+        print("дальше: ./blueprint.py apply — он применит план и проверит карту по строкам плана")
+        return 0
+    if pf.is_file() and "{{" in pf.read_text(encoding="utf-8"):
+        print(f"карта: в {bp.PLAN_DIR}/map.md остались места {{{{…}}}} — ./blueprint.py groom fill или допиши сам, затем ./blueprint.py apply")
+        return 0
+    pl = bp.parse(root) if pf.is_file() else None
     where: dict[str, str] = {}
     if pl:
         for b in pl.blocks:

@@ -471,9 +471,9 @@ python3 "$DIR/scripts/bft-groom.py" merge "$SK/p" fill >/dev/null 2>&1
   && [ "$(grep -c 'Кто подтверждает договор партнёра' "$M")" -eq 1 ] \
   && grep -q "^| В[0-9]* | PO | Уточнить: Партнёры-банки передают продажи раз в сутки пакетом.*| BP-6.1 |" "$M" && grep -q "Вопросы-заготовки без ответа" "$SK/p/groom/report.md" \
   && ok "каркас · groom fill: пакет на блок; merge fill берёт заполненный блок, потерю P3 отклоняет, повтор вопроса — одной строкой, вопрос без ответа сохраняет" || fail "каркас · groom fill/merge fill"
-cp -r "$SK/f" "$SK/cand" && sed -i '0,/^команда: prodazh$/s//команда: кандидаты: prodazh, kataloga/' "$SK/cand/plan/map.md"
+cp -r "$SK/f" "$SK/cand" && sed -i '0,/^команда: sales$/s//команда: кандидаты: sales, cat/' "$SK/cand/plan/map.md"
 out="$(python3 "$DIR/scripts/bft-plan.py" apply "$SK/cand" 2>&1)"
-! grep -qE "PL003|BL006" <<<"$out" && grep -rq "кандидат:kataloga" "$SK/cand/backlog/tasks" \
+! grep -qE "PL003|BL006" <<<"$out" && grep -rq "кандидат:cat" "$SK/cand/backlog/tasks" \
   && ok "план · «команда: кандидаты: a, b» читается как кандидаты" || fail "план · «команда: кандидаты:»"
 
 # груминг роем: пакеты обеих волн; слияние берёт годную замену, а ломающую карту и теряющую требование — отклоняет
@@ -523,7 +523,7 @@ FM="$LY/faq/direct-faq-p/plan/map.md"; CM="$LY/car/car-service-booking-p/plan/ma
   && ! grep -B3 "^слой: employee" "$FM" | grep -q employee \
   && ok "каркас · экраны разных этапов — в разных задачах; мастер-приёмщик при клиенте — employee, экран клиента — technology" || fail "каркас · раскладка по этапам и employee"
 tm() { awk -v h="^## $1 " '$0 ~ h {f=1; next} f && /^команда: / {print $2; exit} f && /^## / {exit}' "$CM"; }
-[ "$(tm BP-2)" = integraciy ] && [ "$(tm BP-3)" = integraciy ] && [ "$(tm BP-10)" = platezhnaya ] && [ "$(tm BP-13)" = loyalnosti ] && [ "$(tm BP-1)" = loyalnosti ] \
+[ "$(tm BP-2)" = int ] && [ "$(tm BP-3)" = int ] && [ "$(tm BP-10)" = pay ] && [ "$(tm BP-13)" = loy ] && [ "$(tm BP-1)" = loy ] \
   && [ "$(grep -c '^кандидаты:' "$SK/p/plan/map.md")" -eq 0 ] \
   && ok "каркас · команда по «Зависимостям»: редкое слово весит больше общего, окончания не мешают" || fail "каркас · подбор команды"
 

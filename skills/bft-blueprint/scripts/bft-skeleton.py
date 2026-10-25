@@ -64,9 +64,19 @@ def roots(text: str) -> set[str]:
     return out
 
 
+# короткие ID частых команд: агенты переименовывали «mobilnogo» и «integraciy» руками
+SHORT = (("приложен", "app"), ("мобильн", "app"), ("платеж", "pay"), ("платёж", "pay"), ("интеграц", "int"), ("лояльн", "loy"),
+         ("каталог", "cat"), ("продаж", "sales"), ("финанс", "fin"), ("бухгалт", "acc"), ("витрин", "vit"), ("сайт", "site"),
+         ("дизайн", "des"), ("маркетинг", "mkt"), ("аналитик", "data"), ("разработ", "dev"), ("поддержк", "sup"), ("логистик", "log"),
+         ("склад", "wh"), ("доставк", "dlv"), ("crm", "crm"), ("ext", "ext"))
+ADJ = re.compile(r"(?:ого|его|ой|ей|ая|яя|ый|ий|ое|ее|ые|ие|ых|их)$")
+
+
 def team_id(name: str, taken: set[str]) -> str:
-    base = [w for w in re.findall(r"[А-Яа-яЁёA-Za-z]+", name.lower()) if w not in STOP] or ["team"]
-    tid = re.sub(r"[^a-z0-9]", "", base[0].translate(TRANSLIT))[:12] or "team"
+    base = [w for w in re.findall(r"[А-Яа-яЁёA-Za-z]+", re.sub(r"\(.*?\)", "", name).lower()) if w not in STOP] or ["team"]
+    short = next((sid for w in base for key, sid in SHORT if w.startswith(key)), None)
+    noun = next((w for w in base if not ADJ.search(w)), base[0])
+    tid = short or re.sub(r"[^a-z0-9]", "", noun.translate(TRANSLIT))[:8] or "team"
     k, out = 2, tid
     while out in taken:
         out, k = f"{tid}{k}", k + 1

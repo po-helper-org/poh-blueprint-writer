@@ -299,7 +299,7 @@ def check(pr: bl.Project, contracts: list[Contract], reqs: dict | None = None) -
                     pr.err(c.rel, line, "CT012", f"{c.id}: «{name}» в примере — пояснение, а не значение: «{v[:50]}»; пример — то, что вернёт система: \"accepted\", 10, \"2026-03-01\"")
         for r in c.rows("Ошибки"):
             if not re.fullmatch(r"[45]\d\d", r.cells.get("Статус", "")) or not re.fullmatch(r"[A-Z][A-Z0-9_]+", r.cells.get("Код", "").strip("` ")):
-                pr.err(c.rel, r.line, "CT004", f"{c.id}: ошибка — статус 4xx/5xx и код ЗАГЛАВНЫМИ (TICKET_NOT_FOUND)")
+                pr.err(c.rel, r.line, "CT004", f"{c.id}: ошибка — статус 4xx/5xx и код латиницей ЗАГЛАВНЫМИ (TICKET_NOT_FOUND)")
 
         # Sequence: кто с кем говорит, каждый вызов получает ответ
         seq = c.sequence
@@ -485,7 +485,7 @@ cards: {', '.join(cards)}
 
 | Статус | Код | Когда |
 | --- | --- | --- |
-| {{{{4xx}}}} | {{{{КОД_ЗАГЛАВНЫМИ}}}} | {{{{когда — по развилке «нет →» в «Процессе» {a} или {b}; нет развилки — [УТОЧНИТЬ у …]}}}} |
+| {{{{4xx}}}} | {{{{КОД_ЛАТИНИЦЕЙ_ЗАГЛАВНЫМИ}}}} | {{{{когда — по развилке «нет →» в «Процессе» {a} или {b}; нет развилки — [УТОЧНИТЬ у …]}}}} |
 
 ## Sequence
 
