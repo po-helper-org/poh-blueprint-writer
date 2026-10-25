@@ -1,3 +1,5 @@
+
+
 #!/usr/bin/env python3
 """bft-backlog-lint — проверка Service Blueprint в проекте Backlog.md (гейт карты инициативы).
 
@@ -30,6 +32,10 @@
   SM002  второй документ «Стыки»
   SM003  стыки: команды-участники из «Команд», обязательства и контракты привязаны к стыкам
   SM005  стыки: предупреждения — стык без обязательств, условие включения этапа (≥2 команд, а документа нет)
+  RL001  документ «План релиза» (<!-- bft-release -->): паспорт, дорожки DEV/STAGE/PROD, шаги, ворота
+  RL002  второй документ «План релиза»
+  RL003  план релиза: зависимости шагов, ворота между стендами
+  RL005  план релиза: предупреждения — шаг без зависимостей, дорожка без ворот
   SN0xx  требования к экранам — `bft_screens.py`, `resources/screen_notes.md`
 
   ПРЕДУПРЕЖДЕНИЯ (код выхода 1 только с --strict)
@@ -61,32 +67,50 @@
 Формат вывода: <путь>:<строка>: <УРОВЕНЬ> <КОД> <сообщение>
 Коды выхода: 0 — ошибок нет; 1 — ошибки (или предупреждения с --strict); 2 — проект не прочитан.
 """
+
 from __future__ import annotations
 
 import argparse
+
 import importlib.util
+
 import re
+
 import sys
+
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+
 sys.path.insert(0, str(HERE))
+
+sys.path.insert(0, str(HERE))
+
 import bft_blueprint as bb  # noqa: E402
+
 import bft_backlog as bl  # noqa: E402
+
 import bft_graph as bg  # noqa: E402
 
 _spec = importlib.util.spec_from_file_location("bp_lint", HERE / "bft-blueprint-lint.py")
-_bp_lint = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_bp_lint)
-API_PATTERNS = _bp_lint.API_PATTERNS
-NUM_RE = re.compile(r"\d[\d \u00a0.,:%]*\d|\d")   # число в одной строке: перенос строки его не склеивает
 
+_bp_lint = importlib.util.module_from_spec(_spec)
+
+_spec.loader.exec_module(_bp_lint)
+
+_spec.loader.exec_module(_bp_lint)
+
+API_PATTERNS = _bp_lint.API_PATTERNS
+
+NUM_RE = re.compile(r"\d[\d \u00a0.,:%]*\d|\d")   # число в одной строке: перенос строки его не склеивает
 
 def check(pr: bl.Project, source: Path | None, no_source: bool, explicit: bool = False) -> None:
     # --- ADR и Системные требования -------------------------------------------------------------
     check_adr(pr)
     # --- контроль стыковочных работ -----------------------------------------------------------
     check_seams(pr)
+    # --- план релиза / Delivery ----------------------------------------------------------------
+    check_release(pr)
 
     # --- полнота и связность -----------------------------------------------------------------
     if pr.story:
@@ -158,10 +182,8 @@ def check(pr: bl.Project, source: Path | None, no_source: bool, explicit: bool =
             if num and num not in src_text and num not in answers:
                 pr.warn(t.rel, 1, "BL027", f"{t.id}: число «{num}» не найдено ни в БФТ, ни в ответах")
 
-
 def _norm(s: str) -> str:
     return re.sub(r"[^\w%]+", " ", s.lower().replace("ё", "е")).strip()
-
 
 def check_adr(pr: bl.Project) -> None:
     """Смысл этапа «ADR и Системные требования»: ≥2 вариантов и явный выбор TO-BE, узкие места
@@ -229,7 +251,6 @@ def check_adr(pr: bl.Project) -> None:
                     pr.warn(doc.rel, q.line, "AR005",
                             f"{q.id}: нет в «Вопросах» «Карты» — продублируй («Где» — {next((c.id for c in s.contracts), 'K1')}), иначе ответ потеряется")
 
-
 def check_seams(pr: bl.Project) -> None:
     """Смысл документа «Стыки»: участники из «Команд», обязательства и контракты привязаны
     к стыкам, у каждого стыка есть обязательства; условие включения этапа — ≥2 команд на карте."""
@@ -284,6 +305,35 @@ def check_seams(pr: bl.Project) -> None:
     if sm.meta.get("status", "").lower() not in ("черновик", "согласован"):
         pr.warn(doc.rel, 1, "SM005", f"статус стыков «{sm.meta.get('status')}» — Черновик или Согласован")
 
+def check_release(pr: bl.Project) -> None:
+    """Смысл плана релиза: зависимости указывают на существующие шаги, ворота закрыты, статусы честные."""
+    rel = pr.release
+    if rel is None or rel.doc is None:
+        return
+    doc = rel.doc
+    ids = {s.id for s in rel.steps}
+    for s in rel.steps:
+        for d in s.deps:
+            if d.upper() not in ids:
+                pr.err(doc.rel, s.line, "RL003", f"{s.id}: зависимости «{d}» — ID шага R1… из «Шагов»")
+        if not s.deps and s.id != next((x.id for x in rel.steps if x.track == s.track), ""):
+            pr.warn(doc.rel, s.line, "RL005", f"{s.id}: без зависимостей — с чего начинается шаг?")
+    gates_by_from: dict[str, int] = {}
+    for g in rel.gates:
+        nxt = bl.RELEASE_TRACKS[bl.RELEASE_TRACKS.index(g.frm) + 1]
+        if not rel.by_track(g.frm):
+            pr.err(doc.rel, g.line, "RL003", f"ворота {g.frm.upper()} → {nxt.upper()}: на дорожке {g.frm.upper()} нет шагов")
+        gates_by_from[g.frm] = gates_by_from.get(g.frm, 0) + 1
+    for frm, n in gates_by_from.items():
+        if n > 1:
+            nxt = bl.RELEASE_TRACKS[bl.RELEASE_TRACKS.index(frm) + 1]
+            pr.err(doc.rel, rel.gates[0].line if n else 1, "RL003", f"ворот после {frm.upper()} — {n}: переход на {nxt.upper()} один")
+    if rel.by_track("stage") and "dev" not in gates_by_from:
+        pr.warn(doc.rel, 1, "RL005", "есть дорожка STAGE, но нет ворот dev → stage — кто утверждает переход?")
+    if rel.by_track("prod") and "stage" not in gates_by_from:
+        pr.warn(doc.rel, 1, "RL005", "есть дорожка PROD, но нет ворот stage → prod — кто утверждает переход?")
+    if rel.meta.get("status", "").lower() not in ("черновик", "согласован"):
+        pr.warn(doc.rel, 1, "RL005", f"статус плана релиза «{rel.meta.get('status')}» — Черновик или Согласован")
 
 def graph_gates(pr: bl.Project, source: Path, texts: list) -> None:
     """Полнота по графу БФТ: роли (ПТ), семейства ID, критерии приёмки."""
@@ -303,14 +353,12 @@ def graph_gates(pr: bl.Project, source: Path, texts: list) -> None:
         if a.ac and a.kind != "БТ" and _norm(a.ac)[:40] not in acs:
             pr.warn(pr.map_doc.rel, 1, "BL038", f"{a.id}: критерий приёмки из БФТ «{a.ac[:70]}» — нет в «Критериях приемки» задач; перенеси дословно")
 
-
 def tech(pr: bl.Project, t: bl.BTask, text: str) -> None:
     for pat, what in API_PATTERNS:
         m = pat.search(text)
         if m:
             pr.err(t.rel, 2, "BL018", f"{t.id}: {what} «{m.group(0)}» — устройство API и БД живёт у СА, не на карте")
             return
-
 
 def resolve_source(pr: bl.Project, explicit: str | None) -> Path | None:
     if explicit:
@@ -323,13 +371,11 @@ def resolve_source(pr: bl.Project, explicit: str | None) -> Path | None:
             return base / doc
     return pr.root.parent / doc
 
-
 def run(root: Path, source: str | None, no_source: bool) -> bl.Project:
     pr = bl.parse(root)
     if not pr.errors:
         check(pr, resolve_source(pr, source), no_source, explicit=bool(source))
     return pr
-
 
 # как исправить — по строке на код: печатается под отчётом (`--hints`, ./blueprint.py next и apply)
 HINTS = {
@@ -370,6 +416,10 @@ HINTS = {
     "BL035": "один кандидат — это исполнитель: «команда: id»; сомнение — строкой «Вопросов»",
     "BL033": "UserStory пишется от лица того, кто пользуется результатом карточки (гость, официант, контент-менеджер, PO), а не команды, которая её делает",
     "SN001": "файл экрана — plan/screens/<ID>.md, ID из таблицы «Экраны» «Истории»",
+    "RL001": "«План релиза»: паспорт <!-- bft-release --> (epic_slug, version, revised, status), «## Шаги» | ID | Стенд | Что сделать | Ответственный | Тип | Зависимости | Статус | Критерий готовности |, «## Ворота» | Ворота | Кто утверждает | Критерий перехода |",
+    "RL002": "план релиза один: документ с <!-- bft-release --> в проекте один",
+    "RL003": "шаг: зависимости — ID шагов R1… из «Шагов»; ворота — по одному на переход dev → stage и stage → prod",
+    "RL005": "дорожка без ворот: кто утверждает переход на следующий стенд? шаг без зависимостей: с чего начинается?",
     "SN003": "экран: «# Название», картинки, затем ## Product, ## Design, ## Functions — по порядку, заметки — ### под вкладкой",
     "SN004": "у заметки ### нужен заголовок и текст; заголовки во вкладке не повторяются",
     "SN005": "сценарий Functions: строки **Дано** / **Когда** / **Тогда** — без **Тогда** не сценарий",
@@ -379,14 +429,12 @@ HINTS = {
     "SN023": "у экрана истории нет требований — добавь plan/screens/<ID>.md (можно коротко: по заметке во вкладке)",
 }
 
-
 def hints(pr: bl.Project) -> None:
     codes = sorted({i.code for i in pr.issues if i.code in HINTS}, key=lambda c: (c[:2], c))
     if codes:
         print("как исправить:")
         for c in codes:
             print(f"  {c} — {HINTS[c]}")
-
 
 def report(pr: bl.Project, strict: bool, name: str = "backlog-lint") -> int:
     for i in sorted(pr.issues, key=lambda i: (i.level != "ERROR", i.path, i.line)):
@@ -400,7 +448,6 @@ def report(pr: bl.Project, strict: bool, name: str = "backlog-lint") -> int:
           f"задач вне карты {pr.other}, открытых вопросов {sum(q.open for q in pr.questions)} (блокеров {len(blockers)}) — "
           f"ошибок {errors}, предупреждений {warns}")
     return 1 if errors or (strict and warns) else 0
-
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
@@ -423,6 +470,8 @@ def main() -> int:
         hints(pr)
     return rc
 
+if __name__ == "__main__":
+    sys.exit(main())
 
 if __name__ == "__main__":
     sys.exit(main())

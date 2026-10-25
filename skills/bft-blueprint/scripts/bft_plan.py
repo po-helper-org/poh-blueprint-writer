@@ -1,3 +1,5 @@
+
+
 #!/usr/bin/env python3
 """План карты — один markdown вместо десятков команд CLI.
 
@@ -18,6 +20,8 @@
     ## Контракты стыков   таблица | Стык | Аспект | Требование к фиксации |
     ## Контрольные точки  стыки: таблица | ID | Точка | Когда | Что проверяется | Кто проводит |
     ## Риски              стыки: таблица | ID | Риск | Следствие | Владелец | Митигация |
+    ## Релиз              таблица шагов | ID | Стенд | Что сделать | Ответственный | Тип | Зависимости | Статус | Критерий готовности |
+    ## Ворота релиза      таблица | Ворота | Кто утверждает | Критерий перехода |
     ## BP-3 · Название    задача: строки «ключ: значение», пустая строка, описание, ### Критерии приемки
     ## BP-3.1 · Название  карточка: строки «ключ: значение», пустая строка, описание карточки
 
@@ -35,27 +39,42 @@
 
 Только стандартная библиотека.
 """
+
 from __future__ import annotations
 
 import re
+
 import sys
+
 from dataclasses import dataclass, field
+
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 import backlog_cli as cli  # noqa: E402
+
 import bft_backlog as bl  # noqa: E402
+
 import bft_blueprint as bb  # noqa: E402
 
 PLAN_DIR = "plan"
-HEAD = re.compile(r"^##\s+([A-Za-z]+-\d+(?:\.\d+)?)\s*·\s*(.+?)\s*$")
-META = re.compile(r"^([а-яё]+)\s*:\s*(.*)$")
-TASK_KEYS = {"этап", "вид", "команда", "кандидаты", "экраны", "документы", "ссылки"}
-CARD_KEYS = {"этап", "слой", "команда", "экраны", "документы", "ссылки"}
-AC_HEADS = ("### Критерии приемки", "### Критерии приёмки", "### Чеклист приемки", "### Чеклист приёмки")
-STUB = re.compile(r"\{\{[^}]*\}\}")
-SCREEN_FILE = re.compile(r"^([A-H]\d{1,2})\.md$")
 
+HEAD = re.compile(r"^##\s+([A-Za-z]+-\d+(?:\.\d+)?)\s*·\s*(.+?)\s*$")
+
+META = re.compile(r"^([а-яё]+)\s*:\s*(.*)$")
+
+TASK_KEYS = {"этап", "вид", "команда", "кандидаты", "экраны", "документы", "ссылки"}
+
+CARD_KEYS = {"этап", "слой", "команда", "экраны", "документы", "ссылки"}
+
+AC_HEADS = ("### Критерии приемки", "### Критерии приёмки", "### Чеклист приемки", "### Чеклист приёмки")
+
+STUB = re.compile(r"\{\{[^}]*\}\}")
+
+SCREEN_FILE = re.compile(r"^([A-H]\d{1,2})\.md$")
 
 @dataclass
 class Block:
@@ -74,7 +93,6 @@ class Block:
     def parent(self) -> str:
         return self.id.rsplit(".", 1)[0] if self.card else ""
 
-
 @dataclass
 class Plan:
     root: Path
@@ -83,6 +101,8 @@ class Plan:
     adr: dict = field(default_factory=dict)      # {«Решение TO-BE»: текст, «Варианты»: …, «Узкие места»: …, «Компромиссы»: …} — этап ADR
     sysreq: dict = field(default_factory=dict)   # {«Контракты»: текст} — системные требования
     seams: dict = field(default_factory=dict)   # {«Участники»: текст, «Обязательства»: …, …} — этап стыков
+    release: str = ""        # «## Релиз» — шаги плана релиза
+    gates: str = ""          # «## Ворота релиза» — кто утверждает переход между стендами
     blocks: list[Block] = field(default_factory=list)
     screens: dict = field(default_factory=dict)   # {F3: (заголовок, текст, путь)}
     issues: list = field(default_factory=list)
@@ -90,10 +110,8 @@ class Plan:
     def err(self, rel: str, line: int, code: str, msg: str) -> None:
         self.issues.append(bb.Issue(line, "ERROR", code, msg, rel))
 
-
 def split(v: str) -> list[str]:
     return [x.strip() for x in re.split(r"[,;]", v or "") if x.strip()]
-
 
 def parse(root: Path) -> Plan:
     """Разбор плана: блоки, таблицы, экраны; ошибки формы — PL."""
@@ -142,9 +160,15 @@ def parse(root: Path) -> Plan:
             if f"| {' | '.join(SEAM_SECTION_HEADERS[name])} |" not in pl.seams[name]:
                 pl.err(rel, n, "PL005", f"«## {name}»: таблица | {' | '.join(SEAM_SECTION_HEADERS[name])} |")
             continue
+        if name == "Релиз":
+            pl.release = "\n".join(body).strip()
+            continue
+        if name == "Ворота релиза":
+            pl.gates = "\n".join(body).strip()
+            continue
         m = HEAD.match(head)
         if not m:
-            pl.err(rel, n, "PL002", f"«{name}» — заголовок блока: «## BP-3 · Название задачи» (или «## Команды», «## Вопросы», «## Решение TO-BE», «## Варианты», «## Узкие места», «## Компромиссы», «## Контракты» (системные требования), «## Участники», «## Обязательства», «## Контракты стыков», «## Контрольные точки», «## Риски»)")
+            pl.err(rel, n, "PL002", f"«{name}» — заголовок блока: «## BP-3 · Название задачи» (или «## Команды», «## Вопросы», «## Решение TO-BE», «## Варианты», «## Узкие места», «## Компромиссы», «## Контракты» (системные требования), «## Участники», «## Обязательства», «## Контракты стыков», «## Контрольные точки», «## Риски», «## Релиз», «## Ворота релиза»)")
             continue
         b = Block(m.group(1).upper(), m.group(2), n)
         if b.id in seen:
@@ -186,6 +210,10 @@ def parse(root: Path) -> Plan:
         pl.err(rel, 1, "PL005", "раздел «## Команды» с таблицей | ID | Команда |")
     if pl.questions and "| ID | Кому | Вопрос | Где | Тип | Ответ |" not in pl.questions:
         pl.err(rel, 1, "PL005", "«## Вопросы»: таблица | ID | Кому | Вопрос | Где | Тип | Ответ |")
+    if pl.release and "| ID | Стенд | Что сделать | Ответственный | Тип | Зависимости | Статус | Критерий готовности |" not in pl.release:
+        pl.err(rel, 1, "PL005", "«## Релиз»: таблица | ID | Стенд | Что сделать | Ответственный | Тип | Зависимости | Статус | Критерий готовности |")
+    if pl.gates and "| Ворота | Кто утверждает | Критерий перехода |" not in pl.gates:
+        pl.err(rel, 1, "PL005", "«## Ворота релиза»: таблица | Ворота | Кто утверждает | Критерий перехода |")
     sdir = root / PLAN_DIR / "screens"
     for sf in sorted(sdir.glob("*.md")) if sdir.is_dir() else []:
         srel = f"{PLAN_DIR}/screens/{sf.name}"
@@ -200,7 +228,6 @@ def parse(root: Path) -> Plan:
                 pl.err(srel, k, "PL007", f"шаблон не заполнен: {STUB.search(ln).group(0)}")
         pl.screens[sm.group(1)] = (title, text.strip("\n") + "\n", sf)
     return pl
-
 
 def _check_block(pl: Plan, b: Block, rel: str) -> None:
     need = ("этап", "слой") if b.card else ("этап", "вид")
@@ -220,8 +247,8 @@ def _check_block(pl: Plan, b: Block, rel: str) -> None:
 # --- запись в проект -------------------------------------------------------------------------------
 
 ADR_DOC_TITLE = "ADR"
-SYSREQ_DOC_TITLE = "Системные требования"
 
+SYSREQ_DOC_TITLE = "Системные требования"
 
 def _stage_doc_text(marker: str, title: str, intro: list[str], sections: list[tuple[str, str]], meta: dict) -> str:
     """Текст документа этапа: паспорт + заголовок + вводные строки + секции «## имя» с таблицами."""
@@ -233,18 +260,16 @@ def _stage_doc_text(marker: str, title: str, intro: list[str], sections: list[tu
             parts += [f"## {name}", "", text, ""]
     return "\n".join(parts).rstrip("\n") + "\n"
 
-
 def title_of(meta: dict) -> str:
     return meta.get("_title", "")
 
-
 SEAMS_DOC_TITLE = "Стыки"
+
 SEAM_DOC_SECTIONS = (("Участники", "кто поставщик и кто потребитель на каждом стыке"),
                      ("Обязательства", "матрица «кто → что → кому → к какому сроку»"),
                      ("Контракты стыков", "что фиксировать на стыке по слоям (эндпоинты, схемы, ошибки, версии)"),
                      ("Контрольные точки", "что и когда проверяется на стыке"),
                      ("Риски", "риски стыка и их владельцы"))
-
 
 def seams_doc_text(title: str, pl: Plan, meta: dict) -> str:
     """Текст документа «Стыки»: паспорт и таблицы этапа «Контроль стыковочных работ»."""
@@ -259,13 +284,26 @@ def seams_doc_text(title: str, pl: Plan, meta: dict) -> str:
             parts += [f"## {sec}", "", pl.seams[sec], ""]
     return "\n".join(parts).rstrip("\n") + "\n"
 
+RELEASE_DOC_TITLE = "План релиза"
+
+def release_doc_text(title: str, pl: Plan, meta: dict) -> str:
+    """Текст документа «План релиза»: паспорт, дорожки DEV/STAGE/PROD, шаги и ворота."""
+    m = "\n".join(["<!-- bft-release"] + [f"{k}: {meta[k]}" for k in bl.RELEASE_META] + ["-->", "",
+                   f"# План релиза: {title}", "",
+                   "Этап «План релиза / Delivery»: дорожки DEV / STAGE / PROD — что сделать на каждом стенде,",
+                   "кто отвечает и кто утверждает переход дальше. Шаги и ворота плана — в таблицах ниже.", ""])
+    parts = [m]
+    if pl.release:
+        parts += ["## Шаги", "", pl.release, ""]
+    if pl.gates:
+        parts += ["## Ворота", "", pl.gates, ""]
+    return "\n".join(parts).rstrip("\n") + "\n"
 
 def _replace_section(body: str, name: str, table: str) -> str:
     block = f"## {name}\n\n{table.strip()}\n"
     if re.search(rf"^## {name}\s*$", body, re.M):
         return re.sub(rf"^## {name}\s*\n.*?(?=^## |\Z)", lambda _: block + "\n", body, count=1, flags=re.S | re.M).rstrip("\n") + "\n"
     return body.rstrip("\n") + "\n\n" + block
-
 
 def _next_doc_num(nums: set) -> int:
     """Первый свободный номер документа: apply с нуля занимает дырки, а не хвост диапазона."""
@@ -274,7 +312,6 @@ def _next_doc_num(nums: set) -> int:
         n += 1
     nums.add(n)
     return n
-
 
 def _write_stage_doc(pr, bdir: Path, root: Path, doc, marker: str, title: str, text: str, plan_sections: set) -> list[str]:
     """Создать или обновить документ этапа. Секции из плана (plan_sections) переписываются;
@@ -339,7 +376,6 @@ def _write_stage_doc(pr, bdir: Path, root: Path, doc, marker: str, title: str, t
         doc.path.write_text(cli.dump_front(fm) + body.rstrip("\n") + "\n", encoding="utf-8")
         out.append(f"«{title}»: обновлён {did} — {doc.path.relative_to(root)}")
     return out
-
 
 def apply(pl: Plan, root: Path) -> list[str]:
     """План → проект. Возвращает строки отчёта; ошибки плана — в pl.issues, тогда ничего не пишется."""
@@ -424,6 +460,34 @@ def apply(pl: Plan, root: Path) -> list[str]:
                 fm["updated_date"] = cli.now()
                 seamdoc.path.write_text(cli.dump_front(fm) + text, encoding="utf-8")
                 out.append(f"«Стыки»: обновлён {did} — {seamdoc.path.relative_to(root)}")
+    # «План релиза»: дорожки DEV/STAGE/PROD, шаги и ворота
+    if pl.release or pl.gates:
+        rdoc = next((d for d in pr.docs.values() if d.meta.get("_kind") == "bft-release"), None)
+        meta = {"epic_slug": pr.meta.get("epic_slug", ""), "version": pr.meta.get("version", "1"),
+                "revised": cli.now()[:10], "status": "Черновик"}
+        if rdoc:
+            meta = {**{k: str(rdoc.meta.get(k, "")) for k in bl.RELEASE_META}, "revised": cli.now()[:10]}
+        text = release_doc_text(pr.title, pl, meta)
+        if rdoc is None:
+            rnums = set(int(m.group(1)) for d in pr.docs for m in [re.fullmatch(r"doc-(\d+)", d)] if m)
+            rnums |= getattr(pr, "_stage_doc_nums_taken", set())   # номера, занятые другими этапами в этом apply
+            did = f"doc-{_next_doc_num(rnums)}"
+            pr._stage_doc_nums_taken = set(getattr(pr, "_stage_doc_nums_taken", set())) | {int(did[4:])}
+            fm = {"id": did, "title": RELEASE_DOC_TITLE, "type": "specification", "created_date": cli.now()}
+            p = bdir / "docs" / f"{did} - {cli.slug(RELEASE_DOC_TITLE)}.md"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(cli.dump_front(fm) + text, encoding="utf-8")
+            out.append(f"«План релиза»: создан {did} — {p.relative_to(root)}")
+        else:
+            did = rdoc.id
+            old = rdoc.path.read_text(encoding="utf-8") if rdoc.path.is_file() else ""
+            fm, off = bl.yaml_front(old) if old else ({}, 0)
+            fm = fm or {}
+            old_body = "\n".join(old.split("\n")[off:]) if old else ""
+            if old_body.lstrip("\n") != text:
+                fm["updated_date"] = cli.now()
+                rdoc.path.write_text(cli.dump_front(fm) + text, encoding="utf-8")
+                out.append(f"«План релиза»: обновлён {did} — {rdoc.path.relative_to(root)}")
     # экраны → документы
     docs = {fm["id"]: (p, fm) for p, fm, _ in cli.load_docs(bdir)}
     screen_doc = {}
@@ -511,7 +575,6 @@ def apply(pl: Plan, root: Path) -> list[str]:
         out.append(f"{x}: на карте, но не в плане — верни в план или убери метку stage: (./backlog.py task edit {x} --remove-label …)")
     return out
 
-
 def _same(t, path: Path) -> bool:
     """Задача в файле та же по смыслу: поля, описание, критерии (кавычки YAML и порядок не важны)."""
     old = cli.Task(path, bl.yaml_front(path.read_text(encoding="utf-8"))[0] or {}, path.read_text(encoding="utf-8"))
@@ -563,6 +626,15 @@ def export(root: Path) -> dict[str, str]:
             t = stable(sec)
             if t:
                 o += [f"## {sec}", "", t, ""]
+    if pr.release_doc is not None and pr.release is not None:
+        rbody = pr.release_doc.body if pr.release_doc else ""
+
+        def rtable(name: str) -> str:
+            m = re.search(rf"^## {name}\s*\n(.*?)(?=^## |\Z)", rbody, re.S | re.M)
+            return m.group(1).strip() if m else ""
+        rsteps, rgates = rtable("Шаги"), rtable("Ворота")
+        if rsteps or rgates:
+            o += ["## Релиз", "", rsteps, "", "## Ворота релиза", "", rgates, ""]
     raw = {t.id: t for t in cli.load_tasks(bdir)}
     for t in sorted(pr.tasks, key=lambda x: x.ordinal):
         r = raw[t.id]
@@ -580,7 +652,6 @@ def export(root: Path) -> dict[str, str]:
             o += _export_block(c, rc, cmeta, sid_of)
     files[f"{PLAN_DIR}/map.md"] = "\n".join(o).rstrip("\n") + "\n"
     return files
-
 
 def _export_block(t, raw, meta: list[str], sid_of: dict) -> list[str]:
     docs = [str(d) for d in raw.fm.get("documentation") or []]

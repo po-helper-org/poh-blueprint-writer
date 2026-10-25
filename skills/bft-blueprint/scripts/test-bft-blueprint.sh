@@ -570,6 +570,11 @@ p = sys.argv[1]; t = open(p, encoding="utf-8").read()
 t = re.sub(r"^вид: \{\{.*\}\}$", "вид: создать", t, flags=re.M)
 t = re.sub(r"^- \{\{4–10 шагов.*\}\}$", "- Менеджер партнёров: Открывает профиль\n- ? Данные полные\n  - да → Система продаж: Сохраняет профиль\n  - нет → конец\n- Менеджер партнёров: Видит результат", t, flags=re.M)
 t = re.sub(r"^- \{\{исключение.*\}\}\n", "", t, flags=re.M)
+# план релиза: перечисления (тип, статус) — допустимыми значениями, остальное — как обычно
+t = t.replace("{{согласование / задача devops / предоставление доступа или данных / утверждение / проверка}}", "проверка")
+t = re.sub(r"\{\{тип шага\}\}", "проверка", t)
+t = t.replace("{{не начат / в работе / готово / требует ответа}}", "не начат")
+t = re.sub(r"\{\{статус\}\}", "не начат", t)
 t = re.sub(r"\{\{[^}]*\}\}", "работа сервиса", t)
 open(p, "w", encoding="utf-8").write(t)
 PY
@@ -596,6 +601,170 @@ cp -r "$SK/f" "$SK/cand" && sed -i '0,/^команда: prodazh$/s//команд
 out="$(python3 "$DIR/scripts/bft-plan.py" apply "$SK/cand" 2>&1)"
 ! grep -qE "PL003|BL006" <<<"$out" && grep -rq "кандидат:kataloga" "$SK/cand/backlog/tasks" \
   && ok "план · «команда: кандидаты: a, b» читается как кандидаты" || fail "план · «команда: кандидаты:»"
+
+# план релиза: round-trip — разделы «Релиз» и «Ворота релиза» через apply/export, идемпотентность, гейты RL
+RP="$tmp/release" && cp -r "$BOK" "$RP"
+python3 "$DIR/scripts/bft-plan.py" export "$RP" --force >/dev/null 2>&1
+cat >> "$RP/plan/map.md" <<'RL'
+
+## Релиз
+
+| ID | Стенд | Что сделать | Ответственный | Тип | Зависимости | Статус | Критерий готовности |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| R1 | dev | Собрать ветку и прогнать юнит-тесты | Команда разработки | проверка | — | готово | Тесты зелёные, сборка без ошибок |
+| R2 | dev | Поднять стенд DEV с новой версией | DevOps | задача devops | R1 | в работе | Сервис отвечает на health-check |
+| R3 | stage | Выдать тестовые данные и доступы тестировщикам | DevOps | предоставление доступа или данных | R2 | не начат | Тестировщик вошёл и видит данные |
+| R4 | stage | Прогнать регресс на STAGE | QA | проверка | R3 | не начат | Регресс пройден, дефектов P0-P1 нет |
+| R5 | prod | Согласовать окно релиза с бизнесом | PO | согласование | R4 | требует ответа | Окно утверждено, уведомления отправлены |
+| R6 | prod | Выложить релиз в PROD | DevOps | задача devops | R5 | не начат | Версия в PROD, метрики в норме |
+
+## Ворота релиза
+
+| Ворота | Кто утверждает | Критерий перехода |
+| --- | --- | --- |
+| dev | Тимлид разработки | Тесты зелёные, стенд DEV стабилен |
+| stage | Руководитель QA | Регресс пройден, остаточных дефектов нет |
+RL
+out="$(python3 "$DIR/scripts/bft-plan.py" apply "$RP" 2>&1)"; rc=$?
+rdoc="$(ls "$RP"/backlog/docs/doc-*План-релиза.md 2>/dev/null | head -1)"
+[ "$rc" -eq 0 ] && [ -n "$rdoc" ] && grep -q "bft-release" "$rdoc" && grep -q "Тимлид разработки" "$rdoc" \
+  && ok "план · релиз: apply создаёт документ «План релиза» (DEV/STAGE/PROD, ворота)" || fail "план · релиз: apply ($rc)"
+python3 "$DIR/scripts/bft-plan.py" export "$RP" --force >/dev/null 2>&1
+grep -q "^## Релиз$" "$RP/plan/map.md" && grep -q "^## Ворота релиза$" "$RP/plan/map.md" && grep -q "^| R6 | prod |" "$RP/plan/map.md" \
+  && ok "план · релиз: export возвращает разделы в план" || fail "план · релиз: export потерял разделы"
+before="$(cd "$RP" && find . -type f -name '*.md' -exec md5sum {} + | sort | md5sum)"
+python3 "$DIR/scripts/bft-plan.py" apply "$RP" >/dev/null 2>&1
+after="$(cd "$RP" && find . -type f -name '*.md' -exec md5sum {} + | sort | md5sum)"
+[ "$before" = "$after" ] && ok "план · релиз: повторный apply идемпотентен" || fail "план · релиз: apply не идемпотентен"
+python3 - "$rdoc" <<'PY'
+import sys
+from pathlib import Path
+p = Path(sys.argv[1]); t = p.read_text(encoding="utf-8")
+t = t.replace("задача devops | R1 | в работе", "задача devops | R77 | в работе")
+t = t.replace("| stage | Руководитель QA | Регресс пройден, остаточных дефектов нет |",
+              "| stage | Руководитель QA | Регресс пройден |\n| stage | PO | Ещё одни ворота |")
+p.write_text(t, encoding="utf-8")
+PY
+out="$(python3 "$BLINT" "$RP" --no-source 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && grep -q "RL003.*R77" <<<"$out" && grep -q "RL003.*ворот после STAGE" <<<"$out" \
+  && ok "план · релиз: RL003 — битая зависимость и дубль ворот" || fail "план · релиз: гейты RL003 ($rc)"
+
+# экран «Релиз» в меню карты: страница с планом релиза — слой с дорожками, шагами и воротами
+# (документ $RP сломан проверкой RL003 выше — пересобираем чистый план из демо)
+RP="$tmp/release-ui" && cp -r "$BOK" "$RP"
+python3 "$DIR/scripts/bft-plan.py" export "$RP" --force >/dev/null 2>&1
+cat >> "$RP/plan/map.md" <<'RL'
+
+## Релиз
+
+| ID | Стенд | Что сделать | Ответственный | Тип | Зависимости | Статус | Критерий готовности |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| R1 | dev | Собрать ветку и прогнать юнит-тесты | Команда разработки | проверка | — | готово | Тесты зелёные, сборка без ошибок |
+| R2 | dev | Поднять стенд DEV с новой версией | DevOps | задача devops | R1 | в работе | Сервис отвечает на health-check |
+| R3 | stage | Выдать тестовые данные и доступы тестировщикам | DevOps | предоставление доступа или данных | R2 | не начат | Тестировщик вошёл и видит данные |
+| R4 | stage | Прогнать регресс на STAGE | QA | проверка | R3 | не начат | Регресс пройден, дефектов P0-P1 нет |
+| R5 | prod | Согласовать окно релиза с бизнесом | PO | согласование | R4 | требует ответа | Окно утверждено, уведомления отправлены |
+| R6 | prod | Выложить релиз в PROD | DevOps | задача devops | R5 | не начат | Версия в PROD, метрики в норме |
+
+## Ворота релиза
+
+| Ворота | Кто утверждает | Критерий перехода |
+| --- | --- | --- |
+| dev | Тимлид разработки | Тесты зелёные, стенд DEV стабилен |
+| stage | Руководитель QA | Регресс пройден, остаточных дефектов нет |
+RL
+python3 "$DIR/scripts/bft-plan.py" apply "$RP" >/dev/null 2>&1
+python3 "$BBUILD" "$RP" --no-source --no-zip --out-dir "$tmp/rlout" >/dev/null 2>&1
+python3 - "$tmp/rlout/demo-story-map.html" <<'PY' && ok "экран · релиз: слой в меню, дорожки DEV/STAGE/PROD, шаги и ворота на демо-данных" || fail "экран · релиз: страница не собрана или данных нет"
+import json, re, sys
+page = open(sys.argv[1], encoding="utf-8").read()
+assert '<button data-view="rel">Релиз</button>' in page and 'data-rlmenu' in page and 'id="rel"' in page
+d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
+r = d["release"]
+assert r["doc"] and [t["id"] for t in r["tracks"]] == ["dev", "stage", "prod"]
+assert len(r["steps"]) == 6 and r["steps"][0]["id"] == "R1" and r["steps"][-1]["track"] == "prod"
+assert {s["kind"] for s in r["steps"]} >= {"проверка", "задача devops", "согласование"}
+assert r["steps"][4]["status"] == "требует ответа"
+assert [g["frm"] for g in r["gates"]] == ["dev", "stage"] and r["gates"][1]["who"] == "Руководитель QA"
+PY
+python3 - "$DIR/scripts" "$RP" "$tmp/rlout/demo-story-map.html" <<'PY' && ok "экран · релиз: текст слоя — только из проекта (BL032)" || fail "экран · релиз: BL032 не проходит"
+import importlib.util, json, re, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+spec = importlib.util.spec_from_file_location("b", Path(sys.argv[1]) / "bft-backlog-build.py"); b = importlib.util.module_from_spec(spec); spec.loader.exec_module(b)
+pr = b.lint.run(Path(sys.argv[2]).resolve(), None, True)
+assert b.provenance(b.model(pr), pr) == []
+PY
+# без документа «План релиза» кнопки и слоя на странице нет — эталон без релиза не меняется
+python3 - "$DIR/scripts" "$BGOLD" <<'PY' && ok "экран · релиз: без плана релиза слой не появляется" || fail "экран · релиз: слой протекает без документа"
+import importlib.util, json, re, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+spec = importlib.util.spec_from_file_location("b", Path(sys.argv[1]) / "bft-backlog-build.py"); b = importlib.util.module_from_spec(spec); spec.loader.exec_module(b)
+pr = b.lint.run(Path(sys.argv[2]).resolve(), None, True)
+page = b.render(pr, "")
+# литералы кнопок порождает сборка; в тексте map_page.js селекторы есть всегда
+assert 'data-view="rel">Релиз' not in page and 'class="mi" data-rlmenu' not in page
+m = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
+assert "release" not in m
+PY
+
+# навык · release-plan: эталоны примеров — разделы эталона проходят apply/lint схемы Delivery,
+# известное взято из входа, неизвестное — [УТОЧНИТЬ] + «требует ответа» + вопрос; вход без данных — только вопросы
+RLS="$tmp/release-plan-skill" && rm -rf "$RLS"
+cp -r "$BOK" "$RLS"
+python3 "$DIR/scripts/bft-plan.py" export "$RLS" --force >/dev/null 2>&1
+# вырезаем из экспорта старые разделы релиза и вставляем разделы эталона навыка
+python3 - "$RLS/plan/map.md" "$DIR/../release-plan/examples/release-plan-output.md" <<'PY'
+import re, sys
+plan, golden = (open(p, encoding="utf-8").read() for p in sys.argv[1:3])
+rel = re.search(r"## Релиз\n.*?\n(?=^## |\Z)", golden, re.S | re.M).group(0)
+gates = re.search(r"## Ворота релиза\n.*?\n(?=^## |\Z)", golden, re.S | re.M).group(0)
+plan = re.sub(r"\n## Релиз\n.*?(?=^## |\Z)", "\n", plan, flags=re.S | re.M)
+plan = re.sub(r"\n## Ворота релиза\n.*?(?=^## |\Z)", "\n", plan, flags=re.S | re.M)
+plan = plan.rstrip("\n") + "\n\n" + rel.rstrip("\n") + "\n\n" + gates.strip() + "\n"
+open(sys.argv[1], "w", encoding="utf-8").write(plan)
+PY
+out="$(python3 "$DIR/scripts/bft-plan.py" apply "$RLS" 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && ! grep -qE " ERROR " <<<"$out" \
+  && ok "навык · release-plan: эталон валиден схемой (apply без ошибок)" || fail "навык · release-plan: apply эталона ($rc)"
+rdoc="$(ls "$RLS"/backlog/docs/doc-*План-релиза.md 2>/dev/null | head -1)"
+out="$(python3 "$BLINT" "$RLS" --no-source 2>&1)"; rc=$?
+n_rl="$(grep -c "RL00" <<<"$out" || true)"
+[ "$rc" -eq 0 ] && [ -n "$rdoc" ] && [ "$n_rl" -eq 0 ] \
+  && ok "навык · release-plan: линтер схемы — 0 ошибок RL по эталону" || fail "навык · release-plan: линтер RL по эталону ($rc, RL=$n_rl)"
+python3 - "$DIR/../release-plan/examples/release-plan-output.md" <<'PY' && ok "навык · release-plan: честность — известное из входа, неизвестное «требует ответа» с вопросом" || fail "навык · release-plan: контракт честности нарушен"
+import re, sys
+g = open(sys.argv[1], encoding="utf-8").read()
+rows = re.findall(r"^\| R\d+ \|.*\|$", g, re.M)
+assert rows, "нет шагов"
+for r in rows:
+    c = [x.strip() for x in r.strip("|").split("|")]
+    owner, status = c[3], c[6]
+    if "[УТОЧНИТЬ" in owner:
+        assert status == "требует ответа", f"{c[0]}: пометка без статуса"
+    assert status in ("не начат", "в работе", "готово", "требует ответа"), f"{c[0]}: статус {status}"
+qs = re.findall(r"^\d+\. (.*?) \(.*(R\d+|ворота.*?)\)$", g.split("## Вопросы")[1], re.M)
+assert qs, "нет вопросов"
+ids = {m.group(1) for m in (re.match(r"^\| (R\d+) \|", r) for r in rows) if m}
+for q, ref in qs:
+    assert ref == "ворота stage" or ref in ids, f"вопрос ведёт в никуда: {ref}"
+gates = re.search(r"## Ворота релиза.*", g, re.S).group(0)
+assert "[УТОЧНИТЬ" in gates, "ворота без пометки при неизвестном утверждающем"
+for m in re.finditer(r"\[УТОЧНИТЬ[^\]]*\]", g):
+    assert "Вопросы" in g, "нет блока вопросов"
+# каждый «требует ответа» покрыт вопросом с тем же R-ID
+for r in rows:
+    c = [x.strip() for x in r.strip("|").split("|")]
+    if c[6] == "требует ответа":
+        assert f"({c[0]})" in g.split("## Вопросы")[1], f"{c[0]}: статус без вопроса"
+PY
+sparse="$DIR/../release-plan/examples/release-plan-sparse-output.md"
+! grep -q "^## Релиз" "$sparse" && ! grep -q "^## Ворота релиза" "$sparse" && grep -q "^## Вопросы" "$sparse" && grep -cq "^[0-9]\+\. " "$sparse" \
+  && ok "навык · release-plan: вход без данных — только вопросы, плана нет" || fail "навык · release-plan: разреженный вход собрал план"
+# регистрация: команда и скилл ставятся установщиком
+[ -f "$DIR/../release-plan/SKILL.md" ] && [ -f "$DIR/../../commands/release-plan.md" ] && grep -q "release-plan" install.sh \
+  && ok "навык · release-plan: скилл, команда и install.sh на месте" || fail "навык · release-plan: регистрация неполна"
 
 # груминг роем: пакеты обеих волн; слияние берёт годную замену, а ломающую карту и теряющую требование — отклоняет
 GR="$tmp/groom" && cp -r "$BGOLD" "$GR" && rm -rf "$GR/plan"

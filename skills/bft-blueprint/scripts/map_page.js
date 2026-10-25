@@ -230,32 +230,179 @@
     pic.closest(".fr").querySelectorAll(".dots i").forEach((x, k) => x.classList.toggle("on", k === i));
   }
 
+  /* ---------- слой «Релиз»: дорожки DEV/STAGE/PROD, шаги, ворота, правки в браузере ----------
+     Данные — ключ «release» #map-data (появляется, когда в проекте есть документ «План релиза»).
+     Правки хранятся в браузере (как «Исполнение» задач) и отдаются командой `backlog doc update`;
+     пересобранная карта закрывает их — значения совпали с проектом. */
+  const RL = D.release || null;
+  const TRACK_C = { dev: "#0f8b8d", stage: "#d06a12", prod: "#c2338a" };
+  const TRACK_T = { dev: "DEV", stage: "STAGE", prod: "PROD" };
+  const RL_KINDS = { "согласование": "согл.", "задача devops": "devops", "предоставление доступа или данных": "доступ", "утверждение": "утв.", "проверка": "пров." };
+  const RL_STATUS = { "не начат": "todo", "в работе": "run", "готово": "done", "требует ответа": "wait" };
+  const RL_ST = { todo: "не начат", run: "в работе", done: "готово", wait: "требует ответа" };
+  const rlKey = `bp-rl-${D.epic}`;
+  const gridRel = document.getElementById("rel");
+  let maxTrack = "";   /* дорожка, где работа сейчас: первая незакрытая, все закрыты — последняя */
+  let RL_EDITS = {};
+  try { RL_EDITS = JSON.parse(localStorage.getItem(rlKey) || "{}") } catch (e) { }
+  const rlSave = () => { try { localStorage.setItem(rlKey, JSON.stringify(RL_EDITS)) } catch (e) { } };
+  const rlStep = id => D.release.steps.find(s => s.id === id) || {};
+  /* правка шага поверх данных проекта; пустое значение — как в проекте */
+  const rlV = (s, f) => RL_EDITS[s] && RL_EDITS[s][f] != null && RL_EDITS[s][f] !== "" ? RL_EDITS[s][f] : rlStep(s)[f];
+  /* следующий свободный ID: больше любого существующего числового R<n> */
+  const rlNextId = () => "R" + (RL.steps.reduce((m, s) => Math.max(m, parseInt(s.id.slice(1), 10) || 0), 0) + 1);
+  function rlEdit(id, f, v) {
+    RL_EDITS[id] = RL_EDITS[id] || {};
+    RL_EDITS[id][f] = v;
+    rlSave(); rlBoard();
+    if (side.dataset.ctx === "release:" + id) openRelease(id);
+  }
+  function rlCard(s, k, i) {
+    const st = RL_STATUS[rlV(s.id, "status")] || "todo", deps = rlV(s.id, "deps") || [];
+    const depHTML = deps.length ? `<span class="rldep">${deps.map(d => `<span class="rlref${rlV(d, "status") === "готово" ? " ok" : ""}" data-rlgo="${esc(d)}" role="button" tabindex="0">${esc(d)}</span>`).join("")}</span>` : "";
+    return `<button class="rlcard${st === "done" ? " done" : ""}${st === "wait" ? " wait" : ""}${st === "run" ? " run" : ""}" data-rlstep="${esc(s.id)}" data-team="${s.track}" style="--c:${TRACK_C[s.track]}">
+      <span class="rltop"><b class="rid">${esc(s.id)}</b><span class="rkind">${esc(RL_KINDS[s.kind] || s.kind)}</span>${depHTML}<i class="rst ${st}"></i></span>
+      <span class="raction">${esc(rlV(s.id, "action"))}</span>
+      <span class="rlwho">${esc(rlV(s.id, "owner"))}</span>
+      <span class="rlready">${esc(s.ready)}</span></button>`;
+  }
+  function rlBoard() {
+    if (!RL) return;
+    const el = gridRel;
+    if (!el) return;
+    const tracks = RL.tracks;
+    maxTrack = "";
+    for (const t of tracks) {
+      if (maxTrack) break;
+      const steps = RL.steps.filter(s => s.track === t.id);
+      if (steps.length && steps.every(s => rlV(s.id, "status") === "готово")) continue;
+      maxTrack = t.id;
+    }
+    if (!maxTrack) maxTrack = tracks[tracks.length - 1].id;
+    el.innerHTML = `<div class="rlscroll"><div class="rlboard" style="--tc:${tracks.length}">
+      ${tracks.map((t, ti) => {
+        const steps = RL.steps.filter(s => s.track === t.id);
+        const gate = RL.gates.find(g => g.frm === t.id);
+        const done = steps.filter(s => rlV(s.id, "status") === "готово").length;
+        const trackSt = steps.length ? (done === steps.length ? "done" : "run") : "";
+        return `<div class="rltrack${trackSt ? " " + trackSt : ""}" data-rltrack="${t.id}" style="--c:${TRACK_C[t.id]}">
+          <div class="rlth"><b>${esc(t.title)}</b><span>${done} / ${steps.length}</span></div>
+          <div class="rlcol">${steps.map((s, i) => rlCard(s, ti, i)).join("") || '<p class="rlempty">Шагов нет</p>'}</div>
+          ${gate ? `<div class="rlgate" data-rlgate="${t.id}"><span class="rlgl">ВОРОТА · ${esc(TRACK_T[gate.frm])} → ${esc(TRACK_T[gate.to])}</span><span class="rlgw">${esc(gate.who)}</span><span class="rlgc">${esc(gate.criterion)}</span></div>`
+            : ti === tracks.length - 1 ? '<div class="rlgate last"><span class="rlgl">Вышло в PROD — конец пути</span></div>' : ""}
+        </div>`;
+      }).join("")}</div></div>`;
+  }
+  const shq = x => `'${String(x == null ? "" : x).replace(/'/g, "'\\''")}'`;
+  /* документ «План релиза» из полных строк таблиц: фронmatter + паспорт + «## Шаги» + «## Ворота» */
+  function rlDocText() {
+    const mk = (hdr, rows) => [`| ${hdr.join(" | ")} |`, `| ${hdr.map(() => "---").join(" | ")} |`, ...rows].join("\n");
+    const step = s => { const deps = rlV(s.id, "deps") || [];
+      return `| ${s.id} | ${s.track} | ${rlV(s.id, "action")} | ${rlV(s.id, "owner")} | ${s.kind} | ${deps.length ? deps.join(", ") : "—"} | ${rlV(s.id, "status")} | ${s.ready} |` };
+    return ["---", `id: ${RL.doc}`, "title: План релиза", "type: specification", "created_date: '2026-01-01 00:00'", "---", "<!-- bft-release",
+      `epic_slug: ${D.epic}`, `version: ${RL.version}`, "revised: 2026-01-01", `status: ${RL.status}`, "-->", "",
+      `# План релиза: ${D.title}`, "", "## Шаги", "",
+      mk(["ID", "Стенд", "Что сделать", "Ответственный", "Тип", "Зависимости", "Статус", "Критерий готовности"], RL.steps.map(step)), "",
+      "## Ворота", "",
+      mk(["Ворота", "Кто утверждает", "Критерий перехода"], RL.gates.map(g => `| ${g.frm} | ${g.who} | ${g.criterion} |`)), ""].join("\n");
+  }
+  function rlCmd() {
+    return `backlog doc update ${RL.doc} --content $'${rlDocText().replace(/'/g, "'\\''")}'`;
+  }
+  /* панель шага: поля шага, статусы, зависимости, ворота дорожки, кнопка с командой для бэклога */
+  function openRelease(id, added) {
+    if (!RL) return;
+    const s = rlStep(id), track = RL.tracks.find(t => t.id === s.track), gate = RL.gates.find(g => g.frm === s.track);
+    const st = RL_STATUS[rlV(id, "status")] || "todo";
+    const all = RL.steps.map(x => x.id);
+    const deps = rlV(id, "deps") || [];
+    const depBoxes = `<ul class="rldeps">${all.filter(x => x !== id).map(x => `<li><label><input type="checkbox" data-rldep="${esc(x)}"${deps.includes(x) ? " checked" : ""}>${esc(x)}${rlV(x, "status") === "готово" ? " ✓" : ""}</label></li>`).join("")}</ul>`;
+    const gatesHTML = `<ul class="rlgates">${RL.gates.map(g => `<li><b>${esc(TRACK_T[g.frm])} → ${esc(TRACK_T[g.to])}</b><span class="rlgw">${esc(g.who)}</span><span class="rlgc">${esc(g.criterion)}</span></li>`).join("") || '<li class="rlempty">Ворот нет</li>'}</ul>`;
+    const tracks = RL.tracks.map(t => `<button data-rltrack-btn="${t.id}" class="${t.id === s.track ? "on" : ""}">${esc(t.title)}</button>`).join("");
+    const html = `
+      <div class="rlform">
+        <label>Что сделать<input data-rlf="action" value="${esc(rlV(id, "action"))}"></label>
+        <label>Ответственный<input data-rlf="owner" value="${esc(rlV(id, "owner"))}"></label>
+        <label>Статус<span class="rlsts">${Object.keys(RL_STATUS).map(x => `<button data-rlst="${esc(x)}" class="${x === rlV(id, "status") ? "on" : ""}">${esc(x)}</button>`).join("")}</span></label>
+        <div class="rlsec"><h4>Зависимости</h4>${depBoxes}</div>
+        <div class="rlsec"><h4>Критерий готовности</h4><p class="rlcr">${esc(s.ready)}</p></div>
+        <div class="rlsec"><h4>Ворота переходов</h4>${gatesHTML}</div>
+        <div class="rlsec rlcmd"><h4>Правки — в проект</h4><button class="tool pri" data-rlcopy>Скопировать команду для бэклога</button>
+          <span class="dhint">Правки хранит браузер; команда перепишет документ «План релиза» (${esc(RL.doc)}) целиком, поле «Кто утверждает» ворот и тип шага меняются в файле.</span></div>
+      </div>${added || ""}`;
+    side.innerHTML = head(`${s.id} · ${esc(rlV(id, "action"))}`, `<span class="rltr" style="--c:${TRACK_C[s.track]}">${esc(track.title)}</span> · ${esc(RL_KINDS[s.kind] || s.kind)} · <span class="rst ${st} t"></span>${esc(rlV(id, "status"))}`) + `<div class="snbody">${html}</div>`;
+    body.classList.remove("wide"); body.classList.add("open"); side.scrollTop = 0;
+    side.dataset.ctx = "release:" + id; side.dataset.note = "";
+  }
+  function rlOpenAdd() {
+    const nid = rlNextId();
+    const html = `<div class="rlform">
+      <label>ID<input value="${esc(nid)}" readonly></label>
+      <label>Стенд<span class="rlsts">${RL.tracks.map(t => `<button data-rltrack-add="${t.id}" class="${t.id === maxTrack ? "on" : ""}">${esc(t.title)}</button>`).join("")}</span></label>
+      <label>Что сделать<input id="rl-new-action" placeholder="Например: Поднять стенд DEV с новой версией"></label>
+      <label>Ответственный<input id="rl-new-owner" placeholder="Роль или команда"></label>
+      <label>Тип<select id="rl-new-kind">${Object.keys(RL_KINDS).map(k => `<option>${esc(k)}</option>`).join("")}</select></label>
+      <div class="rlsec"><h4>Зависимости</h4><ul class="rldeps">${RL.steps.map(x => `<li><label><input type="checkbox" data-rldepnew="${esc(x.id)}">${esc(x.id)} · ${esc(rlV(x.id, "action"))}</label></li>`).join("")}</ul></div>
+      <label>Критерий готовности<input id="rl-new-ready" placeholder="По чему понять, что шаг готов"></label>
+      <div class="cmrow"><button class="cmsave" data-rladd>Добавить шаг</button><button class="cmcancel" data-rlcancel>Отмена</button></div></div>`;
+    side.innerHTML = head("Новый шаг плана релиза", "черновик шага — применится командой для бэклога") + `<div class="snbody">${html}</div>`;
+    body.classList.remove("wide"); body.classList.add("open"); side.scrollTop = 0;
+    side.dataset.ctx = "release-add"; side.dataset.note = "";
+    side.dataset.track = maxTrack;
+  }
+  function rlAddStep() {
+    const action = side.querySelector("#rl-new-action").value.trim() || "Новый шаг";
+    const owner = side.querySelector("#rl-new-owner").value.trim() || "—";
+    const kind = side.querySelector("#rl-new-kind").value;
+    const ready = side.querySelector("#rl-new-ready").value.trim() || "—";
+    const track = side.dataset.track || RL.tracks[0].id;
+    const nid = rlNextId();
+    const deps = [...side.querySelectorAll("[data-rldepnew]")].filter(c => c.checked).map(c => c.dataset.rldepnew);
+    RL.steps.push({ id: nid, track, action, owner, kind, deps, status: "не начат", ready, file: RL.steps[0] ? RL.steps[0].file : "" });
+    RL_EDITS[nid] = { action, owner, kind, deps, status: "не начат", ready, track };
+    rlSave(); rlBoard(); openRelease(nid);
+  }
+  function rlGo(id) { if (body.dataset.view === "rel") { openRelease(id); const c = gridRel.querySelector(`[data-rlstep="${id}"]`); if (c) c.scrollIntoView({ block: "center", behavior: "smooth" }) } }
+  /* первый шаг дорожки — куда ведут её ворота */
+  const rlStepOfTrack = tr => { const s = RL.steps.find(x => x.track === tr); return s ? s.id : (RL.steps[0] ? RL.steps[0].id : "") };
+
+
   /* ---------- три слоя: «Что видят», «Что делаем», «Как это работает» — переключатель, а не прокрутка страницы ----------
      «Что делаем» и «Как это работает» — одна сетка с общей строкой этапов, слой прячет чужие ряды.
-     При переключении открывается тот же этап, что был слева на экране. */
+     Четвёртый слой «Релиз» — доска дорожек DEV/STAGE/PROD, отдельная разметка (#rel). */
   const work = document.getElementById("work");
   function setView(v) {
     const was = body.dataset.view; if (was === v) return;
     const hs = document.getElementById("hscroll"), hh = [...hero.querySelectorAll(".hh")], mh = [...grid.querySelectorAll(".mh:not(.corner)")];
     const firstVisible = (els, box, pad) => Math.max(0, els.findIndex(el => el.getBoundingClientRect().right > box.getBoundingClientRect().left + pad + 24));
-    const col = was === "see" ? firstVisible(hh, hs, 132) : firstVisible(mh, work, 96);
     body.dataset.view = v;
     document.querySelectorAll("button[data-view]").forEach(b => b.classList.toggle("on", b.dataset.view === v));
+    if (v === "rel") { if (RL) { rlBoard(); gridRel.scrollIntoView({ block: "start" }) } return }
     if (v === "adr") { if (AR || SR) { adrBoard(); adrGrid.scrollIntoView({ block: "start" }) } return }
-    if (was === "adr") { window.scrollTo(0, 0) }
+    if (was === "rel" || was === "adr") { window.scrollTo(0, 0) }
+    const col = was === "see" ? firstVisible(hh, hs, 132) : was === "rel" ? 0 : firstVisible(mh, work, 96);
     if (v === "see") hs.scrollLeft = hh[col] ? hh[col].offsetLeft - 132 : 0;
     else { work.scrollTop = 0; work.scrollLeft = mh[col] ? mh[col].offsetLeft - 96 : 0 }
     drawLinks();
   }
   body.dataset.view = "see";
 
-  /* ---------- телефон: шаг за шагом сверху вниз; архитектура — секцией в стеке ---------- */
-  document.getElementById("mstack").innerHTML = ((AR || SR) ? `<section class="ms arsms"><div class="mh2"><span class="n">A</span><div><b>Архитектура</b><small>ADR и системные требования: как реализуем</small></div></div><div id="madr"></div></section>` : "") + COLS.map((col, c) => {
+  /* ---------- телефон: шаг за шагом сверху вниз; план релиза и архитектура — секциями в начале стека ---------- */
+  document.getElementById("mstack").innerHTML = (RL ? `<section class="ms rlms"><div class="mh2"><span class="n">↗</span><div><b>План релиза</b><small>DEV → STAGE → PROD, ворота переходов</small></div></div><div class="wl" id="mrel"></div></section>` : "") + ((AR || SR) ? `<section class="ms arsms"><div class="mh2"><span class="n">A</span><div><b>Архитектура</b><small>ADR и системные требования: как реализуем</small></div></div><div id="madr"></div></section>` : "") + COLS.map((col, c) => {
     const tasks = D.tasks.filter(t => t.stage === col.id), procs = D.cards.filter(p => p.stage === col.id);
     return `<section class="ms"><div class="mh2"><span class="n">${c === COLS.length - 1 ? "✓" : c + 1}</span><div><b>${esc(col.name)}</b>${col.when ? `<small>${esc(col.when)}</small>` : ""}</div></div>
       <div class="wl">${seenHTML(c)}</div>${tasks.length ? `<span class="lb">Что делаем</span><div class="wl">${tasks.map(taskHTML).join("")}</div>` : ""}
       ${procs.length ? `<span class="lb">Как это работает</span><div class="wl">${procs.map(procHTML).join("")}</div>` : ""}</section>`;
   }).join("");
+  /* телефон: план релиза — дорожки по очереди, карточки те же, ворота строкой */
+  if (RL) {
+    const mr = document.getElementById("mrel");
+    if (mr) mr.innerHTML = RL.tracks.map(t => {
+      const steps = RL.steps.filter(s => s.track === t.id), gate = RL.gates.find(g => g.frm === t.id);
+      return `<span class="lb">${esc(t.title)}</span>` + (steps.map((s, i) => rlCard(s, 0, i)).join("") || '<p class="rlempty">Шагов нет</p>') +
+        (gate ? `<div class="rlgate" style="margin:4px -14px 8px"><span class="rlgl">ВОРОТА → ${esc(TRACK_T[gate.to])}</span><span class="rlgw">${esc(gate.who)}</span><span class="rlgc">${esc(gate.criterion)}</span></div>` : "");
+    }).join("");
+  }
   /* телефон: архитектура — те же вкладки и таблицы, диаграмма текстом mermaid;
      рендер отложен до конца файла (arInit) — adrOpen/sysOpen и табличные хелперы
      объявлены ниже по файлу, при загрузке сразу их звать нельзя (TDZ) */
@@ -324,10 +471,33 @@
     return `backlog task edit ${id} ${refs.length ? refs.map(r => "--ref " + sh(r)).join(" ") : "--clear-refs"} --notes ${sh(v.note || "")}`;
   }
   document.addEventListener("input", e => {
-    const f = e.target.closest && e.target.closest("[data-ex]"); if (!f) return;
-    const id = f.closest("[data-exec]").dataset.exec, v = execOf(TASK[id]);
-    v[f.dataset.ex] = f.value; try { localStorage.setItem(execKey(id), JSON.stringify(v)) } catch (er) { }
-    if (f.dataset.ex !== "note") f.parentElement.nextElementSibling.innerHTML = links(f.value);
+    const f = e.target.closest && e.target.closest("[data-ex]"); if (f) {
+      const id = f.closest("[data-exec]").dataset.exec, v = execOf(TASK[id]);
+      v[f.dataset.ex] = f.value; try { localStorage.setItem(execKey(id), JSON.stringify(v)) } catch (er) { }
+      if (f.dataset.ex !== "note") f.parentElement.nextElementSibling.innerHTML = links(f.value);
+    }
+    /* слой «Релиз»: правки полей шага — в браузер, командой для бэклога — в проект */
+    const r = e.target.closest && e.target.closest("[data-rlf]");
+    if (r && side.dataset.ctx.startsWith("release:")) {
+      const id = side.dataset.ctx.split(":")[1];
+      RL_EDITS[id] = RL_EDITS[id] || {}; RL_EDITS[id][r.dataset.rlf] = r.value; rlSave();
+      const card = gridRel.querySelector(`[data-rlstep="${id}"]`);
+      if (card) { const act = card.querySelector(".raction"), who = card.querySelector(".rlwho"); if (r.dataset.rlf === "action") act.textContent = r.value; if (r.dataset.rlf === "owner") who.textContent = r.value }
+    }
+  });
+  document.addEventListener("change", e => {
+    const c = e.target.closest && e.target.closest("[data-dod]");
+    if (c) {
+      const [id, k] = c.dataset.dod.split(":"); let d = {}; try { d = JSON.parse(localStorage.getItem(dodKey(id)) || "{}") } catch (er) { }
+      d[k] = c.checked; try { localStorage.setItem(dodKey(id), JSON.stringify(d)) } catch (er) { }
+    }
+    /* слой «Релиз»: галочка зависимости шага */
+    const rc = e.target.closest && e.target.closest("[data-rldep]");
+    if (rc && side.dataset.ctx.startsWith("release:")) {
+      const id = side.dataset.ctx.split(":")[1], deps = new Set(rlV(id, "deps") || []);
+      rc.checked ? deps.add(rc.dataset.rldep) : deps.delete(rc.dataset.rldep);
+      rlEdit(id, "deps", [...deps]);
+    }
   });
   const sec = (name, html) => html ? `<section class="tk"><h4>${name}</h4>${html}</section>` : "";
   /* вопросы карточки и задачи — те же, что в «Уточнить»: клик — ответить */
@@ -521,6 +691,16 @@
     /* слой «Архитектура»: вкладки ADR / Системные требования, пункт меню */
     const at = t.closest("[data-artab]"); if (at) return setArTab(at.dataset.artab);
     if (t.closest("[data-adrmenu]")) { menu(false); if (AR || SR) return setView("adr") }
+    /* слой «Релиз»: шаг, ворота, статусы, дорожки, команда для бэклога */
+    const rgo = t.closest("[data-rlgo]"); if (rgo) return rlGo(rgo.dataset.rlgo);
+    const rgt = t.closest("[data-rlgate]"); if (rgt) return openRelease(rlStepOfTrack(rgt.dataset.rlgate));
+    const rcs = t.closest("[data-rlstep]"); if (rcs) return openRelease(rcs.dataset.rlstep);
+    const rst = t.closest("[data-rlst]"); if (rst) { const id = side.dataset.ctx.split(":")[1]; if (id) return rlEdit(id, "status", rst.dataset.rlst) }
+    const rta = t.closest("[data-rltrack-add]"); if (rta) { side.dataset.track = rta.dataset.rltrackAdd; side.querySelectorAll("[data-rltrack-add]").forEach(b => b.classList.toggle("on", b === rta)); return }
+    const raa = t.closest("[data-rladd]"); if (raa) return rlAddStep();
+    const rcn = t.closest("[data-rlcancel]"); if (rcn) return closeSide();
+    const rcp = t.closest("[data-rlcopy]"); if (rcp) return copyText(rlCmd(), rcp);
+    if (t.closest("[data-rlmenu]")) { menu(false); if (RL) return setView("rel") }
     if (t.closest("#menu [data-guide]") || t.closest("#menu .play")) menu(false);
     const sl = t.closest("[data-sl]"); if (sl) return slide(sl.closest(".pic"), +sl.dataset.sl);
     const dd = t.closest("[data-dot]"); if (dd) return slide(dd.closest(".fr").querySelector(".pic"), 0, +dd.dataset.dot);
@@ -733,5 +913,5 @@
   cmPaint();
 
   arInit(); /* телефон: секция «Архитектура» — после объявления всех хелперов */
-  window.BPMAP = { setView, cmPanel, qPanel, qSave, cmTarget, cmPrompt, promptNow, execCmd, openProc, openTask, openSeen, openScreen, openNote, zoom, srcFiles };
+  window.BPMAP = { setView, cmPanel, qPanel, qSave, cmTarget, cmPrompt, promptNow, execCmd, openProc, openTask, openSeen, openScreen, openNote, zoom, srcFiles, openRelease, rlBoard, rlCmd };
 })();

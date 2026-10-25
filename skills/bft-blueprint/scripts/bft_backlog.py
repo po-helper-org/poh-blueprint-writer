@@ -1,3 +1,5 @@
+
+
 #!/usr/bin/env python3
 """Service Blueprint в проекте Backlog.md — разбор и проверка формы.
 
@@ -14,6 +16,8 @@ markdown-файлы, которыми ИИ-агент управляет чер�
                                              контракты → параметры → источники → преобразования → AS-IS → изменения
   backlog/docs/doc-… - Стыки.md               этап «Контроль стыковочных работ» <!-- bft-seams … -->:
                                              участники стыков, обязательства, контракты, точки, риски
+  backlog/docs/doc-… - План-релиза.md         этап «План релиза / Delivery» <!-- bft-release … -->:
+                                             дорожки DEV/STAGE/PROD, шаги и ворота между стендами
   backlog/docs/screens/doc-… - F3 · ….md      требования к экрану для дизайнера
   backlog/tasks/bp-12 - ….md                  «Что делаем»: задача команды — постановка для техлида
   backlog/tasks/bp-12.1 - ….md                «Как это работает»: подзадача — техническая карточка
@@ -34,38 +38,88 @@ markdown-файлы, которыми ИИ-агент управляет чер�
 
 Стандарт — `resources/backlog_rules.md`. Только стандартная библиотека.
 """
+
 from __future__ import annotations
 
 import json
+
 import re
+
 import sys
+
 from dataclasses import dataclass, field
+
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 import bft_blueprint as bb  # noqa: E402
+
 import bft_story as bs  # noqa: E402
+
 import bft_screens as bsn  # noqa: E402
 
 FINAL = bs.FINAL
+
 KINDS = ("создать", "доработать", "используем", "уточнить")
+
 LAYERS = ("employee", "technology", "backstage", "support")
+
+# Этап «План релиза / Delivery»: дорожки-стенды, шаги, ворота между стендами.
+RELEASE_META = ("epic_slug", "version", "revised", "status")
+
+RELEASE_TRACKS = ("dev", "stage", "prod")
+
+RELEASE_TRACK_TITLE = {"dev": "DEV", "stage": "STAGE", "prod": "PROD"}
+
+RELEASE_STEP_TYPES = ("согласование", "задача devops", "предоставление доступа или данных",
+                      "утверждение", "проверка")
+
+RELEASE_STATUSES = ("не начат", "в работе", "готово", "требует ответа")
+
+RELEASE_GATE_KEYS = ("с", "кто", "критерий")
+
+GATE_HEADER = ("Ворота", "Кто утверждает", "Критерий перехода")
+
+STEP_HEADER = ("ID", "Стенд", "Что сделать", "Ответственный", "Тип", "Зависимости",
+               "Статус", "Критерий готовности")
+
+GATE_ID = re.compile(r"^G-?(?P<num>\d+)$", re.I)
+
+STEP_ID = re.compile(r"^R-?(?P<num>\d+)$", re.I)
+
 BRIEF = ("ASIS", "GAP", "TOBE", "HowToDemo", "Дополнительно")
+
 BRIEF_OPTIONAL = {"Дополнительно"}
+
 CARD = ("UserStory", "JobStory", "Параметры", "Процесс", "BPMN", "HowToDemo")
+
 CARD_REQUIRED = ("UserStory", "JobStory", "Параметры", "Процесс", "HowToDemo")
+
 # участники процесса, которые строят сервис, а не работают в нём: такая карточка — о проекте, а не о сервисе
 PROJECT_ROLE = re.compile(r"^(?:PO|СА|PM|PO .+|СА .+|продакт.*|владелец продукта|(?:системный |бизнес-)?аналитик|разработ\w*|команда.*|архитектор)$", re.I)
+
 MAX_STEPS = 12          # шагов процесса — дальше схема не читается, карточку делят на две
+
 MAX_LANES = 6
+
 PARAM_KEYS = {"вход": "in", "входы": "in", "управление": "ctl", "выход": "out", "выходы": "out",
               "механизм": "mech", "механизмы": "mech"}
+
 PARAM_NAME = {"in": "Вход", "ctl": "Управление", "out": "Выход", "mech": "Механизм"}
+
 MAP_META = ("epic_slug", "source_doc", "source_stage", "source_rev", "version", "revised", "status")
+
 TEAMS_HEADER = ("ID", "Команда")
+
 QUESTIONS_HEADER = ("ID", "Кому", "Вопрос", "Где", "Тип", "Ответ")
+
 Q_TYPES = ("вопрос", "блокер")
+
 MAX_TASK = 80
+
 MAX_CARD = 90
 
 # Этап «ADR и Системные требования»: после раскладки задач — как их реализовать. Два документа проекта:
@@ -75,64 +129,100 @@ MAX_CARD = 90
 # → AS-IS → изменения → открытые вопросы). Включается, когда работа затрагивает устройство систем —
 # на карте есть карточки слоя Technology (вход этапа: БФТ, «История», задачи и карточки карты).
 ADR_META = ("epic_slug", "version", "revised", "status")
+
 ADR_STATUSES = ("черновик", "предложено", "принято", "отклонено", "заменено")
+
 ADR_CONTEXT_HEADER = ("Участник", "Роль в решении")            # кто и зачем участвует в решении
+
 ADR_DECISION_HEADER = ("ID", "Контракт", "Суть решения", "Обоснование")
+
 ADR_OPTION_HEADER = ("ID", "Вариант", "Надёжность", "Скорость реализации", "Соответствие требованиям", "Почему нет")
+
 BOTTLENECK_HEADER = ("ID", "Узкое место", "Тип", "Нагрузка", "Риск", "Прощупывание")
+
 COMPROMISE_HEADER = ("ID", "Компромисс", "Надёжность", "Скорость реализации", "Соответствие требованиям", "Чем платим")
+
 VARIANT_ID = re.compile(r"^V-?(?P<num>\d+)$", re.I)
+
 BOTTLENECK_ID = re.compile(r"^N-?(?P<num>\d+)$", re.I)
+
 COMPROMISE_ID = re.compile(r"^C-?(?P<num>\d+)$", re.I)
 
 # Системные требования: три вопроса на КАЖДЫЙ контракт — (1) какие данные нужны контракту,
 # (2) источник каждого параметра (система/сервис/поле/справочник), (3) какие преобразования
 # над данными нужны для контрактов и бизнес-логики.
 SYSREQ_META = ("epic_slug", "version", "revised", "status")
+
 SYSREQ_STATUSES = ("черновик", "согласован")
+
 CONTRACTS_HEADER = ("ID", "Контракт", "Потребитель", "Данные контракту", "Источник параметров", "Преобразования")
+
 SYSREQ_ASIS_HEADER = ("ID", "Как устроено сейчас", "Что меняется")
+
 SYSREQ_CHANGE_HEADER = ("ID", "Изменение", "Причина")
+
 SYSREQ_Q_HEADER = ("ID", "Кому", "Вопрос", "Ответ")
+
 CONTRACT_ID = re.compile(r"^K-?(?P<num>\d+)$", re.I)
+
 SYSROW_ID = re.compile(r"^(?:A|I)-?(?P<num>\d+)$", re.I)
+
 SYSQ_ID = re.compile(r"^Q-?(?P<num>\d+)$", re.I)
+
 # ADR-контракт в «Системных требованиях» — имя латиницей-слагом или [УТОЧНИТЬ …]
 SYS_CONTRACT_NAME = re.compile(r"^(?:[a-z][a-z0-9-]*|[А-Яа-яЁё][А-Яа-яЁё0-9 .,()-]*|\[УТОЧНИТЬ[^\]]*\])$")
+
 # Этап «Контроль стыковочных работ»: участники стыков, обязательства «кто → что → кому → срок»,
 # контракты по слоям (FE↔BE, BE↔BE, Infra), контрольные точки и риски. Документ проекта —
 # «Стыки» (<!-- bft-seams … -->); включается, когда задача режется между командами/сервисами.
 SEAMS_META = ("epic_slug", "version", "revised", "status")
+
 SEAM_HEADER = ("ID", "Стык", "Поставщик", "Потребитель", "Ответственный за контракт")
+
 SEAM_KINDS = ("fe-be", "be-be", "be-infra", "внешний")
+
 DELIVERY_HEADER = ("ID", "Кто", "Что", "Кому", "Срок", "Формат/место")
+
 SEAM_CONTRACT_HEADER = ("Стык", "Аспект", "Требование к фиксации")
+
 CHECKPOINT_HEADER = ("ID", "Точка", "Когда", "Что проверяется", "Кто проводит")
+
 RISK_HEADER = ("ID", "Риск", "Следствие", "Владелец", "Митигация")
+
 SEAM_ID = re.compile(r"^S-?(?P<num>\d+)$", re.I)
+
 DELIVERY_ID = re.compile(r"^D-?(?P<num>\d+)$", re.I)
+
 CHECKPOINT_ID = re.compile(r"^K-?(?P<num>\d+)$", re.I)
+
 RISK_ID = re.compile(r"^R-?(?P<num>\d+)$", re.I)
+
 # «Кто»/«Кому» в матрице обязательств и «Поставщик»/«Потребитель» — ID команд из «Команд» или [УТОЧНИТЬ …]
 TEAM_OR_STUB = re.compile(r"^(?:[a-z][a-z0-9-]*|\[УТОЧНИТЬ[^\]]*\])$")
 
 TEAM_RE = re.compile(r"^[a-z][a-z0-9-]*$")
-SCREEN_TITLE = re.compile(r"^([A-H]\d{1,2})\s*·\s*(.+)$")
-SECTION_RE = re.compile(r"<!-- SECTION:([A-Z_]+):BEGIN -->\n?(.*?)\n?<!-- SECTION:\1:END -->", re.S)
-LIST_RE = {k: re.compile(rf"<!-- {k}:BEGIN -->\n?(.*?)\n?<!-- {k}:END -->", re.S) for k in ("AC", "DOD")}
-CHECK_ITEM = re.compile(r"^- \[([ xX])\] (?:#\d+ )?(.*)$")
-REQS_LINE = re.compile(r"^Требования(?: БФТ)?\s*:\s*(.*)$")
-STEP_RE = re.compile(r"^\d+\.\s+\S")
-META_OPEN = re.compile(r"^<!--\s*(bft-map|bft-story|bft-adr|bft-sysreq|bft-seams)\s*$")
-MERMAID = re.compile(r"```mermaid\n(.*?)\n```", re.S)
 
+SCREEN_TITLE = re.compile(r"^([A-H]\d{1,2})\s*·\s*(.+)$")
+
+SECTION_RE = re.compile(r"<!-- SECTION:([A-Z_]+):BEGIN -->\n?(.*?)\n?<!-- SECTION:\1:END -->", re.S)
+
+LIST_RE = {k: re.compile(rf"<!-- {k}:BEGIN -->\n?(.*?)\n?<!-- {k}:END -->", re.S) for k in ("AC", "DOD")}
+
+CHECK_ITEM = re.compile(r"^- \[([ xX])\] (?:#\d+ )?(.*)$")
+
+REQS_LINE = re.compile(r"^Требования(?: БФТ)?\s*:\s*(.*)$")
+
+STEP_RE = re.compile(r"^\d+\.\s+\S")
+
+META_OPEN = re.compile(r"^<!--\s*(bft-map|bft-story|bft-adr|bft-sysreq|bft-seams|bft-release)\s*$")
+
+MERMAID = re.compile(r"```mermaid\n(.*?)\n```", re.S)
 
 @dataclass
 class Item:
     """Значение параметра карточки: текст и ссылки на другие карточки."""
     text: str
     refs: list[str]
-
 
 @dataclass
 class Doc:
@@ -143,7 +233,6 @@ class Doc:
     meta: dict
     body: str
     off: int        # строк файла до тела
-
 
 @dataclass
 class BTask:
@@ -192,13 +281,11 @@ class BTask:
         except ValueError:
             return 1e9
 
-
 @dataclass
 class Team:
     id: str
     name: str
     line: int
-
 
 @dataclass
 class Question:
@@ -214,7 +301,6 @@ class Question:
     def open(self) -> bool:
         return self.answer.strip() in bb.EMPTY
 
-
 @dataclass
 class Option:
     """Вариант реализации ADR: как выглядит по трём осям и почему не выбран (для TO-BE — почему да)."""
@@ -225,7 +311,6 @@ class Option:
     fit: str              # соответствие требованиям
     why_not: str          # почему нет (у выбранного — почему да)
 
-
 @dataclass
 class Decision:
     """Решение TO-BE по контракту: суть и обоснование."""
@@ -234,7 +319,6 @@ class Decision:
     text: str
     why: str
     line: int
-
 
 @dataclass
 class Seam:
@@ -245,7 +329,6 @@ class Seam:
     consumer: str
     owner: str                     # ответственный за контракт (роль/техлид; может быть [УТОЧНИТЬ …])
     line: int
-
 
 @dataclass
 class Delivery:
@@ -259,7 +342,6 @@ class Delivery:
     seam: str = ""                 # ID стыка S1… (заполняет проверка смысла)
     line: int = 0
 
-
 @dataclass
 class ContractRow:
     """Строка контракта по слою стыка: аспект и требование к фиксации."""
@@ -267,7 +349,6 @@ class ContractRow:
     aspect: str
     req: str
     line: int
-
 
 @dataclass
 class Checkpoint:
@@ -279,7 +360,6 @@ class Checkpoint:
     who: str
     line: int
 
-
 @dataclass
 class Risk:
     """Риск стыка и его владелец."""
@@ -289,7 +369,6 @@ class Risk:
     owner: str
     mitigation: str
     line: int
-
 
 @dataclass
 class Bottleneck:
@@ -302,7 +381,6 @@ class Bottleneck:
     probe: str            # как прощупать до релиза
     line: int
 
-
 @dataclass
 class Compromise:
     """Компромисс по трём осям: надёжность vs скорость реализации vs соответствие требованиям."""
@@ -313,7 +391,6 @@ class Compromise:
     fit: str
     cost: str             # чем платим
     line: int
-
 
 @dataclass
 class ADR:
@@ -339,7 +416,6 @@ class ADR:
     def by_id(self, vid: str) -> Option | None:
         return next((o for o in self.options if o.id == vid), None)
 
-
 @dataclass
 class SysContract:
     """Контракт «Системных требований»: три вопроса системной аналитики в одной строке."""
@@ -351,7 +427,6 @@ class SysContract:
     transform: str        # (3) преобразования для контрактов и бизнес-логики
     line: int
 
-
 @dataclass
 class SysAsIs:
     """Строка AS-IS системных требований: как устроено сейчас."""
@@ -360,7 +435,6 @@ class SysAsIs:
     change: str           # что меняется
     line: int
 
-
 @dataclass
 class SysChange:
     """Изменение системных требований: что и почему."""
@@ -368,7 +442,6 @@ class SysChange:
     text: str
     why: str
     line: int
-
 
 @dataclass
 class SysQ:
@@ -382,7 +455,6 @@ class SysQ:
     @property
     def open(self) -> bool:
         return self.answer.strip() in bb.EMPTY
-
 
 @dataclass
 class SysReq:
@@ -400,7 +472,6 @@ class SysReq:
     def by_id(self, cid: str) -> SysContract | None:
         return next((c for c in self.contracts if c.id == cid), None)
 
-
 @dataclass
 class Seams:
     """Этап «Контроль стыковочных работ»: документ проекта со стыками, обязательствами,
@@ -417,6 +488,41 @@ class Seams:
     def by_id(self, sid: str) -> Seam | None:
         return next((s for s in self.seams if s.id == sid), None)
 
+@dataclass
+class ReleaseStep:
+    """Шаг дорожки «План релиза»: что сделать на стенде, чтобы задача прошла дальше."""
+    id: str
+    track: str                      # dev | stage | prod
+    action: str                     # что сделать
+    owner: str                      # роль или команда
+    kind: str                       # тип шага из RELEASE_STEP_TYPES
+    deps: list
+    status: str                     # статус из RELEASE_STATUSES
+    ready: str                      # критерий готовности
+    line: int
+
+@dataclass
+class ReleaseGate:
+    """Ворота между стендами: кто утверждает переход на следующий стенд и по какому критерию."""
+    frm: str                        # dev | stage (ворота после стендов, кроме последнего)
+    who: str                        # кто утверждает
+    criterion: str
+    line: int
+
+@dataclass
+class Release:
+    """Этап «План релиза / Delivery»: дорожки DEV/STAGE/PROD, шаги и ворота между ними."""
+    meta: dict = field(default_factory=dict)
+    steps: list = field(default_factory=list)    # [ReleaseStep]
+    gates: list = field(default_factory=list)    # [ReleaseGate]
+    doc: Doc | None = None
+
+    @property
+    def errors(self) -> list:
+        return [i for i in self.meta.get("_issues", []) if i.level == "ERROR"]
+
+    def by_track(self, track: str) -> list:
+        return [s for s in self.steps if s.track == track]
 
 @dataclass
 class Project:
@@ -433,6 +539,8 @@ class Project:
     sysreq: SysReq | None = None
     seams_doc: Doc | None = None
     seams: Seams | None = None
+    release_doc: Doc | None = None
+    release: Release | None = None
     story: bs.Story | None = None
     teams: list[Team] = field(default_factory=list)
     questions: list[Question] = field(default_factory=list)
@@ -496,7 +604,6 @@ def _scalar(v: str):
         return [_scalar(x) for x in re.findall(r"""'(?:[^']|'')*'|"(?:[^"\\]|\\.)*"|[^,\s][^,]*""", v[1:-1])]
     return v
 
-
 def yaml_front(text: str) -> tuple[dict | None, int]:
     """(ключи, число строк frontmatter вместе с ---). Не YAML-frontmatter — (None, 0)."""
     lines = text.split("\n")
@@ -545,7 +652,6 @@ def find_backlog(root: Path) -> Path | None:
             return root / name
     return None
 
-
 def _meta_comment(body: str, kind: str) -> tuple[dict, str] | None:
     """Метаданные в HTML-комментарии <!-- bft-map … --> в начале тела: в Backlog.md они не видны."""
     lines = body.split("\n")
@@ -564,7 +670,6 @@ def _meta_comment(body: str, kind: str) -> tuple[dict, str] | None:
     as_front = "\n".join(lines[:k] + ["---"] + lines[k + 1:end] + ["---"] + lines[end + 1:])
     return meta, as_front
 
-
 def _read_doc(pr: Project, f: Path) -> Doc | None:
     rel = f.relative_to(pr.root).as_posix()
     text = f.read_text(encoding="utf-8")
@@ -573,7 +678,6 @@ def _read_doc(pr: Project, f: Path) -> Doc | None:
         pr.err(rel, 1, "BL005", "документ без frontmatter Backlog.md (id, title) — создавай через `backlog doc create`")
         return None
     return Doc(str(fm["id"]), str(fm["title"]), f, rel, fm, "\n".join(text.split("\n")[off:]), off)
-
 
 def _table(d: Doc, secs: dict, name: str, header: tuple, err, code: str = "AR001") -> list[tuple[int, list[str]]]:
     """Таблица раздела «## name» с заголовком header: [(строка, колонки)]; форма — кодом err."""
@@ -597,11 +701,9 @@ def _table(d: Doc, secs: dict, name: str, header: tuple, err, code: str = "AR001
         out.append((ln, c))
     return out
 
-
 def _norm_id(raw: str, pat: re.Pattern, tag: str) -> str:
     m = pat.match(raw.strip())
     return f"{tag}{int(m.group('num'))}" if m else ""
-
 
 def parse_adr(pr: Project, d: Doc) -> ADR:
     """Документ «ADR» (<!-- bft-adr … -->): этап «ADR и Системные требования», системный дизайн.
@@ -692,7 +794,6 @@ def parse_adr(pr: Project, d: Doc) -> ADR:
     a.meta["_issues"] = issues
     return a
 
-
 def parse_sysreq(pr: Project, d: Doc) -> SysReq:
     """Документ «Системные требования» (<!-- bft-sysreq … -->): этап «ADR и Системные требования»,
     системная аналитика. Разделы: «## Контракты» | ID | Контракт | Потребитель | Данные контракту |
@@ -769,6 +870,7 @@ def parse_sysreq(pr: Project, d: Doc) -> SysReq:
             s.questions.append(SysQ(qid, c[1].strip(), c[2].strip(), c[3].strip(), ln))
     s.meta["_issues"] = issues
     return s
+
 def parse_seams(pr: Project, d: Doc) -> Seams:
     """Документ «Стыки» (<!-- bft-seams … -->): этап «Контроль стыковочных работ».
 
@@ -882,6 +984,89 @@ def parse_seams(pr: Project, d: Doc) -> Seams:
     sm.meta["_issues"] = issues
     return sm
 
+def _norm_release_id(raw: str, pat: re.Pattern, tag: str) -> str:
+    m = pat.match(raw.strip())
+    return f"{tag}{int(m.group('num'))}" if m else ""
+
+def parse_release(pr: Project, d: Doc) -> Release:
+    """Документ «План релиза» (<!-- bft-release … -->): дорожки DEV/STAGE/PROD, шаги, ворота.
+
+    Разделы документа: «## Шаги» — таблица | ID | Стенд | Что сделать | Ответственный | Тип |
+    Зависимости | Статус | Критерий готовности |; «## Ворота» — | Ворота | Кто утверждает |
+    Критерий перехода |. Форма проверяется здесь; смысл (deps, статусы, чей переход) — гейтом BL.
+    """
+    rel = Release(meta={k: v for k, v in d.meta.items() if not k.startswith("_")})
+    rel.doc = d
+    issues: list[bb.Issue] = []
+    err = lambda ln, code, msg: issues.append(bb.Issue(ln, "ERROR", code, msg, d.rel))  # noqa: E731
+    for key in RELEASE_META:
+        if not rel.meta.get(key):
+            err(d.off + 1, "RL001", f"паспорт <!-- bft-release -->: нет ключа `{key}`")
+    body = d.body
+    lines = body.split("\n")
+    h1 = next((ln for ln in lines if ln.startswith("# ")), "")
+    if not h1:
+        err(d.off + 1, "RL001", "нет заголовка `# План релиза: <инициатива>`")
+    secs = bb._sections(lines)
+    step_ids: set[str] = set()
+    for name, header in (("Шаги", STEP_HEADER), ("Ворота", GATE_HEADER)):
+        if name not in secs:
+            if name == "Шаги":
+                err(d.off + 1, "RL001", f"нет раздела «## {name}» с таблицей шагов")
+            continue
+        ln0, tbody = secs[name]
+        found = bb.tables(tbody, first_lineno=d.off + ln0 + 1)
+        if not found:
+            err(d.off + ln0, "RL001", f"«{name}»: нет таблицы")
+            continue
+        hdr, rows = found[0]
+        if tuple(hdr) != header:
+            err(d.off + ln0, "RL001", f"«{name}»: заголовок таблицы — {' | '.join(header)}")
+            continue
+        for ln, c in rows:
+            if len(c) != len(header):
+                err(ln, "RL001", f"«{name}»: в строке {len(c)} колонок, нужно {len(header)}")
+                continue
+            if name == "Шаги":
+                sid = _norm_release_id(c[0], STEP_ID, "R")
+                if not sid or sid in step_ids:
+                    err(ln, "RL001", f"шаг: ID вида R1…, уникален — «{c[0]}»")
+                    continue
+                step_ids.add(sid)
+                track = c[1].strip().lower()
+                if track not in RELEASE_TRACKS:
+                    err(ln, "RL001", f"{sid}: стенд «{c[1]}» — один из dev, stage, prod")
+                    continue
+                if not c[2].strip() or not c[3].strip() or not c[4].strip():
+                    err(ln, "RL001", f"{sid}: нужны «Что сделать», «Ответственный», «Тип»")
+                    continue
+                kind = c[4].strip().lower()
+                if kind not in RELEASE_STEP_TYPES:
+                    err(ln, "RL001", f"{sid}: тип «{c[4]}» — один из: {', '.join(RELEASE_STEP_TYPES)}")
+                    continue
+                deps = [x.strip() for x in re.split(r"[;,]", c[5]) if x.strip() and x.strip() not in bb.EMPTY]
+                status = c[6].strip().lower()
+                if status not in RELEASE_STATUSES:
+                    err(ln, "RL001", f"{sid}: статус «{c[6]}» — один из: {', '.join(RELEASE_STATUSES)}")
+                    continue
+                if not c[7].strip():
+                    err(ln, "RL001", f"{sid}: нет критерия готовности")
+                    continue
+                rel.steps.append(ReleaseStep(sid, track, c[2].strip(), c[3].strip(), kind,
+                                             deps, status, c[7].strip(), ln))
+            else:
+                frm = c[0].strip().lower()
+                if frm not in RELEASE_TRACKS[:-1]:
+                    err(ln, "RL001", f"ворота «{c[0]}»: стенд — dev или stage (после PROD ворот нет)")
+                    continue
+                if not c[1].strip() or not c[2].strip():
+                    err(ln, "RL001", "воротам нужны «Кто утверждает» и «Критерий перехода»")
+                    continue
+                rel.gates.append(ReleaseGate(frm, c[1].strip(), c[2].strip(), ln))
+    if rel.steps and not any(s.track == "dev" for s in rel.steps):
+        err(d.off + 1, "RL001", "нет шагов на дорожке dev — с неё начинается путь задачи")
+    rel.meta["_issues"] = issues
+    return rel
 
 def _subsections(text: str, first: int) -> tuple[list[str], dict, list[tuple[int, str]]]:
     """Текст описания: (строки до первого ###, {раздел: (строка, текст)}, порядок [(строка, раздел)])."""
@@ -900,7 +1085,6 @@ def _subsections(text: str, first: int) -> tuple[list[str], dict, list[tuple[int
         secs[cur] = (start, "\n".join(buf).strip())
     return pre, secs, order
 
-
 def split_items(raw: str) -> list[str]:
     """Значения через «;», точка с запятой внутри скобок значение не делит."""
     out, buf, depth = [], "", 0
@@ -914,7 +1098,6 @@ def split_items(raw: str) -> list[str]:
             buf += ch
     out.append(buf)
     return [x.strip() for x in out if x.strip()]
-
 
 def parse_params(pr: Project, t: BTask, line: int, text: str) -> None:
     ref_group = re.compile(rf"\s*\(\s*(?:[←→]\s*)?{re.escape(pr.prefix)}-\d+(?:\.\d+)*(?:\s*,\s*(?:[←→]\s*)?{re.escape(pr.prefix)}-\d+(?:\.\d+)*)*\s*\)")
@@ -932,10 +1115,9 @@ def parse_params(pr: Project, t: BTask, line: int, text: str) -> None:
             txt = ref_group.sub("", v).strip() or v
             t.params.setdefault(key, []).append(Item(txt, refs))
 
-
 STEP_TASK = re.compile(r"^([^:?→]{1,40}?)\s*:\s*(\S.*)$")
-BRANCH = re.compile(r"^(.+?)\s*(?:→|->)\s*(.+)$")
 
+BRANCH = re.compile(r"^(.+?)\s*(?:→|->)\s*(.+)$")
 
 def parse_process(pr: "Project", c: BTask, line: int, text: str) -> None:
     """### Процесс: «- Участник: действие», «- ? вопрос» и под ним «  - ответ → Участник: действие | конец»."""
@@ -986,7 +1168,6 @@ def parse_process(pr: "Project", c: BTask, line: int, text: str) -> None:
     if len(lanes_of(c.proc)) > MAX_LANES:
         err(line, f"участников {len(lanes_of(c.proc))} (больше {MAX_LANES})")
 
-
 def lanes_of(proc: list) -> list[str]:
     out: list[str] = []
     for x in proc:
@@ -994,7 +1175,6 @@ def lanes_of(proc: list) -> list[str]:
             if lane not in out:
                 out.append(lane)
     return out
-
 
 def bpmn_of(c: BTask) -> str:
     """Процесс карточки в mermaid: дорожка — участник, развилка — ромб; тот же процесс — тот же текст.
@@ -1066,7 +1246,6 @@ def bpmn_of(c: BTask) -> str:
     out.append("```")
     return "\n".join(out)
 
-
 def _read_task(pr: Project, f: Path) -> BTask | None:
     rel = f.relative_to(pr.root).as_posix()
     text = f.read_text(encoding="utf-8")
@@ -1095,10 +1274,8 @@ def _read_task(pr: Project, f: Path) -> BTask | None:
                 t.ac.append((cm.group(1) != " ", cm.group(2).strip()))
     return t
 
-
 def _label(t: BTask, key: str) -> list[str]:
     return [x.split(":", 1)[1].strip() for x in t.labels if x.lower().startswith(key + ":")]
-
 
 def parse(root: Path) -> Project:
     pr = Project(root=root)
@@ -1119,10 +1296,10 @@ def parse(root: Path) -> Project:
             pr.err(d.rel, 1, "BL005", f"второй документ с ID {d.id} — `backlog doctor`")
             continue
         pr.docs[d.id] = d
-        for kind in ("bft-map", "bft-story", "bft-adr", "bft-sysreq", "bft-seams"):
+        for kind in ("bft-map", "bft-story", "bft-adr", "bft-sysreq", "bft-seams", "bft-release"):
             mc = _meta_comment(d.body, kind)
             if mc:
-                d.meta = {**d.meta, "_kind": kind}
+                d.meta = {**d.meta, "_kind": kind, **mc[0]}
                 if kind == "bft-map":
                     if pr.map_doc:
                         pr.err(d.rel, 1, "BL002", f"второй паспорт карты — уже есть {pr.map_doc.rel}")
@@ -1148,6 +1325,12 @@ def parse(root: Path) -> Project:
                     pr.seams_doc = d
                     pr.seams = parse_seams(pr, d)
                     pr.issues.extend(pr.seams.meta.pop("_issues"))
+                elif kind == "bft-release":
+                    if pr.release_doc:
+                        pr.err(d.rel, 1, "RL002", f"второй план релиза — уже есть {pr.release_doc.rel}")
+                    pr.release_doc = d
+                    pr.release = parse_release(pr, d)
+                    pr.issues.extend(pr.release.meta.pop("_issues"))
                 else:
                     if pr.story_doc:
                         pr.err(d.rel, 1, "BL003", f"вторая история — уже есть {pr.story_doc.rel}")
@@ -1271,7 +1454,6 @@ def parse(root: Path) -> Project:
                 pr.err(t.rel, 1, "BL011", f"{t.id}: документа {d} нет в backlog/docs")
     return pr
 
-
 def _check_task(pr: Project, t: BTask, stages: set, team_ids: set) -> None:
     rel = t.rel
     if pr.story and t.stage not in stages:
@@ -1328,7 +1510,6 @@ def _check_task(pr: Project, t: BTask, stages: set, team_ids: set) -> None:
         pr.err(rel, secs["HowToDemo"][0], "BL007", f"{t.id}: HowToDemo — нумерованный сценарий хотя бы из двух шагов «1. …»")
     if not t.ac:
         pr.err(rel, 1, "BL007", f"{t.id}: нет критериев приемки (Acceptance Criteria) — `backlog task edit {t.id} --ac …`")
-
 
 def _check_card(pr: Project, c: BTask, stages: set, team_ids: set, task_ids: set, card_ids: set) -> None:
     rel = c.rel
@@ -1395,7 +1576,6 @@ def _check_card(pr: Project, c: BTask, stages: set, team_ids: set, task_ids: set
             for r in it.refs:
                 if r == c.id or r not in card_ids:
                     pr.err(rel, secs["Параметры"][0], "BL009", f"{c.id}: ссылка {r} в «{PARAM_NAME[key]}» — на другую карточку «Как это работает»")
-
 
 def sync_schema(pr: Project, write: bool) -> list[BTask]:
     """BPMN карточек — mermaid из «Процесса». Возвращает карточки, где блок устарел; write — переписать.
