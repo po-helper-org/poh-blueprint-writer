@@ -345,6 +345,8 @@ def check(pr: bl.Project, contracts: list[Contract], reqs: dict | None = None) -
                     if hit:
                         pr.err(c.rel, n, "CT009", f"{c.id}: «{hit.group(0)}» — устройство хранилища; в контракте — только какие данные нужны")
 
+    direction(pr, contracts)
+    chain_keys(pr, contracts)
     for cid, key, what, tid in ext_seams(pr):
         if not any(cid in c.cards and c.boundary == "external" for c in contracts):
             card = pr.task(cid)
@@ -357,6 +359,82 @@ def check(pr: bl.Project, contracts: list[Contract], reqs: dict | None = None) -
             card = pr.task(b)
             pr.warn(card.rel if card else "", 1, "CT020", f"{a} → {b} «{what}»: стык без контракта — "
                     f"./blueprint.py contracts skeleton заведёт его, или добавь {a} и {b} в cards: одного контракта")
+
+
+def _raw(t: str) -> set[str]:
+    return {w[:5] for w in re.findall(r"[а-яёa-z0-9]{3,}", t.lower().replace("ё", "е"))}
+
+
+def _ui_screens(pr: bl.Project, c: Contract) -> set[str]:
+    """Экраны UI-карточек стыка (technology, employee): документы экранов в documentation карточки или её задачи."""
+    by_rel = {d.rel: sid for sid, d in pr.screens.items()}
+    out = set()
+    for cid in c.cards:
+        card = pr.task(cid)
+        if not card or card.layer not in ("technology", "employee"):
+            continue
+        for t in (card, pr.task(card.parent)):
+            for did in (t.docs if t else []):
+                d = pr.docs.get(str(did))
+                if d and d.rel in by_rel:
+                    out.add(by_rel[d.rel])
+    return out
+
+
+def direction(pr: bl.Project, contracts: list[Contract]) -> None:
+    """CT014: frontend-backend вызывает экран. Нет экрана в cards или с контуром экрана совпадает callee, а не caller, —
+    это сервер шлёт данные экрану сам: boundary не тот (service-service) или caller и callee перепутаны."""
+    contour = {sc.id: sc.contour for sc in pr.story.screens} if pr.story else {}
+    for c in contracts:
+        if c.boundary != "frontend-backend" or STUB_RE.search(c.path.read_text(encoding="utf-8")):
+            continue
+        ui = [cid for cid in c.cards if pr.task(cid) and pr.task(cid).layer in ("technology", "employee")]
+        if not ui:
+            pr.err(c.rel, 1, "CT014", f"{c.id}: frontend-backend, а в cards нет экрана (карточки technology или employee) — "
+                   "кто вызывает? Экран — добавь его карточку; две системы — boundary: service-service")
+            continue
+        names = {contour[x] for x in _ui_screens(pr, c) if x in contour}
+        if not names:
+            continue
+        caller, callee = _raw(c.get("caller")), _raw(c.get("callee"))
+        if any(callee & _raw(n) for n in names) and not any(caller & _raw(n) for n in names):
+            pr.err(c.rel, 1, "CT014", f"{c.id}: экран стыка ({', '.join(sorted(names))}) — на стороне callee «{c.get('callee')}», "
+                   f"а вызывает «{c.get('caller')}»: сервер шлёт экрану сам — boundary: service-service, или поменяй caller и callee")
+
+
+KEY_RE = re.compile(r"^(?:id|.+_id|.+_ref|.+_key)$")
+
+
+def chain_keys(pr: bl.Project, contracts: list[Contract]) -> None:
+    """CT015: обязательный ключ запроса (id, *_id, *_ref, параметр пути) откуда-то берётся: его отдаёт «Ответ» другого
+    контракта (поле с тем же именем) — или он приходит извне, и «Источник» говорит об этом словом «извне»."""
+    given: dict[str, list[str]] = {}
+    ids: list[tuple[str, str]] = []   # (контракт, где лежит «id»: родитель поля и путь op) — «center_id» ↔ GET /v1/service-centers → items.id
+    for c in contracts:
+        for name in c.fields("Ответ"):
+            given.setdefault(name.split(".")[-1], []).append(c.id)
+            if name.split(".")[-1] == "id":
+                ids.append((c.id, ".".join(name.split(".")[:-1]) + " " + c.get("op").lower()))
+
+    def by_id(leaf: str, own: str) -> bool:
+        base = re.sub(r"_(id|ref|key)$", "", leaf).lower()
+        stems = {base, base.replace("_", ""), base.split("_")[-1]}
+        return any(cid != own and any(len(x) >= 3 and x in where.replace("-", "").replace("_", "") or x in where for x in stems)
+                   for cid, where in ids)
+    for c in contracts:
+        if STUB_RE.search(c.path.read_text(encoding="utf-8")):
+            continue
+        m = OP_RE.match(c.get("op"))
+        path_params = set(re.findall(r"\{(\w+)\}", m.group(2))) if m else set()
+        for r in c.rows("Запрос"):
+            name = r.cells.get("Поле", "").strip("` ")
+            leaf = name.split(".")[-1]
+            if r.cells.get("Обяз.") != "да" or not (KEY_RE.match(leaf) or leaf in path_params):
+                continue
+            if [x for x in given.get(leaf, []) if x != c.id] or by_id(leaf, c.id) or re.search(r"извне", r.cells.get("Источник", ""), re.I):
+                continue
+            pr.err(c.rel, r.line, "CT015", f"{c.id}: ключ «{name}» нужен в запросе, но его не отдаёт ни один «Ответ» — откуда он у "
+                   f"«{c.get('caller')}»? Верни его в ответе стыка, который его создаёт (оплата → payment_id), или напиши в «Источнике» «извне: …»")
 
 
 def waivers(pr: bl.Project, found: list | None = None) -> dict:
@@ -561,6 +639,8 @@ HINTS = {
     "CT011": "допиши места {{…}} каркаса: каждая подсказка говорит, откуда взять значение; «Цепочка» не нужна — удали раздел, «Данные» нужны — добавь по шаблону",
     "CT012": "пример ответа — значения, как их вернёт система, с типом из «Ответа»: 10, \"valid\", true, \"2026-03-01\"; пояснения и ID требований — в «Источнике», не в примере",
     "CT013": "contracts/not-seams.md — | Откуда | Куда | Почему не обмен данными |: только стыки с карты, причина фразой; связь, по которой ходят данные, — контракт, а не строка здесь",
+    "CT014": "frontend-backend — вызывает экран: в cards карточка technology/employee этого экрана, caller — его сторона; сервер шлёт экрану сам — boundary: service-service",
+    "CT015": "ключ запроса берётся из ответа другого стыка — добавь его в «Ответ» того, кто его создаёт (оплата → payment_id); ключ с билета, из письма, от партнёра — «Источник: ФТ-1, извне: штрихкод с билета»",
     "CT020": "стык на карте (экран ↔ Backstage, Backstage ↔ другая команда, внешняя система) — контракт, в cards: которого обе карточки связи; ./blueprint.py contracts skeleton заведёт его",
     "CT021": "за вызываемой системой есть ещё участники — «## Цепочка»: шаг, кто, вход, что делает, выход",
     "CT022": "добавь в «Ошибки» хотя бы отказ: что получает вызывающая сторона",

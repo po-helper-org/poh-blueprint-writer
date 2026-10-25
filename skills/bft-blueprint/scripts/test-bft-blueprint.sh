@@ -538,16 +538,17 @@ python3 "$CTL" lint "$BGOLD" --strict >/dev/null 2>&1 \
   && ok "контракты · эталон DineClub: 7 контрактов, 0 ошибок и предупреждений" || fail "контракты · эталон не проходит --strict"
 ( cd "$BGOLD" && ./blueprint.py contracts >/dev/null 2>&1 ) && ok "контракты · ./blueprint.py contracts" || fail "контракты · ./blueprint.py contracts"
 CB="$tmp/ct" && cp -r "$BGOLD" "$CB" && C="$CB/contracts"
-sed -i 's/^boundary: external/boundary: outer/; s/| barcode | string | да | path | ФТ-1 |/| bar code | string | да | path | |/; s/"discount": 10, //; /TeamA --> Приложение-сканер/d; s/| 1 | Acme Tickets | barcode |/| 1 | Acme Tickets | ticket_no |/' "$C/C-3.md"
+sed -i 's/^boundary: external/boundary: outer/; s/| barcode | string | да | path | ФТ-1, извне: штрихкод с билета Acme Tickets |/| bar code | string | да | path | |/; s/"discount": 10, //; /TeamA --> Приложение-сканер/d; s/| 1 | Acme Tickets | barcode |/| 1 | Acme Tickets | ticket_no |/' "$C/C-3.md"
 sed -i 's/штрихкод, ресторан/PRIMARY KEY штрихкод, ресторан/; s/^cards: .*/cards: BP-99.1/' "$C/C-5.md"
-sed -i 's|^op: .*|op: GET /v1/restaurants/{rid}|; s/"walk_minutes": 6/"walk_minutes": "шесть минут пешком от площадки (ИТ-4)"/' "$C/C-2.md"
+sed -i 's|^op: .*|op: GET /v1/restaurants/{rid}|; s/"walk_minutes": 6/"walk_minutes": "шесть минут пешком от площадки (ИТ-4)"/; s/^caller: Витрина$/caller: Каталог UnitB/; s/^callee: Каталог UnitB$/callee: Витрина/' "$C/C-2.md"
+sed -i 's/ФТ-19, извне: ID партнёра в DineClub/ФТ-19/' "$C/C-6.md"
 sed -i '/^## Цепочка/,$d; s/^cards: .*/cards: BP-17.1/' "$C/C-4.md"
 sed -i '/^## Ошибки/,/^## Sequence/{/^| 4/d}' "$C/C-2.md"
 sed -i 's/^| Хранилище | Какие данные нужны | Источник |/| Хранилище | Данные | Источник |/' "$C/C-5.md"
 cp "$C/C-1.md" "$C/C-7.md"
 out="$(python3 "$CTL" lint "$CB" --source "$FIX/golden_deep_document.md" 2>&1)"; rc=$?
-miss=""; for c in CT001 CT002 CT003 CT004 CT005 CT006 CT007 CT008 CT009 CT010 CT012 CT020 CT021 CT022; do grep -q " $c " <<<"$out" || miss="$miss $c"; done
-[ "$rc" -eq 1 ] && [ -z "$miss" ] && ok "контракты · сломанная копия: CT001–CT012, CT020–CT022" || fail "контракты · нет в выводе:$miss (rc=$rc)"
+miss=""; for c in CT001 CT002 CT003 CT004 CT005 CT006 CT007 CT008 CT009 CT010 CT012 CT014 CT015 CT020 CT021 CT022; do grep -q " $c " <<<"$out" || miss="$miss $c"; done
+[ "$rc" -eq 1 ] && [ -z "$miss" ] && ok "контракты · сломанная копия: CT001–CT015, CT020–CT022" || fail "контракты · нет в выводе:$miss (rc=$rc)"
 # каркас: стык без контракта (C-6 убран) → CT020; skeleton заводит C-8 на ту же пару карточек, незаполненный — только CT011
 CS="$tmp/cts" && cp -r "$BGOLD" "$CS" && rm "$CS/contracts/C-6.md"
 out1="$(python3 "$CTL" lint "$CS" 2>&1)"; python3 "$CTL" skeleton "$CS" >/dev/null 2>&1; out2="$(python3 "$CTL" lint "$CS" 2>&1)"
