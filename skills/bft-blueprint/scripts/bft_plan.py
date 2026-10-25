@@ -8,11 +8,16 @@
 
     ## Команды            таблица | ID | Команда |
     ## Вопросы            таблица | ID | Кому | Вопрос | Где | Тип | Ответ |
-    ## Стыки              таблица | ID | Стык | Поставщик | Потребитель | Ответственный за контракт |
-    ## Обязательства      таблица | ID | Кто | Что | Кому | Срок | Формат/место |
-    ## Контракты          таблица | Стык | Аспект | Требование к фиксации |
-    ## Контрольные точки  таблица | ID | Точка | Когда | Что проверяется | Кто проводит |
-    ## Риски              таблица | ID | Риск | Следствие | Владелец | Митигация |
+    ## Решение TO-BE      этап ADR: таблица | ID | Контракт | Суть решения | Обоснование |
+    ## Варианты           этап ADR: таблица | ID | Вариант | Надёжность | Скорость реализации | Соответствие требованиям | Почему нет |
+    ## Узкие места        этап ADR: таблица | ID | Узкое место | Тип | Нагрузка | Риск | Прощупывание |
+    ## Компромиссы        этап ADR: таблица | ID | Компромисс | Надёжность | Скорость реализации | Соответствие требованиям | Чем платим |
+    ## Контракты          системные требования: таблица | ID | Контракт | Потребитель | Данные контракту | Источник параметров | Преобразования |
+    ## Участники          стыки: таблица | ID | Стык | Поставщик | Потребитель | Ответственный за контракт |
+    ## Обязательства      стыки: таблица | ID | Кто | Что | Кому | Срок | Формат/место |
+    ## Контракты стыков   таблица | Стык | Аспект | Требование к фиксации |
+    ## Контрольные точки  стыки: таблица | ID | Точка | Когда | Что проверяется | Кто проводит |
+    ## Риски              стыки: таблица | ID | Риск | Следствие | Владелец | Митигация |
     ## BP-3 · Название    задача: строки «ключ: значение», пустая строка, описание, ### Критерии приемки
     ## BP-3.1 · Название  карточка: строки «ключ: значение», пустая строка, описание карточки
 
@@ -75,6 +80,8 @@ class Plan:
     root: Path
     teams: str = ""          # таблица как текст
     questions: str = ""
+    adr: dict = field(default_factory=dict)      # {«Решение TO-BE»: текст, «Варианты»: …, «Узкие места»: …, «Компромиссы»: …} — этап ADR
+    sysreq: dict = field(default_factory=dict)   # {«Контракты»: текст} — системные требования
     seams: dict = field(default_factory=dict)   # {«Участники»: текст, «Обязательства»: …, …} — этап стыков
     blocks: list[Block] = field(default_factory=list)
     screens: dict = field(default_factory=dict)   # {F3: (заголовок, текст, путь)}
@@ -106,8 +113,13 @@ def parse(root: Path) -> Plan:
     for n, ln in enumerate(lines, 1):
         if STUB.search(ln):
             pl.err(rel, n, "PL007", f"шаблон не заполнен: {STUB.search(ln).group(0)}")
+    # этап «ADR и Системные требования»: секции документов ADR и «Системные требования»
+    ADR_SECTIONS = (("Решение TO-BE", bl.ADR_DECISION_HEADER), ("Варианты", bl.ADR_OPTION_HEADER),
+                    ("Узкие места", bl.BOTTLENECK_HEADER), ("Компромиссы", bl.COMPROMISE_HEADER))
+    SYSREQ_SECTIONS = (("Контракты", bl.CONTRACTS_HEADER),)
+    STAGE_SECTIONS = dict(ADR_SECTIONS + SYSREQ_SECTIONS)
     SEAM_SECTIONS = (("Участники", bl.SEAM_HEADER), ("Обязательства", bl.DELIVERY_HEADER),
-                     ("Контракты", bl.CONTRACT_HEADER), ("Контрольные точки", bl.CHECKPOINT_HEADER),
+                     ("Контракты стыков", bl.SEAM_CONTRACT_HEADER), ("Контрольные точки", bl.CHECKPOINT_HEADER),
                      ("Риски", bl.RISK_HEADER))
     SEAM_SECTION_HEADERS = dict(SEAM_SECTIONS)
     seen: set[str] = set()
@@ -119,6 +131,12 @@ def parse(root: Path) -> Plan:
         if name == "Вопросы":
             pl.questions = "\n".join(body).strip()
             continue
+        if name in STAGE_SECTIONS:
+            text = "\n".join(body).strip()
+            (pl.sysreq if name in dict(SYSREQ_SECTIONS) else pl.adr)[name] = text
+            if f"| {' | '.join(STAGE_SECTIONS[name])} |" not in text:
+                pl.err(rel, n, "PL005", f"«## {name}»: таблица | {' | '.join(STAGE_SECTIONS[name])} |")
+            continue
         if name in SEAM_SECTION_HEADERS:
             pl.seams[name] = "\n".join(body).strip()
             if f"| {' | '.join(SEAM_SECTION_HEADERS[name])} |" not in pl.seams[name]:
@@ -126,7 +144,7 @@ def parse(root: Path) -> Plan:
             continue
         m = HEAD.match(head)
         if not m:
-            pl.err(rel, n, "PL002", f"«{name}» — заголовок блока: «## BP-3 · Название задачи» (или «## Команды», «## Вопросы», «## Участники», «## Обязательства», «## Контракты», «## Контрольные точки», «## Риски»)")
+            pl.err(rel, n, "PL002", f"«{name}» — заголовок блока: «## BP-3 · Название задачи» (или «## Команды», «## Вопросы», «## Решение TO-BE», «## Варианты», «## Узкие места», «## Компромиссы», «## Контракты» (системные требования), «## Участники», «## Обязательства», «## Контракты стыков», «## Контрольные точки», «## Риски»)")
             continue
         b = Block(m.group(1).upper(), m.group(2), n)
         if b.id in seen:
@@ -201,10 +219,29 @@ def _check_block(pl: Plan, b: Block, rel: str) -> None:
 
 # --- запись в проект -------------------------------------------------------------------------------
 
+ADR_DOC_TITLE = "ADR"
+SYSREQ_DOC_TITLE = "Системные требования"
+
+
+def _stage_doc_text(marker: str, title: str, intro: list[str], sections: list[tuple[str, str]], meta: dict) -> str:
+    """Текст документа этапа: паспорт + заголовок + вводные строки + секции «## имя» с таблицами."""
+    m = "\n".join([f"<!-- {marker}"] + [f"{k}: {meta[k]}" for k in ("epic_slug", "version", "revised", "status")] + ["-->", "",
+                   f"# {title}: {title_of(meta)}", ""] + intro + [""])
+    parts = [m]
+    for name, text in sections:
+        if text:
+            parts += [f"## {name}", "", text, ""]
+    return "\n".join(parts).rstrip("\n") + "\n"
+
+
+def title_of(meta: dict) -> str:
+    return meta.get("_title", "")
+
+
 SEAMS_DOC_TITLE = "Стыки"
 SEAM_DOC_SECTIONS = (("Участники", "кто поставщик и кто потребитель на каждом стыке"),
                      ("Обязательства", "матрица «кто → что → кому → к какому сроку»"),
-                     ("Контракты", "что фиксировать на стыке по слоям (эндпоинты, схемы, ошибки, версии)"),
+                     ("Контракты стыков", "что фиксировать на стыке по слоям (эндпоинты, схемы, ошибки, версии)"),
                      ("Контрольные точки", "что и когда проверяется на стыке"),
                      ("Риски", "риски стыка и их владельцы"))
 
@@ -239,6 +276,71 @@ def _next_doc_num(nums: set) -> int:
     return n
 
 
+def _write_stage_doc(pr, bdir: Path, root: Path, doc, marker: str, title: str, text: str, plan_sections: set) -> list[str]:
+    """Создать или обновить документ этапа. Секции из плана (plan_sections) переписываются;
+    остальные («Контекст», «AS-IS», «Диаграмма», «Открытые вопросы»…) — остаются как в документе:
+    их пишет агент по скиллу, apply их не трогает. При создании рукописные разделы берутся
+    из шаблона этапа (templates/<adr|sysreq>.md), чтобы документ сразу проходил проверку формы.
+    Возвращает строки отчёта."""
+    out: list[str] = []
+    if doc is None:
+        snums = set(int(m.group(1)) for d in pr.docs for m in [re.fullmatch(r"doc-(\d+)", d)] if m)
+        for taken in getattr(pr, "_stage_doc_nums_taken", set()):
+            snums.add(taken)
+        did = f"doc-{_next_doc_num(snums)}"
+        taken = set(getattr(pr, "_stage_doc_nums_taken", set()))
+        taken.add(int(did[4:]))
+        pr._stage_doc_nums_taken = taken
+        # рукописные разделы — из шаблона: план их не знает, а форма документа требует
+        tmpl = (Path(__file__).resolve().parent.parent / "templates" / f"{marker.removeprefix('bft-')}.md")
+        body = text
+        if tmpl.is_file():
+            tt = tmpl.read_text(encoding="utf-8")
+            # из шаблона — только секции, которых нет в text (рукописные), и только при создании
+            have = set(re.findall(r"^## (.+?)\s*$", text, re.M))
+            for name in re.findall(r"^## (.+?)\s*$", tt, re.M):
+                if name in have:
+                    continue
+                m = re.search(rf"^## {re.escape(name)}\s*\n.*?(?=^## |\Z)", tt, re.S | re.M)
+                if m and name not in plan_sections:
+                    body = body.rstrip("\n") + "\n\n" + m.group(0).rstrip("\n") + "\n"
+        fm = {"id": did, "title": title, "type": "specification", "created_date": cli.now()}
+        p = bdir / "docs" / f"{did} - {cli.slug(title)}.md"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(cli.dump_front(fm) + body, encoding="utf-8")
+        return [f"«{title}»: создан {did} — {p.relative_to(root)}"]
+    did = doc.id
+    old = doc.path.read_text(encoding="utf-8") if doc.path.is_file() else ""
+    fm, off = bl.yaml_front(old) if old else ({}, 0)
+    fm = fm or {}
+    old_body = "\n".join(old.split("\n")[off:]) if old else ""
+    # собрать новое тело: секции плана — из text, остальные — из старого тела как есть
+    new_secs = {}
+    for name in re.findall(r"^## (.+?)\s*$", text, re.M):
+        m = re.search(rf"^## {re.escape(name)}\s*\n(.*?)(?=^## |\Z)", text, re.S | re.M)
+        new_secs[name] = m.group(0).rstrip("\n") if m else ""
+    body = old_body
+    changed = False
+    for name, block in new_secs.items():
+        if not block.strip():
+            continue
+        if name not in plan_sections:
+            continue           # рукописная секция — не трогаем
+        if re.search(rf"^## {re.escape(name)}\s*$", body, re.M):
+            cur = re.search(rf"^## {re.escape(name)}\s*\n.*?(?=^## |\Z)", body, re.S | re.M)
+            if cur and cur.group(0).rstrip("\n") == block.rstrip("\n"):
+                continue
+            body = re.sub(rf"^## {re.escape(name)}\s*\n.*?(?=^## |\Z)", lambda _: block + "\n\n", body, count=1, flags=re.S | re.M)
+        else:
+            body = body.rstrip("\n") + "\n\n" + block + "\n"
+        changed = True
+    if changed:
+        fm["updated_date"] = cli.now()
+        doc.path.write_text(cli.dump_front(fm) + body.rstrip("\n") + "\n", encoding="utf-8")
+        out.append(f"«{title}»: обновлён {did} — {doc.path.relative_to(root)}")
+    return out
+
+
 def apply(pl: Plan, root: Path) -> list[str]:
     """План → проект. Возвращает строки отчёта; ошибки плана — в pl.issues, тогда ничего не пишется."""
     if any(i.level == "ERROR" for i in pl.issues):
@@ -260,34 +362,68 @@ def apply(pl: Plan, root: Path) -> list[str]:
         if new != body:
             f.write_text(head + new, encoding="utf-8")
             out.append(f"«Карта»: команды и вопросы — {f.relative_to(root)}")
+    # «ADR» и «Системные требования»: этап «ADR и Системные требования» — условные документы
+    # (есть секции плана → есть документ); вход — БФТ, «История», задачи и карточки карты
+    if pl.adr:
+        adoc = next((d for d in pr.docs.values() if d.meta.get("_kind") == "bft-adr"), None)
+        ameta = {"epic_slug": pr.meta.get("epic_slug", ""), "version": pr.meta.get("version", "1"),
+                 "revised": cli.now()[:10], "status": "Черновик", "_title": pr.title}
+        if adoc:
+            ameta = {**{k: str(adoc.meta.get(k, "")) for k in ("epic_slug", "version", "revised", "status")}, "_title": pr.title}
+        atext = _stage_doc_text("bft-adr", ADR_DOC_TITLE,
+                                ["Этап «ADR и Системные требования», системный дизайн: как реализуем работу на карте —",
+                                 "контекст, ландшафт AS-IS, варианты, решение TO-BE, узкие места и компромиссы по осям",
+                                 "«надёжность vs скорость реализации vs соответствие требованиям». ADR-диаграмма AS-IS/TO-BE —",
+                                 "в разделе «Диаграмма AS-IS/TO-BE». Открытые вопросы и блокеры — в таблице «Вопросы»",
+                                 "документа «Карта» («Где» — ID варианта или компромисса V1, C1)."],
+                                [(s, pl.adr.get(s, "")) for s in ("Контекст", "AS-IS", "Варианты", "Решение TO-BE",
+                                                                  "Узкие места", "Компромиссы", "Диаграмма AS-IS/TO-BE")], ameta)
+        # «Контекст», «AS-IS» и «Диаграмма» живут в документе (руками/скиллом), apply не переписывает их
+        out += _write_stage_doc(pr, bdir, root, adoc, "bft-adr", ADR_DOC_TITLE, atext, {"Решение TO-BE", "Варианты", "Узкие места", "Компромиссы"})
+    if pl.sysreq:
+        sdoc = next((d for d in pr.docs.values() if d.meta.get("_kind") == "bft-sysreq"), None)
+        smeta = {"epic_slug": pr.meta.get("epic_slug", ""), "version": pr.meta.get("version", "1"),
+                 "revised": cli.now()[:10], "status": "Черновик", "_title": pr.title}
+        if sdoc:
+            smeta = {**{k: str(sdoc.meta.get(k, "")) for k in ("epic_slug", "version", "revised", "status")}, "_title": pr.title}
+        stext = _stage_doc_text("bft-sysreq", SYSREQ_DOC_TITLE,
+                                ["Этап «ADR и Системные требования», системная аналитика: контракты работы на карте —",
+                                 "по КАЖДОМУ контракту три вопроса: (1) какие данные нужны контракту; (2) источник каждого",
+                                 "параметра (система/сервис/поле/справочник); (3) какие преобразования над данными нужны для",
+                                 "контрактов и бизнес-логики. Дальше — AS-IS, изменения и открытые вопросы. Вопросы также",
+                                 "дублируются в таблицу «Вопросы» документа «Карта» («Где» — ID контракта K1)."],
+                                [(s, pl.sysreq.get(s, "")) for s in ("Контракты", "AS-IS", "Изменения", "Открытые вопросы")], smeta)
+        out += _write_stage_doc(pr, bdir, root, sdoc, "bft-sysreq", SYSREQ_DOC_TITLE, stext, {"Контракты"})
     # «Стыки»: этап «Контроль стыковочных работ» — условный документ (есть стыки → есть документ)
     if pl.seams:
-        sdoc = next((d for d in pr.docs.values() if d.meta.get("_kind") == "bft-seams"), None)
+        seamdoc = next((d for d in pr.docs.values() if d.meta.get("_kind") == "bft-seams"), None)
         meta = {"epic_slug": pr.meta.get("epic_slug", ""), "version": pr.meta.get("version", "1"),
                 "revised": cli.now()[:10], "status": "Черновик"}
-        if sdoc:
+        if seamdoc:
             # паспорт существующего документа не переписываем: version/revised поднимает агент
             # при правках по комментариям PO — как у «Карты»
-            meta = {k: str(sdoc.meta.get(k, meta[k])) for k in bl.SEAMS_META}
+            meta = {k: str(seamdoc.meta.get(k, meta[k])) for k in bl.SEAMS_META}
         text = seams_doc_text(pr.title, pl, meta)
-        if sdoc is None:
+        if seamdoc is None:
             snums = set(int(m.group(1)) for d in pr.docs for m in [re.fullmatch(r"doc-(\d+)", d)] if m)
+            snums |= getattr(pr, "_stage_doc_nums_taken", set())   # номера, занятые ADR/«Системными требованиями» в этом apply
             did = f"doc-{_next_doc_num(snums)}"
+            pr._stage_doc_nums_taken = set(getattr(pr, "_stage_doc_nums_taken", set())) | {int(did[4:])}
             fm = {"id": did, "title": SEAMS_DOC_TITLE, "type": "specification", "created_date": cli.now()}
             p = bdir / "docs" / f"{did} - {cli.slug(SEAMS_DOC_TITLE)}.md"
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(cli.dump_front(fm) + text, encoding="utf-8")
             out.append(f"«Стыки»: создан {did} — {p.relative_to(root)}")
         else:
-            did = sdoc.id
-            old = sdoc.path.read_text(encoding="utf-8") if sdoc.path.is_file() else ""
+            did = seamdoc.id
+            old = seamdoc.path.read_text(encoding="utf-8") if seamdoc.path.is_file() else ""
             fm, off = bl.yaml_front(old) if old else ({}, 0)
             fm = fm or {}
             old_body = "\n".join(old.split("\n")[off:]) if old else ""
             if old_body.lstrip("\n") != text:
                 fm["updated_date"] = cli.now()
-                sdoc.path.write_text(cli.dump_front(fm) + text, encoding="utf-8")
-                out.append(f"«Стыки»: обновлён {did} — {sdoc.path.relative_to(root)}")
+                seamdoc.path.write_text(cli.dump_front(fm) + text, encoding="utf-8")
+                out.append(f"«Стыки»: обновлён {did} — {seamdoc.path.relative_to(root)}")
     # экраны → документы
     docs = {fm["id"]: (p, fm) for p, fm, _ in cli.load_docs(bdir)}
     screen_doc = {}
@@ -401,13 +537,29 @@ def export(root: Path) -> dict[str, str]:
         m = re.search(rf"^## {name}\s*\n(.*?)(?=^## |\Z)", body, re.S | re.M)
         return m.group(1).strip() if m else ""
     o = [f"# План карты: {pr.title}", "", "## Команды", "", table("Команды"), "", "## Вопросы", "", table("Вопросы"), ""]
+    # этап «ADR и Системные требования»: секции документов ADR и «Системные требования»
+    if pr.adr_doc is not None and pr.adr is not None:
+        abody = pr.adr_doc.body
+
+        def stable(name: str, src: str = "") -> str:
+            m = re.search(rf"^## {name}\s*\n(.*?)(?=^## |\Z)", src or abody, re.S | re.M)
+            return m.group(1).strip() if m else ""
+        for sec in ("Решение TO-BE", "Варианты", "Узкие места", "Компромиссы"):
+            t = stable(sec)
+            if t:
+                o += [f"## {sec}", "", t, ""]
+    if pr.sysreq_doc is not None and pr.sysreq is not None:
+        sbody = pr.sysreq_doc.body
+        m = re.search(r"^## Контракты\s*\n(.*?)(?=^## |\Z)", sbody, re.S | re.M)
+        if m:
+            o += ["## Контракты", "", m.group(1).strip(), ""]
     if pr.seams_doc is not None and pr.seams is not None:
-        sbody = pr.seams_doc.body if pr.seams_doc else ""
+        seam_body = pr.seams_doc.body if pr.seams_doc else ""
 
         def stable(name: str) -> str:
-            m = re.search(rf"^## {name}\s*\n(.*?)(?=^## |\Z)", sbody, re.S | re.M)
+            m = re.search(rf"^## {name}\s*\n(.*?)(?=^## |\Z)", seam_body, re.S | re.M)
             return m.group(1).strip() if m else ""
-        for sec in ("Участники", "Обязательства", "Контракты", "Контрольные точки", "Риски"):
+        for sec in ("Участники", "Обязательства", "Контракты стыков", "Контрольные точки", "Риски"):
             t = stable(sec)
             if t:
                 o += [f"## {sec}", "", t, ""]
