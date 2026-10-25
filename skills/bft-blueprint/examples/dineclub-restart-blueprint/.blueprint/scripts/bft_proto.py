@@ -22,7 +22,7 @@ import bft_contracts as bc
 HERE = Path(__file__).resolve().parent
 DIR = "prototype"
 SPEC = "spec.md"
-APPS = {"client": "клиент", "staff": "сотрудник", "admin": "админка", "external": "внешняя сторона"}
+APPS = {"client": "клиент", "staff": "сотрудник", "admin": "админка", "external": "внешняя сторона", "backend": "за кадром"}
 KEYS = ("приложение", "экраны", "вызов", "ввод", "показать", "успех", "отказ", "заметка")
 CUSTOMER = re.compile(r"клиент|гост[ьяи]|покупател|посетител|пользовател|абонент|пассажир|пациент|зрител|житель|студент|водител", re.I)
 ADMIN = re.compile(r"админк|кабинет|консол|бэк-?офис|crm", re.I)
@@ -158,8 +158,8 @@ def leaf_fields(c: bc.Contract) -> list[str]:
 
 # --- каркас ------------------------------------------------------------------------------------------------
 
-def _words(t: str) -> set[str]:
-    return {w[:5] for w in re.findall(r"[а-яёa-z]{4,}", t.lower().replace("ё", "е"))}
+def _words(t: str, n: int = 5) -> set[str]:
+    return {w[:n] for w in re.findall(r"[а-яёa-z]{4,}", t.lower().replace("ё", "е"))}
 
 
 def _inputs_line(c: bc.Contract) -> str:
@@ -167,101 +167,138 @@ def _inputs_line(c: bc.Contract) -> str:
     return "ввод: " + ("; ".join(f"{r.cells['Поле'].strip('` ')} = {{{{значение для демо, {r.cells.get('Тип', 'string')}}}}}" for r in req) or "—")
 
 
-def plan_calls(pr: bl.Project, contracts: list[bc.Contract]) -> dict[str, list[dict]]:
-    """Какой шаг какой контракт вызывает. Решение — таблица, а не модель:
-    - кандидаты — шаги, чьи экраны показывает карточка контракта;
-    - GET (прочитать) — на каждом кандидате, чей экран принадлежит вызывающей стороне: экран сам загружает данные;
-    - остальное — один запускающий шаг: контур экрана = caller (+3), камера (+2), кнопка (+1), приложение сотрудника (+1);
-      экран успеха и отказа — из экранов карточек того же контракта; нет кнопки ни у кого — вызов «за кадром»
-      на каждом кандидате: сначала вызов, потом экран результата (оповещение, «Подключён»).
-    {ID шага: [{contract, before, ok, fail, code}]}"""
+GENERIC = {"прило", "экран", "систе", "серви", "сайт", "кабин", "банка", "наша", "наше"}
+
+
+def plan_calls(pr: bl.Project, contracts: list[bc.Contract]) -> tuple[dict[str, list[dict]], list[tuple[int, bc.Contract]]]:
+    """Какой шаг какой контракт вызывает — по направлению, а не по совпадению карточек:
+    - вызов запускает экран вызывающей стороны: контур экрана = caller;
+    - GET (прочитать) — на каждом шаге, где экран caller показывает данные стыка;
+    - остальное — один шаг: камера (+2), кнопка (+1), слова названия контракта в названии шага (+2 за слово, до +4),
+      экран из карточек контракта (+1); экран успеха и отказа — из экранов карточек;
+    - у caller нет экрана (триггер, сервер–сервер, внешняя система) — шаг «за кадром» ## C-N прямо перед шагом,
+      где человек видит результат, иначе — после последнего шага этапа карточки.
+    Возвращает ({ID шага: [{contract, before, ok, fail, code}]}, [(позиция в порядке показа, контракт за кадром)])."""
     st = pr.story
     scr_of = _card_screens(pr)
     screens = {sc.id: sc for sc in st.screens}
     order = story_order(pr)
+    card_stage = {c.id: c.stage for c in pr.cards}
+    layer_of = {c.id: c.layer for c in pr.cards}
     plan: dict[str, list[dict]] = {}
+    behind: list[tuple[int, bc.Contract]] = []
+    writes: list = []
     for c in contracts:
         if c.boundary == "service-db" or not c.get("op"):
             continue
         mine = set().union(*(scr_of.get(cid, set()) for cid in c.cards)) if c.cards else set()
-        # экран шага рядом с экраном карточки — того же стыка (F4 «Отказ» в шаге с F3), даже если документа экрана нет
         mine |= {x for s in order if set(s.screens) & mine for x in s.screens if x in screens and screens[x].view == "альтернативный"}
-        cand = [s for s in order if set(s.screens) & mine]
-        if not cand:
-            continue
-        caller = _words(c.get("caller"))
+        stages = {card_stage.get(cid) for cid in c.cards} - {None, ""}
+        caller = _words(c.get("caller")) - GENERIC
+        # экран вызывающей стороны: у frontend-backend это по определению экран UI-карточки стыка (technology,
+        # employee) — контуры в истории общие («Приложение»), а caller назван по системе («Приложение банка»);
+        # у остальных стыков — только экран, чей контур совпадает с caller, иначе вызов идёт за кадром
+        ui = set().union(*(scr_of.get(cid, set()) for cid in c.cards if layer_of.get(cid) in ("technology", "employee"))) if c.cards else set()
+        # сервер шлёт экрану сам (Платежи → «Приложение банка»): с контуром совпадает callee, а не caller — вызов за кадром
+        raw = lambda t: {w[:5] for w in re.findall(r"[а-яёa-z]{4,}", t.lower().replace("ё", "е"))}
+        pushed = lambda x: bool(raw(c.get("callee")) & raw(screens[x].contour)) and not raw(c.get("caller")) & raw(screens[x].contour)
+        own = lambda x: x in screens and screens[x].view != "альтернативный" and (
+            (c.boundary == "frontend-backend" and x in ui and not pushed(x))
+            or screens[x].contour.strip().lower() == c.get("caller").strip().lower()
+            or bool(caller & (_words(screens[x].contour) - GENERIC)))
+        cand = [s for s in order if any(own(x) and (x in mine or s.stage_from in stages) for x in s.screens)]
         code = next((r.cells.get("Код", "").strip("` ") for r in c.rows("Ошибки")), "")
-        own = lambda sid: bool(caller & _words(screens[sid].contour)) if sid in screens else False
+        alt_all = [x for x in mine if screens.get(x) and screens[x].view == "альтернативный"]
+        if not cand:   # у вызывающей стороны нет экрана — вызов за кадром
+            show = next((i for i, s in enumerate(order) if set(s.screens) & mine), None)
+            if show is None:
+                last = [i for i, s in enumerate(order) if s.stage_from in stages]
+                show = last[-1] + 1 if last else len(order)
+            behind.append((show, c))
+            continue
         if c.get("op").split()[0] == "GET":
-            for s in cand:
-                shown = [x for x in s.screens if x in mine and own(x)] or [x for x in s.screens if x in mine]
-                plan.setdefault(s.id, []).append({"contract": c, "before": s.screens, "ok": shown[-1], "fail": "", "code": code})
+            for s in [t for t in cand if any(own(x) and x in mine for x in t.screens)] or cand:   # экран, который карточка стыка и показывает
+                shown = [x for x in s.screens if own(x) and screens[x].view != "альтернативный"]
+                plan.setdefault(s.id, []).append({"contract": c, "before": [x for x in s.screens if screens.get(x) and screens[x].view != "альтернативный"],
+                                                  "ok": (shown or s.screens)[-1], "fail": "", "code": code})
             continue
+        title = _words(c.title, 4)   # «фото чека» и «фотографируем чек» — одна основа из четырёх букв
 
-        def score(s) -> tuple:
-            best = 0
-            for x in s.screens:
-                kinds = {e[0] for e in screens[x].elements} if x in screens else set()
-                v = 3 * own(x) + 2 * ("camera" in kinds) + ("cta" in kinds) + (own(x) and app_of(pr, s) != "client")
-                best = max(best, v)
-            return best
-        top = max(score(s) for s in cand)
-        pool = [x for s in cand for x in s.screens if x in mine]
-        alt = [x for x in pool if screens.get(x) and screens[x].view == "альтернативный"]
-        if top <= 0:   # никто не нажимает: система вызывает сама, экран — уже результат
-            for s in cand:
-                res = [x for x in s.screens if x in mine]
-                plan.setdefault(s.id, []).append({"contract": c, "before": [], "ok": res[0], "fail": "", "code": code})
+        def score(s, x, c=c, title=title, mine=mine) -> int:
+            kinds = {e[0] for e in screens[x].elements} if x in screens else set()
+            return (2 * ("camera" in kinds) + ("cta" in kinds) + min(4, 2 * len(title & _words(s.title + " " + s.text, 4))) + 2 * (x in mine))
+        writes.append((c, [(score(s, x), -i, s, x) for i, s in enumerate(cand) for x in s.screens if own(x)], mine, alt_all, code, stages))
+    # записывающие вызовы — жадно по баллу: у шага одна кнопка — один вызов; лишнему контракту шага не хватило — за кадр
+    taken: set[str] = set()
+    opts = sorted(((sc, i, c, s, x, w) for w in writes for (sc, i, s, x) in w[1] for c in [w[0]]), key=lambda t: (-t[0], -t[1]))
+    done: set[str] = set()
+    for sc, _, c, s, trig, w in opts:
+        if c.id in done or s.id in taken:
             continue
-        s = next(x for x in cand if score(x) == top)
-        trig = next(x for x in s.screens if x in screens and 3 * own(x) + 2 * ("camera" in {e[0] for e in screens[x].elements})
-                    + ("cta" in {e[0] for e in screens[x].elements}) + (own(x) and app_of(pr, s) != "client") == top)
-        after = [x for x in pool if x != trig and x not in alt]
-        later = [x for t in cand[cand.index(s):] for x in t.screens if x in mine and x != trig and x not in alt]
-        ok = (later or after or [trig])[0]
-        acts = {e[0] for e in screens[trig].elements} & {"cta", "camera"} if trig in screens else set()
-        # экран без кнопки и камеры ничего не запускает: вызов за кадром, экран — уже результат
-        plan.setdefault(s.id, []).append({"contract": c, "before": [trig] if acts else [], "ok": ok if acts else trig,
-                                          "fail": alt[0] if alt else "", "code": code})
-    return plan
+        _, _, mine, alt_all, code, _ = w
+        acts = {e[0] for e in screens[trig].elements} & {"cta", "camera"}
+        later = [x for t in order[order.index(s):] for x in t.screens if x in mine and x != trig and x not in alt_all]
+        ok = later[0] if acts and later else trig
+        plan.setdefault(s.id, []).append({"contract": c, "before": [trig] if acts else [], "ok": ok,
+                                          "fail": alt_all[0] if alt_all else "", "code": code})
+        done.add(c.id)
+        taken.add(s.id)
+    for c, _, mine, _, _, stages in writes:
+        if c.id not in done:
+            show = next((i for i, s in enumerate(order) if set(s.screens) & mine), None)
+            if show is None:
+                last = [i for i, s in enumerate(order) if s.stage_from in stages]
+                show = last[-1] + 1 if last else len(order)
+            behind.append((show, c))
+    return plan, behind
 
 
 def skeleton(pr: bl.Project, contracts: list[bc.Contract]) -> str:
     st = pr.story
-    plan = plan_calls(pr, contracts)
+    plan, behind = plan_calls(pr, contracts)
     title = re.sub(r"^\[История\]\s*", "", st.title or pr.title)
     out = [f"# Прототип: {title}", "",
            "Показ — сверху вниз: шаги истории по этапам. Правила — `.blueprint/rules/prototype.md`.",
            "Места в двойных фигурных скобках заполни, остальное каркас взял из истории и контрактов — не меняй без причины.", ""]
-    used: set[str] = set()
-    for s in story_order(pr):
-        lines = [f"## {s.id} · {s.title}", f"приложение: {app_of(pr, s)}"]
+    ext = [t for t in pr.teams if re.search(r"внешн|^ext\d*$", f"{t.id} {t.name}", re.I)]
+
+    def outside(who: str) -> bool:
+        """Вызывает внешняя система: «внешн…», имя из команды ext (1С, Google) или её основа слова («Партнёр»)."""
+        return bool(re.search(r"внешн", who, re.I)) or any(bc._names(t.name) & bc._names(who) or (_words(re.sub(r"\(.*?\)", "", t.name)) - GENERIC) & _words(who) for t in ext)
+
+    def call_block(calls: list[dict]) -> list[str]:
+        merged: dict[str, str] = {}
+        for x in calls:
+            for part in _inputs_line(x["contract"])[6:].split("; "):
+                if " = " in part:
+                    k, v = part.split(" = ", 1)
+                    merged.setdefault(k, v)
+        first = calls[0]
+        return [f"вызов: {', '.join(x['contract'].id for x in calls)}",
+                "ввод: " + ("; ".join(f"{k} = {v}" for k, v in merged.items()) or "—"),
+                f"показать: {', '.join(dict.fromkeys(f for x in calls for f in leaf_fields(x['contract']))) or '—'}",
+                f"успех: {calls[-1]['ok'] or '—'}",
+                f"отказ: {(first['fail'] or '—') + (' = ' + first['code'] if first['code'] else '')}"]
+
+    def behind_block(c: bc.Contract) -> list[str]:
+        app = "external" if outside(c.get("caller")) else "backend"
+        code = next((r.cells.get("Код", "").strip("` ") for r in c.rows("Ошибки")), "")
+        return [f"## {c.id} · {c.title}", f"приложение: {app}", "экраны: —"] + call_block(
+            [{"contract": c, "ok": "", "fail": "", "code": code}]) + [""]
+
+    for i, s in enumerate(story_order(pr)):
+        for _, c in [b for b in behind if b[0] == i]:
+            out += behind_block(c)
         calls = plan.get(s.id, [])
+        lines = [f"## {s.id} · {s.title}", f"приложение: {app_of(pr, s)}"]
         if not calls:
             out += lines + [f"экраны: {', '.join(s.screens) if s.screens else '—'}", "вызов: —", ""]
             continue
-        first = calls[0]
-        before = first["before"]
+        before = list(dict.fromkeys(x for c in calls for x in c["before"]))
         lines.append(f"экраны: {', '.join(before) if before else '—'}")
-        lines.append(f"вызов: {', '.join(x['contract'].id for x in calls)}")
-        merged: dict[str, str] = {}
-        for x in calls:
-            used.add(x["contract"].id)
-            for part in _inputs_line(x["contract"])[6:].split("; "):
-                if "=" in part:
-                    k, v = part.split(" = ", 1)
-                    merged.setdefault(k, v)
-        lines.append("ввод: " + ("; ".join(f"{k} = {v}" for k, v in merged.items()) or "—"))
-        lines.append(f"показать: {', '.join(dict.fromkeys(f for x in calls for f in leaf_fields(x['contract']))) or '—'}")
-        lines.append(f"успех: {calls[-1]['ok'] or '—'}")
-        lines.append(f"отказ: {(first['fail'] or '—') + (' = ' + first['code'] if first['code'] else '')}")
-        out += lines + [""]
-    # внешняя сторона вызывает нас: свой шаг на каждый external-контракт без экрана в истории
-    for c in contracts:
-        if c.boundary == "external" and c.get("op") and c.id not in used:
-            code = next((r.cells.get("Код", "").strip("` ") for r in c.rows("Ошибки")), "")
-            out += [f"## {c.id} · {c.title}", "приложение: external", "экраны: —", f"вызов: {c.id}", _inputs_line(c),
-                    f"показать: {', '.join(leaf_fields(c)) or '—'}", "успех: —", f"отказ: —{' = ' + code if code else ''}", ""]
+        out += lines + call_block(calls) + [""]
+    for _, c in [b for b in behind if b[0] >= len(story_order(pr))]:
+        out += behind_block(c)
     return "\n".join(out).rstrip("\n") + "\n"
 
 
@@ -349,6 +386,12 @@ def compile_spec(pr: bl.Project, sp: Spec, contracts: list[bc.Contract]) -> dict
     by_id = {c.id: c for c in contracts}
     db = [c for c in contracts if c.boundary == "service-db"]
     steps = []
+    # шаг за кадром (## C-N) стоит во времени рядом с шагом истории: этап — у следующего шага истории, иначе у предыдущего
+    near: dict[str, str] = {}
+    seq = [story_steps[x.id].stage_from if x.id in story_steps else "" for x in sp.steps]
+    for i, x in enumerate(sp.steps):
+        if not seq[i]:
+            near[x.id] = next((v for v in seq[i:] if v), next((v for v in reversed(seq[:i]) if v), ""))
     for s in sp.steps:
         ss = story_steps.get(s.id)
         called = [by_id[x] for x in s.calls if x in by_id]
@@ -356,9 +399,10 @@ def compile_spec(pr: bl.Project, sp: Spec, contracts: list[bc.Contract]) -> dict
         p = _persona(pr, ss.persona) if ss else None
         steps.append({
             "id": s.id, "title": s.title, "app": s.get("приложение"),
-            "stage": ss.stage_from if ss else "", "stageName": stages.get(ss.stage_from, "") if ss else "",
+            "stage": ss.stage_from if ss else near.get(s.id, ""),
+            "stageName": stages.get(ss.stage_from if ss else near.get(s.id, ""), ""),
             "persona": p.name if p else (by_id[s.id].get("caller") if s.id in by_id else ""),
-            "text": ss.text if ss else (by_id[s.id].title if s.id in by_id else ""),
+            "text": ss.text if ss else "",
             "was": ss.was if ss else "", "source": ss.source if ss else "",
             "screens": s.items("экраны"), "calls": s.calls, "inputs": s.inputs, "show": s.items("показать"),
             "ok": "" if s.get("успех") in EMPTY else s.get("успех"),
@@ -465,7 +509,7 @@ HINTS = {
     "PT001": "шаг — «## Ш7 · Название» из «Истории» (или «## C-3 · Название» для вызова внешней стороны), под ним строки «ключ: значение»: "
              "приложение, экраны, вызов, ввод, показать, успех, отказ, заметка",
     "PT002": "ID шага — из «Истории» (Ш7) или ID внешнего контракта (C-3); каркас ./blueprint.py prototype skeleton раскладывает их сам",
-    "PT003": "приложение: client — клиент; staff — сотрудник рядом с клиентом; admin — админка, кабинет; external — внешняя система",
+    "PT003": "приложение: client — клиент; staff — сотрудник рядом с клиентом; admin — админка, кабинет; external — внешняя система; backend — наши системы за кадром",
     "PT004": "экраны, успех, отказ — ID экранов из таблицы «Экраны» «Истории» (B1, F3)",
     "PT005": "вызов: ID контракта, который этот экран вызывает (C-3), несколько — через запятую; ничего не вызывает — «вызов: —»; service-db не вызывается",
     "PT006": "ввод: каждое обязательное поле «Запроса» — «поле = значение» через «;», значение — правдоподобное для демо, того же типа",

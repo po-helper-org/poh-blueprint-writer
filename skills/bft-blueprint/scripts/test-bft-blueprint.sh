@@ -577,9 +577,11 @@ PB="$tmp/proto" && cp -r "$BGOLD" "$PB" && python3 "$PTL" build "$PB" >/dev/null
 pblk() { awk -v h="^## $1 " '$0 ~ h {f=1; print; next} f && /^## / {exit} f' "$PB/prototype/spec.md"; }
 python3 "$PTL" skeleton "$PB" --force >/dev/null 2>&1
 pblk Ш13 | grep -q "^вызов: C-3$" && pblk Ш13 | grep -q "^экраны: F2$" && pblk Ш13 | grep -q "^успех: F3$" && pblk Ш13 | grep -q "^отказ: F4 = TICKET_NOT_FOUND$" \
-  && pblk Ш4 | grep -q "^вызов: C-1, C-2$" && pblk Ш5 | grep -q "^экраны: —$" && pblk Ш14 | grep -q "^вызов: —$" \
+  && pblk Ш4 | grep -q "^вызов: C-1, C-2$" && pblk Ш5 | grep -q "^вызов: —$" && pblk Ш14 | grep -q "^вызов: —$" \
+  && pblk C-7 | grep -q "^приложение: backend$" && [ "$(grep -n '^## C-7 ' "$PB/prototype/spec.md" | cut -d: -f1)" -lt "$(grep -n '^## Ш5 ' "$PB/prototype/spec.md" | cut -d: -f1)" ] \
+  && pblk Ш15 | grep -q "^вызов: C-4$" && pblk Ш15 | grep -q "^успех: F5$" \
   && [ -z "$(grep '{{' "$PB/prototype/spec.md" | grep -v '^ввод: ')" ] \
-  && ok "прототип · каркас: сканер запускает C-3 (успех F3, отказ F4), GET — на экранах данных, триггер — за кадром; модели — только значения" || fail "прототип · каркас"
+  && ok "прототип · каркас: сканер запускает C-3 (успех F3, отказ F4), фото чека — на своём шаге, GET — на экранах данных, триггер — шаг за кадром перед результатом; модели — только значения" || fail "прототип · каркас"
 cp "$BGOLD/prototype/spec.md" "$PB/prototype/spec.md"
 sed -i '0,/^приложение: staff$/s//приложение: officiant/; s/^экраны: D1, D2$/экраны: D1, X9/; s/^вызов: C-4$/вызов: C-4, C-99/; s/^ввод: barcode = 4600123456789; restaurant_id = r-12; photo/ввод: barcode = 4600123456789; restaurant_id = r-12; color = red; photo/; s/^показать: receipt_id, compensation$/показать: receipt_id, compensation, price/; s/^отказ: — = RECEIPT_EXISTS$/отказ: — = NOPE/; s/^вызов: C-6$/вызов: —/' "$PB/prototype/spec.md"
 printf '\n## Ш99 · Лишний шаг\nприложение: client\nприложение: client\nэкраны: —\nвызов: {{C-1 или —}}\n' >> "$PB/prototype/spec.md"

@@ -1,6 +1,7 @@
 window.SPEC = {
  "apps": {
   "admin": "админка",
+  "backend": "за кадром",
   "client": "клиент",
   "external": "внешняя сторона",
   "staff": "сотрудник"
@@ -1024,7 +1025,7 @@ window.SPEC = {
  },
  "steps": [
   {
-   "app": "staff",
+   "app": "backend",
    "calls": [
     "C-6"
    ],
@@ -1033,7 +1034,7 @@ window.SPEC = {
     "code": "HOURS_MISSING",
     "screen": "—"
    },
-   "id": "Ш11",
+   "id": "C-6",
    "inputs": {
     "address": "Москва, Тверская, 12",
     "city": "Москва",
@@ -1041,15 +1042,39 @@ window.SPEC = {
     "name": "Сад",
     "partner_id": "dc-77"
    },
-   "note": "",
-   "ok": "A1",
-   "persona": "Ресторан-партнёр DineClub и официант",
+   "note": "DineClub подключил ресторан — каталог UnitB заводит участника и берёт рейтинг из квартальной выгрузки",
+   "ok": "",
+   "persona": "DineClub",
    "screens": [],
    "show": [
     "restaurant_id",
     "rating",
     "published"
    ],
+   "source": "",
+   "stage": "A",
+   "stageName": "Подготовка",
+   "text": "",
+   "title": "Подключённый ресторан попадает в каталог участников",
+   "was": ""
+  },
+  {
+   "app": "staff",
+   "calls": [],
+   "data": [],
+   "fail": {
+    "code": "",
+    "screen": ""
+   },
+   "id": "Ш11",
+   "inputs": {},
+   "note": "",
+   "ok": "",
+   "persona": "Ресторан-партнёр DineClub и официант",
+   "screens": [
+    "A1"
+   ],
+   "show": [],
    "source": "Изменение в UJM, подключение ресторана; БТ-4",
    "stage": "A",
    "stageName": "Подготовка",
@@ -1180,7 +1205,7 @@ window.SPEC = {
    "was": "Список обрезался по расстоянию, фильтров не было, в карточке ресторана не было акции."
   },
   {
-   "app": "client",
+   "app": "backend",
    "calls": [
     "C-7"
    ],
@@ -1189,21 +1214,45 @@ window.SPEC = {
     "code": "UNSUBSCRIBED",
     "screen": "—"
    },
-   "id": "Ш5",
+   "id": "C-7",
    "inputs": {
     "discount": "10",
     "event_date": "2026-11-14",
     "guest_id": "g-1024",
     "kind": "за 24 часа"
    },
-   "note": "напоминание будит дата мероприятия, а не действие гостя — вызов идёт за кадром, канал пока открыт",
-   "ok": "E1",
-   "persona": "Гость Acme Tickets",
+   "note": "напоминание будит дата мероприятия, а не действие гостя; канал — email, SMS или push — пока открытый вопрос",
+   "ok": "",
+   "persona": "Триггеры касаний",
    "screens": [],
    "show": [
     "status",
     "channel"
    ],
+   "source": "",
+   "stage": "E",
+   "stageName": "Не забываю",
+   "text": "",
+   "title": "Триггер касаний отправляет напоминание через внешний канал: email, SMS или push",
+   "was": ""
+  },
+  {
+   "app": "client",
+   "calls": [],
+   "data": [],
+   "fail": {
+    "code": "",
+    "screen": ""
+   },
+   "id": "Ш5",
+   "inputs": {},
+   "note": "",
+   "ok": "",
+   "persona": "Гость Acme Tickets",
+   "screens": [
+    "E1"
+   ],
+   "show": [],
    "source": "Изменение в UJM, касания; ПТ-2",
    "stage": "E",
    "stageName": "Не забываю",
@@ -1213,29 +1262,21 @@ window.SPEC = {
   },
   {
    "app": "client",
-   "calls": [
-    "C-7"
-   ],
+   "calls": [],
    "data": [],
    "fail": {
-    "code": "UNSUBSCRIBED",
-    "screen": "—"
+    "code": "",
+    "screen": ""
    },
    "id": "Ш6",
-   "inputs": {
-    "discount": "10",
-    "event_date": "2026-11-14",
-    "guest_id": "g-1024",
-    "kind": "окно 7 дней"
-   },
+   "inputs": {},
    "note": "",
-   "ok": "E2",
+   "ok": "",
    "persona": "Гость Acme Tickets",
-   "screens": [],
-   "show": [
-    "status",
-    "channel"
+   "screens": [
+    "E2"
    ],
+   "show": [],
    "source": "Изменение в UJM, касания; ПТ-2",
    "stage": "E",
    "stageName": "Не забываю",

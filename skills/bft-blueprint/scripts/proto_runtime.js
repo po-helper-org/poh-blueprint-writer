@@ -181,7 +181,11 @@
       html += el(e, s);
     });
     if (phase === "before" && s.calls.length && ctaAt < 0) html += form(s) + `<div class="el cta"><button data-act="call">Отправить запрос</button></div>`;
-    if (!sc) html += `<p><b>${esc(s.persona || "Внешняя система")}</b></p><p class="muted">Экрана нет: ${s.calls.length ? "внешняя сторона вызывает наш сервис" : "шаг происходит за кадром"}.</p>` +
+    const who = s.app === "external" ? "Внешняя система" : s.app === "backend" ? "За кадром" : (s.persona || "");
+    const why = !s.calls.length ? "шаг происходит без экрана" : s.app === "external" ? "внешняя сторона вызывает наш сервис"
+      : s.app === "backend" ? "наши системы обмениваются данными — человек увидит результат на следующем шаге" : "вызов идёт за кадром, экран результата — после ответа";
+    const c0 = s.calls.length ? contract(s.calls[0]) : null;
+    if (!sc) html += `<p><b>${esc(who)}</b>${c0 ? `<br><span class="muted">${esc(c0.caller)} → ${esc(c0.callee)}</span>` : ""}</p><p class="muted">Экрана нет: ${why}.</p>` +
       (phase === "before" ? form(s) + (s.calls.length ? `<div class="el cta"><button data-act="call">Отправить запрос</button></div>` : "") : "");
     html += result(s);
     d.innerHTML = html;
