@@ -42,6 +42,7 @@
   BL038  критерий приёмки требования из БФТ не перенесён в «Критерии приемки» задачи (предупреждение)
   BL039  карточка названа так же, как её задача: название не говорит, что происходит в сервисе
   BL040  участник процесса без имени: «Система», «Сервис», «Приложение»
+  BL041  карточка technology от лица сотрудника, который на этом этапе на виду у клиента, — слой employee
 
   СБОРКА (`bft-backlog-build.py`)
   BL029  `--check`: скрипты, правила или инструкции проекта устарели
@@ -80,6 +81,7 @@ def check(pr: bl.Project, source: Path | None, no_source: bool, explicit: bool =
         for st in pr.story.stages:
             if not any(t.stage == st.id for t in pr.tasks):
                 pr.warn(pr.story_doc.rel, st.line + pr.story_doc.off, "BL020", f"этап {st.id} «{st.name}» без задач — что на нём делают команды?")
+        employee_hint(pr)
     with_card = {c.parent for c in pr.cards}
     linked = {x for a, b, _ in pr.links() for x in (a, b)}
     for t in pr.tasks:
@@ -144,6 +146,37 @@ def check(pr: bl.Project, source: Path | None, no_source: bool, explicit: bool =
             num = m.group(0).strip(" .,:")
             if num and num not in src_text and num not in answers:
                 pr.warn(t.rel, 1, "BL027", f"{t.id}: число «{num}» не найдено ни в БФТ, ни в ответах")
+
+
+CUSTOMER = re.compile(r"клиент|гост[ьяи]|покупател|посетител|пользовател|абонент|пассажир|пациент|зрител|житель|студент|водител", re.I)
+
+
+def _stems(t: str) -> set[str]:
+    return {w[:5] for w in re.findall(r"[а-яёa-z]{4,}", t.lower())}
+
+
+def employee_hint(pr: bl.Project) -> None:
+    """BL041: карточка technology от лица сотрудника, который на этом этапе работает на виду у клиента, — это employee."""
+    st = pr.story
+    if not st or len(st.personas) < 2:
+        return
+    order = [x.id for x in st.stages]
+    idx = {sid: i for i, sid in enumerate(order)}
+
+    def on(pid: str, sid: str) -> bool:
+        return any(s.persona == pid and s.stage_from in idx and idx[s.stage_from] <= idx[sid] <= idx.get(s.stage_to, idx[s.stage_from]) for s in st.steps)
+
+    for c in pr.cards:
+        if c.layer != "technology" or c.stage not in idx:
+            continue
+        role = re.match(r"^Как\s+(.+?),\s*я хочу", c.user_story.replace("**", ""))
+        if not role or CUSTOMER.search(role.group(1)):
+            continue
+        me = [p for p in st.personas if not CUSTOMER.search(p.name) and _stems(p.name) & _stems(role.group(1)) and on(p.id, c.stage)]
+        guest = [p for p in st.personas if CUSTOMER.search(p.name) and on(p.id, c.stage)]
+        if me and guest:
+            pr.warn(c.rel, 1, "BL041", f"{c.id}: {me[0].name} работает на этапе {c.stage} на виду у персонажа «{guest[0].name}» — это слой employee, "
+                    "его экран (планшет, сканер) — внутри той же карточки")
 
 
 def _norm(s: str) -> str:
@@ -225,6 +258,7 @@ HINTS = {
     "BL030": "UserStory: «Как <роль>, я хочу <действие>, чтобы <ценность>»; JobStory: «- Когда <ситуация>, хочу <мотивация>, чтобы <результат>». После «хочу» — действие, не «хочу, чтобы …»",
     "BL034": "«Как это работает» — сервис после запуска. Участники процесса — пользователь, сотрудник на линии, система; PO, СА и разработка строят сервис: их работа — задача «Что делаем» или вопрос",
     "BL039": "название карточки — что происходит, когда сервис работает: кто → что → результат («Реестр принимает продажу один раз на номер чека»), а не название задачи",
+    "BL041": "сотрудник на виду у клиента (официант при госте, мастер-приёмщик при клиенте) — «слой: employee»; его планшет или сканер — в этой же карточке, не отдельной technology",
     "BL040": "участник процесса — система с именем из БФТ или «Механизма»: «Реестр продаж», «Приложение-сканер», а не «Система»",
     "BL035": "один кандидат — это исполнитель: «команда: id»; сомнение — строкой «Вопросов»",
     "BL033": "UserStory пишется от лица того, кто пользуется результатом карточки (гость, официант, контент-менеджер, PO), а не команды, которая её делает",

@@ -504,6 +504,29 @@ grep -q "^- BP-2 ← r-BP-2.md" "$GD/groom/report.md" && grep -q "^- BP-3 ← r-
 ( cd "$GD" && ./backlog.py task archive BP-19.1 >/dev/null && [ -f backlog/archive/tasks/bp-19.1*.md ] && ! ./backlog.py task list --plain | grep -q "BP-19.1" ) \
   && ok "CLI · task archive убирает карточку в backlog/archive/tasks" || fail "CLI · task archive"
 
+# слой employee: официант на виду у гостя в слое technology — BL041
+EM="$tmp/emp" && cp -r "$BGOLD" "$EM" && sed -i 's/^  - layer:employee$/  - layer:technology/' "$EM/backlog/tasks/bp-15.1 "*.md
+python3 "$DIR/scripts/bft-backlog-lint.py" "$EM" --no-source 2>&1 | grep -q "WARN BL041 BP-15.1" \
+  && ! python3 "$DIR/scripts/bft-backlog-lint.py" "$BGOLD" --no-source 2>&1 | grep -q BL041 \
+  && ok "карта · BL041: сотрудник на виду у клиента в technology — подсказка employee" || fail "карта · BL041"
+
+# каркас на других БФТ: экран другого этапа — своя задача; сотрудник на виду у клиента — employee
+LY="$tmp/ly" && mkdir -p "$LY/faq" "$LY/car"
+cp "$FIX/golden_deep_document.md" "$LY/faq/direct-faq.md" && cp "$FIX/faq_story.md" "$LY/faq/direct-faq-story.md"
+cp "$FIX/car_deep_document.md" "$LY/car/car-service-booking.md" && cp "$FIX/car_story.md" "$LY/car/car-service-booking-story.md"
+for x in faq/direct-faq car/car-service-booking; do
+  python3 "$DIR/scripts/bft-backlog-init.py" "$LY/$x-story.md" --dir "$LY/$x-p" --auto >/dev/null 2>&1; python3 "$DIR/scripts/bft-skeleton.py" "$LY/$x-p" >/dev/null 2>&1
+done
+FM="$LY/faq/direct-faq-p/plan/map.md"; CM="$LY/car/car-service-booking-p/plan/map.md"
+! grep "^Требования БФТ:" "$FM" | grep -q "ИТ-1.*ИТ-2\|ИТ-2.*ИТ-1" \
+  && [ "$(grep -c '^слой: employee' "$CM")" -eq 1 ] && grep -A1 "^слой: employee" "$CM" | grep -q "^экраны: D1" \
+  && ! grep -B3 "^слой: employee" "$FM" | grep -q employee \
+  && ok "каркас · экраны разных этапов — в разных задачах; мастер-приёмщик при клиенте — employee, экран клиента — technology" || fail "каркас · раскладка по этапам и employee"
+tm() { awk -v h="^## $1 " '$0 ~ h {f=1; next} f && /^команда: / {print $2; exit} f && /^## / {exit}' "$CM"; }
+[ "$(tm BP-1)" = integraciy ] && [ "$(tm BP-2)" = integraciy ] && [ "$(tm BP-7)" = platezhnaya ] && [ "$(tm BP-9)" = loyalnosti ] \
+  && [ "$(grep -c '^кандидаты:' "$SK/p/plan/map.md")" -eq 0 ] \
+  && ok "каркас · команда по «Зависимостям»: редкое слово весит больше общего, окончания не мешают" || fail "каркас · подбор команды"
+
 # контракты стыков (Design First): эталон строго чист, на сломанной копии — каждый код CT
 CTL="$DIR/scripts/bft-contracts.py"
 python3 "$CTL" lint "$BGOLD" --strict >/dev/null 2>&1 \

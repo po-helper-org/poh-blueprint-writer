@@ -50,6 +50,20 @@ def words(text: str) -> set[str]:
     return {stem(w) for w in re.findall(r"[А-Яа-яЁёA-Za-z]{4,}", text)} - {stem(w) for w in STOP}
 
 
+ENDING = re.compile(r"(?:иями|ями|ами|ого|его|ому|ему|ыми|ими|ией|ов|ев|ей|ам|ям|ах|ях|ой|ый|ий|ая|яя|ое|ее|ые|ие|ую|юю|ым|им|ом|ем|ия|ии|ию|ь|а|я|ы|и|у|ю|е|о)$")
+
+
+def roots(text: str) -> set[str]:
+    """Основы слов без окончаний: «слотов», «слота», «слоты» — одно «слот». Для подбора команды по «Зависимостям»."""
+    out = set()
+    for w in re.findall(r"[А-Яа-яЁёA-Za-z]{4,}", text.lower().replace("ё", "е")):
+        if w in STOP:
+            continue
+        r = ENDING.sub("", w) if len(w) > 4 else w
+        out.add(r[:6])
+    return out
+
+
 def team_id(name: str, taken: set[str]) -> str:
     base = [w for w in re.findall(r"[А-Яа-яЁёA-Za-z]+", name.lower()) if w not in STOP] or ["team"]
     tid = re.sub(r"[^a-z0-9]", "", base[0].translate(TRANSLIT))[:12] or "team"
@@ -142,13 +156,18 @@ class Skeleton:
             self.tasks.append({"anchor": a.id, "atoms": [a.id], "cards": [{"layer": "backstage", "atoms": [a.id], "rules": []}]})
         task_of = {t["anchor"]: t for t in self.tasks}
 
+        def same_stage(rid: str, t: dict) -> bool:
+            """Задача — один результат на одном этапе (автопилот 4.2): экран другого этапа — своя задача."""
+            a, b = self.stage_of.get(rid), self.stage_of.get(t["anchor"])
+            return not a or not b or a == b
+
         def attach_task(rid: str) -> dict | None:
             for n in g.atoms[rid].related + g.neighbours(rid):
-                if n in task_of:
+                if n in task_of and same_stage(rid, task_of[n]):
                     return task_of[n]
             for n in g.neighbours(rid):          # через сосед-ПТ или ИТ
                 for m in g.neighbours(n):
-                    if m in task_of:
+                    if m in task_of and same_stage(rid, task_of[m]):
                         return task_of[m]
             return None
 
@@ -175,6 +194,7 @@ class Skeleton:
                 scr["atoms"].append(a.id)
             else:
                 t["cards"].append({"layer": "technology", "atoms": [a.id], "rules": []})
+        self._employee()
         # НФТ: «Управление» карточек связанных требований; без связи — карточка support первой задачи
         for a in g.by_kind("НФТ"):
             cards = [c for t in self.tasks for c in t["cards"] if set(c["atoms"]) & set(g.neighbours(a.id) + a.related)]
@@ -218,6 +238,39 @@ class Skeleton:
             target["rules"].append(mid)
             placed.add(mid)
 
+    def _employee(self) -> None:
+        """Слой employee: экран или роль сотрудника, который действует на виду у клиента — на этапе, где у другого
+        персонажа истории тоже есть шаг (официант сканирует билет гостя, мастер-приёмщик принимает машину)."""
+        story = self.story
+        if not story or len(story.personas) < 2:
+            return
+        order = [x.id for x in story.stages]
+        idx = {sid: i for i, sid in enumerate(order)}
+
+        def on_stage(pid: str, sid: str) -> bool:
+            return any(st.persona == pid and st.stage_from in idx and idx[st.stage_from] <= idx[sid] <= idx.get(st.stage_to, idx[st.stage_from])
+                       for st in story.steps)
+
+        shown = {sc: st.persona for st in story.steps for sc in st.screens}
+        for t in self.tasks:
+            for c in t["cards"]:
+                if c["layer"] != "technology":
+                    continue
+                stage = self.stage(c["atoms"] + [t["anchor"]] + t["atoms"])
+                if stage not in idx:
+                    continue
+                who = {shown[s] for s in self.screens_of(c["atoms"]) if s in shown}
+                if not who:   # нет экрана в истории — роль ПТ, совпавшая с именем персонажа
+                    roles = " ".join(self.g.atoms[x].role for x in c["atoms"] if self.g.atoms[x].role)
+                    who = {pz.id for pz in story.personas if roles and words(pz.name) & words(roles)}
+                if len(who) == 1:
+                    pid = next(iter(who))
+                    me = next(pz for pz in story.personas if pz.id == pid)
+                    if CUSTOMER.search(me.name):   # экран клиента — technology, даже если рядом работает сотрудник
+                        continue
+                    if on_stage(pid, stage) and any(pz.id != pid and CUSTOMER.search(pz.name) and on_stage(pz.id, stage) for pz in story.personas):
+                        c["layer"] = "employee"
+
     def _atom_text(self, rid: str) -> str:
         a = self.g.atoms[rid]
         return a.name + " " + " ".join(a.cols.values())
@@ -226,11 +279,22 @@ class Skeleton:
     def team_line(self, t: dict) -> str:
         if not self.teams or not self.sure:
             return stub("строка «команда: id» из «Команд» — кто делает, по «Зависимостям» БФТ; не ясно — «кандидаты: id1, id2»")
-        tw = words(" ".join(self._atom_text(x) for x in t["atoms"]))
+        # якорь задачи весит вдвое: задача — его результат, остальные атомы — контекст
+        tw = roots(" ".join(self._atom_text(x) for x in t["atoms"]))
+        aw = roots(self._atom_text(t["anchor"])) if t["anchor"] in self.g.atoms else set()
         inner = [x for x in self.teams if not re.search(r"внешн", x[1] + " " + x[2], re.I)] or self.teams  # внешняя система не исполнитель
-        scored = sorted(inner, key=lambda x: -len(words(x[1] + " " + x[2]) & tw))
-        best = [x for x in scored if len(words(x[1] + " " + x[2]) & tw)]
-        if len(best) == 1 or (len(best) > 1 and len(words(best[0][1] + " " + best[0][2]) & tw) > 2 * len(words(best[1][1] + " " + best[1][2]) & tw)):
+        tw_of = {x[0]: roots(x[1] + " " + x[2]) for x in inner}
+        df: dict[str, int] = {}
+        for ws in tw_of.values():
+            for w in ws:
+                df[w] = df.get(w, 0) + 1
+
+        def score(x) -> float:   # слово, которое есть в описании одной команды, говорит больше общего «банка»
+            return sum((2 if w in aw else 1) / df[w] for w in tw_of[x[0]] & (tw | aw))
+
+        scored = sorted(inner, key=lambda x: -score(x))
+        best = [x for x in scored if score(x) > 0]
+        if len(best) == 1 or (len(best) > 1 and score(best[0]) >= 1.5 * score(best[1])):
             return f"команда: {best[0][0]}"
         pick = (best or scored)[:2]
         return "кандидаты: " + ", ".join(x[0] for x in pick) if len(pick) > 1 else f"команда: {pick[0][0]}"
@@ -263,7 +327,7 @@ class Skeleton:
         role = next((a.role for a in pts if a.role), "")
         lines = [f"## {cid} · {title}", f"этап: {self.stage([a.id for a in atoms] + [t['anchor']] + t['atoms'])}", f"слой: {c['layer']}"]
         scr = self.screens_of([a.id for a in atoms])
-        if scr and c["layer"] == "technology":
+        if scr and c["layer"] in ("technology", "employee"):
             lines.append(f"экраны: {', '.join(scr)}")
         src = "; ".join(f"{a.id}: {a.cols.get('Требование к пользовательскому интерфейсу') or a.cols.get('Функциональные требования') or a.name}" for a in atoms[:2])
         lines += ["", stub(f"Суть одной-двумя фразами: кто → что делает → какой результат. Из БФТ: {src}" if src else "Суть: что держит эта карточка"), ""]
@@ -365,6 +429,8 @@ class Skeleton:
         return "\n".join(out).rstrip("\n") + "\n", index
 
 
+# тот, кому служит сервис; сотрудник рядом с ним на том же этапе — слой employee
+CUSTOMER = re.compile(r"клиент|гост[ьяи]|покупател|посетител|пользовател|абонент|пассажир|пациент|зрител|житель|студент|водител", re.I)
 BUILDER = re.compile(r"^(?:PO|СА|PM|CPO|BA|SA|владелец продукта|продакт[\w-]*(?: менеджер)?|(?:системный |бизнес-)?аналитик\w*)(?:\s.*)?$", re.I)
 
 
