@@ -487,31 +487,31 @@ python3 "$DIR/scripts/bft-groom.py" merge "$GR" >/dev/null 2>&1
 R="$GR/groom/report.md"
 [ -f "$GR/groom/1-audit/a-coverage.md" ] && ls "$GR/groom/2-refine/r-BP-1.1.md" >/dev/null \
   && grep -q "^## BP-1.1 · Ресторан подаёт заявку и попадает в каталог" "$GR/plan/map.md" && grep -q "Кто проверяет заявку ресторана?" "$GR/plan/map.md" \
-  && grep -q "BP-2 из r-BP-2.md: теряет НФТ-2, ФТ-4" "$R" && grep -q "BP-2.1 из r-BP-2.1.md: .*BL" "$R" \
+  && grep -q "BP-2 из r-BP-2.md: теряет НФТ-2$" "$R" && grep -q "BP-2.1 из r-BP-2.1.md: .*BL" "$R" \
   && ok "груминг · audit → refine → merge: годная замена и вопрос — в план, ломающие — в отчёт" || fail "груминг · audit/refine/merge"
 
 # контракты стыков (Design First): эталон строго чист, на сломанной копии — каждый код CT
 CTL="$DIR/scripts/bft-contracts.py"
 python3 "$CTL" lint "$BGOLD" --strict >/dev/null 2>&1 \
-  && ok "контракты · эталон DineClub: 6 контрактов, 0 ошибок и предупреждений" || fail "контракты · эталон не проходит --strict"
+  && ok "контракты · эталон DineClub: 7 контрактов, 0 ошибок и предупреждений" || fail "контракты · эталон не проходит --strict"
 ( cd "$BGOLD" && ./blueprint.py contracts >/dev/null 2>&1 ) && ok "контракты · ./blueprint.py contracts" || fail "контракты · ./blueprint.py contracts"
 CB="$tmp/ct" && cp -r "$BGOLD" "$CB" && C="$CB/contracts"
 sed -i 's/^boundary: external/boundary: outer/; s/| barcode | string | да | path | ФТ-1 |/| bar code | string | да | path | |/; s/"discount": 10, //; /TeamA --> Приложение-сканер/d; s/| 1 | Acme Tickets | barcode |/| 1 | Acme Tickets | ticket_no |/' "$C/C-3.md"
 sed -i 's/штрихкод, ресторан/PRIMARY KEY штрихкод, ресторан/; s/^cards: .*/cards: BP-99.1/' "$C/C-5.md"
-sed -i 's|^op: .*|op: GET /v1/restaurants/{rid}|' "$C/C-2.md"
+sed -i 's|^op: .*|op: GET /v1/restaurants/{rid}|; s/"walk_minutes": 6/"walk_minutes": "шесть минут пешком от площадки (ИТ-4)"/' "$C/C-2.md"
 sed -i '/^## Цепочка/,$d; s/^cards: .*/cards: BP-17.1/' "$C/C-4.md"
 sed -i '/^## Ошибки/,/^## Sequence/{/^| 4/d}' "$C/C-2.md"
 sed -i 's/^| Хранилище | Какие данные нужны | Источник |/| Хранилище | Данные | Источник |/' "$C/C-5.md"
 cp "$C/C-1.md" "$C/C-7.md"
 out="$(python3 "$CTL" lint "$CB" --source "$FIX/golden_deep_document.md" 2>&1)"; rc=$?
-miss=""; for c in CT001 CT002 CT003 CT004 CT005 CT006 CT007 CT008 CT009 CT010 CT020 CT021 CT022; do grep -q " $c " <<<"$out" || miss="$miss $c"; done
-[ "$rc" -eq 1 ] && [ -z "$miss" ] && ok "контракты · сломанная копия: CT001–CT010, CT020–CT022" || fail "контракты · нет в выводе:$miss (rc=$rc)"
-# каркас: стык без контракта (C-6 убран) → CT020; skeleton заводит C-6 заново на ту же пару карточек, незаполненный — только CT011
+miss=""; for c in CT001 CT002 CT003 CT004 CT005 CT006 CT007 CT008 CT009 CT010 CT012 CT020 CT021 CT022; do grep -q " $c " <<<"$out" || miss="$miss $c"; done
+[ "$rc" -eq 1 ] && [ -z "$miss" ] && ok "контракты · сломанная копия: CT001–CT012, CT020–CT022" || fail "контракты · нет в выводе:$miss (rc=$rc)"
+# каркас: стык без контракта (C-6 убран) → CT020; skeleton заводит C-8 на ту же пару карточек, незаполненный — только CT011
 CS="$tmp/cts" && cp -r "$BGOLD" "$CS" && rm "$CS/contracts/C-6.md"
 out1="$(python3 "$CTL" lint "$CS" 2>&1)"; python3 "$CTL" skeleton "$CS" >/dev/null 2>&1; out2="$(python3 "$CTL" lint "$CS" 2>&1)"
-grep -q "WARN CT020 BP-1.1 → BP-2.1" <<<"$out1" && grep -q "^cards: BP-1.1, BP-2.1" "$CS/contracts/C-6.md" && grep -q "ERROR CT011 C-6" <<<"$out2" \
-  && [ "$(grep -c " ERROR " <<<"$out2")" -eq 1 ] && ! grep -q CT020 <<<"$out2" && [ "$(ls "$CS/contracts" | wc -l)" -eq 6 ] \
-  && ok "контракты · skeleton: стык без контракта → каркас C-6 с картой в шапке, незаполненный — только CT011" || fail "контракты · skeleton"
+grep -q "WARN CT020 BP-1.1 → BP-2.1" <<<"$out1" && grep -q "^cards: BP-1.1, BP-2.1" "$CS/contracts/C-8.md" && grep -q "ERROR CT011 C-8" <<<"$out2" \
+  && [ "$(grep -c " ERROR " <<<"$out2")" -eq 1 ] && ! grep -q CT020 <<<"$out2" && [ "$(ls "$CS/contracts" | wc -l)" -eq 7 ] \
+  && ok "контракты · skeleton: стык без контракта → каркас C-8 с картой в шапке, незаполненный — только CT011" || fail "контракты · skeleton"
 
 # встроенный CLI и настоящий Backlog.md читают файлы друг друга — если npm-пакет установлен
 if command -v backlog >/dev/null 2>&1; then

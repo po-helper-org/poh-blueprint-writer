@@ -21,6 +21,8 @@ BOUNDARIES = ("external", "frontend-backend", "service-service", "service-db")
 METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 ID_RE = re.compile(r"^C-\d+$")
 OP_RE = re.compile(rf"^({'|'.join(METHODS)})\s+(/\S*)$")
+FAMILY_RE = re.compile(r"(?<![\w-])[A-Z]\d{1,2}(?![\w-])")   # параметр P5, инвариант I2, разрыв G1 из БФТ
+TYPES = {"string": str, "integer": int, "number": (int, float), "boolean": bool, "array": list, "object": dict}
 STUB_RE = re.compile(r"\{\{(.+?)\}\}")
 FIELD_RE = re.compile(r"^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*$")
 TOKEN_RE = re.compile(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*")
@@ -194,6 +196,14 @@ def _has(obj, path: str) -> bool:
     return True
 
 
+def _value(obj, path: str):
+    for k in path.split("."):
+        if isinstance(obj, list):
+            obj = obj[0] if obj else {}
+        obj = obj.get(k) if isinstance(obj, dict) else None
+    return obj
+
+
 def _tokens(text: str) -> set[str]:
     """Поля в ячейке цепочки: `ticket{event, used}` → ticket, ticket.event, ticket.used; русские слова — пояснение."""
     out: set[str] = set()
@@ -212,7 +222,7 @@ def _known(tok: str, avail: set[str]) -> bool:
 def _source(pr: bl.Project, c: Contract, r: Row, col: str, reqs: dict | None) -> None:
     src = r.cells.get(col, "")
     ids = bb.REQ_RE.findall(src)
-    if not ids and bb.MARKER not in src and "PO" not in src:
+    if not ids and not FAMILY_RE.search(src) and bb.MARKER not in src and "PO" not in src:
         pr.err(c.rel, r.line, "CT005", f"{c.id}: у поля нет источника — ID требования (ФТ-4) или [УТОЧНИТЬ у …]")
     for rid in ids if reqs is not None else ():
         if rid not in reqs:
@@ -273,9 +283,18 @@ def check(pr: bl.Project, contracts: list[Contract], reqs: dict | None = None) -
                 if p not in path_req:
                     pr.err(c.rel, 1, "CT010", f"{c.id}: {{{p}}} в пути op — строкой «Запроса» с «Где: path»")
         if c.example is not None:
+            line = c.sections["Пример ответа"][0]
+            types = {r.cells.get("Поле", "").strip("` "): r.cells.get("Тип", "").strip() for r in c.rows("Ответ")}
             for name in c.fields("Ответ"):
                 if FIELD_RE.match(name) and not _has(c.example, name):
-                    pr.err(c.rel, c.sections["Пример ответа"][0], "CT004", f"{c.id}: поля «{name}» из «Ответа» нет в примере")
+                    pr.err(c.rel, line, "CT004", f"{c.id}: поля «{name}» из «Ответа» нет в примере")
+                    continue
+                v = _value(c.example, name) if FIELD_RE.match(name) else None
+                want = TYPES.get(types.get(name, ""))
+                if want and v is not None and (not isinstance(v, want) or (want is not bool and isinstance(v, bool))):
+                    pr.err(c.rel, line, "CT012", f"{c.id}: «{name}» — {types[name]}, а в примере {json.dumps(v, ensure_ascii=False)[:40]}")
+                if isinstance(v, str) and (bb.REQ_RE.search(v) or bb.MARKER in v or len(v.split()) > 6):
+                    pr.err(c.rel, line, "CT012", f"{c.id}: «{name}» в примере — пояснение, а не значение: «{v[:50]}»; пример — то, что вернёт система: \"accepted\", 10, \"2026-03-01\"")
         for r in c.rows("Ошибки"):
             if not re.fullmatch(r"[45]\d\d", r.cells.get("Статус", "")) or not re.fullmatch(r"[A-Z][A-Z0-9_]+", r.cells.get("Код", "").strip("` ")):
                 pr.err(c.rel, r.line, "CT004", f"{c.id}: ошибка — статус 4xx/5xx и код ЗАГЛАВНЫМИ (TICKET_NOT_FOUND)")
@@ -294,6 +313,8 @@ def check(pr: bl.Project, contracts: list[Contract], reqs: dict | None = None) -
         if len(parts) > 2 and "Цепочка" not in c.sections:
             pr.warn(c.rel, c.sections["Sequence"][0], "CT021", f"{c.id}: за {c.get('callee')} стоят ещё {len(parts) - 2} участника — распиши «## Цепочка»: как данные превращаются в ответ")
 
+        if "Цепочка" in c.sections and not c.rows("Цепочка"):
+            pr.err(c.rel, c.sections["Цепочка"][0], "CT004", f"{c.id}: «Цепочка» без шагов — нет участников за {c.get('callee')}: удали раздел целиком")
         # Цепочка: каждый вход откуда-то пришёл, ответ собран из выходов
         avail = set(c.fields("Запрос"))
         for r in c.rows("Цепочка"):
@@ -326,21 +347,27 @@ def check(pr: bl.Project, contracts: list[Contract], reqs: dict | None = None) -
     for a, b, what in seams(pr):
         if not any({a, b} <= x for x in covered):
             card = pr.task(b)
-            pr.warn(card.rel if card else "", 1, "CT020", f"{a} → {b} «{what}»: стык команд без контракта — "
+            pr.warn(card.rel if card else "", 1, "CT020", f"{a} → {b} «{what}»: стык без контракта — "
                     f"./blueprint.py contracts skeleton заведёт его, или добавь {a} и {b} в cards: одного контракта")
 
 
 def seams(pr: bl.Project) -> list[tuple[str, str, str]]:
-    """Стыки карты: связь карточек разных команд, где данные идут через Backstage.
+    """Стыки карты — связи карточек, по которым ходят данные между системами:
+    экран (Technology) ↔ то, что за кадром (Backstage), даже если обе у одной команды;
+    Backstage ↔ карточка другой команды; любая связь с внешней системой.
     Support (макеты, правила, каналы) передаёт договорённости, а не данные — не стык."""
     by_id = {x.id: x for x in pr.cards}
+    ext = {t.id for t in pr.teams if re.search(r"внешн|^ext$", f"{t.id} {t.name}", re.I)}
     out = []
     for a, b, what in pr.links():
         ca, cb = by_id[a], by_id[b]
-        layers = (ca.layer, cb.layer)
-        if "support" in layers or "backstage" not in layers or (ca.team == cb.team and ca.team != "?"):
+        layers = {ca.layer, cb.layer}
+        if "support" in layers:
             continue
-        out.append((a, b, what))
+        screen = layers == {"technology", "backstage"}
+        cross = "backstage" in layers and (ca.team != cb.team or ca.team == "?")
+        if screen or cross or {ca.team, cb.team} & ext:
+            out.append((a, b, what))
     return out
 
 
@@ -430,7 +457,8 @@ HINTS = {
     "CT009": "в «Данных» — хранилище и список нужных полей; таблицы, ключи, индексы, SQL — работа СА",
     "CT010": "параметр пути {id} — строкой «Запроса»: | id | string | да | path | ФТ-… |",
     "CT011": "допиши места {{…}} каркаса: каждая подсказка говорит, откуда взять значение; «Цепочка» не нужна — удали раздел, «Данные» нужны — добавь по шаблону",
-    "CT020": "стык двух команд на карте — контракт, в cards: которого обе карточки связи",
+    "CT012": "пример ответа — значения, как их вернёт система, с типом из «Ответа»: 10, \"valid\", true, \"2026-03-01\"; пояснения и ID требований — в «Источнике», не в примере",
+    "CT020": "стык на карте (экран ↔ Backstage, Backstage ↔ другая команда, внешняя система) — контракт, в cards: которого обе карточки связи; ./blueprint.py contracts skeleton заведёт его",
     "CT021": "за вызываемой системой есть ещё участники — «## Цепочка»: шаг, кто, вход, что делает, выход",
     "CT022": "добавь в «Ошибки» хотя бы отказ: что получает вызывающая сторона",
 }

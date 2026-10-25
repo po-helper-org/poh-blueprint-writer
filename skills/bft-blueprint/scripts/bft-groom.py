@@ -451,7 +451,12 @@ def merge(root: Path, wave: str = REFINE) -> int:
                 kids = [i for i in spans if i == owner or i.startswith(owner + ".")]
                 end = max(spans[i][1] for i in kids)
                 trial[end:end] = text.split("\n") + [""]
-            lost = _kept_ids(old, members) - _kept_ids(text, members)  # ID требований и семейств старого блока остаются в новом
+            # ID требований и семейств старого блока остаются в новом — или переехали в другой блок плана (автопилот 4: «ID переезжают вместе с текстом»)
+            lost = _kept_ids(old, members) - _kept_ids(text, members)
+            if lost:   # переезд — только в блок того же вида: из карточки в карточку, из задачи в задачу
+                tsp = block_spans(trial)
+                rest = "\n".join("\n".join(trial[x:y]) for i, (x, y) in tsp.items() if i != bid and ("." in i) == ("." in bid))
+                lost -= _kept_ids(rest, members)
             pl_errs, map_errs = _map_errors(sand, "\n".join(trial))
             # чужие ошибки не в счёт: пока в плане были {{…}}, полная проверка не шла, и они всплывают только сейчас
             new = {e for e in map_errs - base_map if e.split(":", 1)[0] == bid or e.startswith(bid + ".")}
@@ -490,11 +495,14 @@ def merge(root: Path, wave: str = REFINE) -> int:
     have = {re.sub(r"\W+", " ", r.split("|")[3]).strip().lower() for r in qsec.split("\n") if r.startswith("| В")}
     seen = [_stems(r.split("|")[3]) for r in qsec.split("\n") if r.startswith("| В")]
     nums = [int(m) for m in re.findall(r"^\| В(\d+) \|", qsec, re.M)]
-    added = []
+    added, merged_q = [], []
     for who, q, where, kind in q1 + q2:
         key = re.sub(r"\W+", " ", q).strip().lower()
         where = where.upper().strip()
-        if not q or key in have or where not in spans or _dup(q, seen):
+        if not q or key in have:
+            continue
+        if where not in spans or _dup(q, seen):
+            merged_q.append(f"- «{q}» ({where}) — " + ("«Где» не ID блока плана" if where not in spans else "похож на вопрос, который уже есть"))
             continue
         have.add(key)
         seen.append(_stems(q))
@@ -514,7 +522,7 @@ def merge(root: Path, wave: str = REFINE) -> int:
     pl = bp.parse(root)
     report = ["# Отчёт груминга", "",
               f"Ответов волны {wave}: {len(outs)}. Замен применено: {len(applied)}, отклонено: {len(rejected)}, "
-              f"не своих блоков: {len(skipped)}. Новых вопросов: {len(added)}. План до слияния — `{GROOM}/map.before.md`.", ""]
+              f"не своих блоков: {len(skipped)}. Новых вопросов: {len(added)}, не добавлено как повтор: {len(merged_q)}. План до слияния — `{GROOM}/map.before.md`.", ""]
     left = [b.id for b in pl.blocks if bp.STUB.search(block_text(text.split("\n"), block_spans(text.split("\n")), b.id))] if pl.blocks else []
     if left:
         report += ["## Осталось незаполненным — допиши сам или запусти пакеты этих блоков ещё раз", "", "- " + ", ".join(left), ""]
@@ -525,6 +533,8 @@ def merge(root: Path, wave: str = REFINE) -> int:
     report += ["## Критичные находки — проверь, что закрыты", ""] + ([f"- {x}" for x in crit] or ["- нет"]) + [""]
     if added:
         report += ["## Новые вопросы", ""] + added + [""]
+    if merged_q:
+        report += ["## Вопросы не добавлены — проверь, что смысл не потерян; другой вопрос — допиши строкой сам", ""] + merged_q + [""]
     if kept_q:
         report += ["## Вопросы-заготовки без ответа — сохранены как есть, перепиши каждый одной фразой", ""] + kept_q + [""]
     (root / GROOM / "report.md").write_text("\n".join(report), encoding="utf-8")

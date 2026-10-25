@@ -121,7 +121,7 @@ def check(st: bs.Story, source: Path | None, no_source: bool) -> None:
             lo, hi = st.stage_index(b.stage_from), st.stage_index(b.stage_to)
             inside = [s.id for s in steps if s is not b and lo <= st.stage_index(s.stage_from) <= hi]
             if inside:
-                st.err(b.line, "ST011", f"{b.id}: полоса ожидания перекрывает шаги {', '.join(inside)} того же персонажа")
+                st.err(b.line, "ST011", f"{b.id}: шаг без экранов с диапазоном этапов рисуется полосой ожидания («ждёт мероприятия») и перекрывает шаги {', '.join(inside)} того же персонажа — сузь диапазон до одного этапа или дай шагу экран")
 
     # --- карточки ------------------------------------------------------------------------
     used: set[str] = set()
@@ -139,7 +139,7 @@ def check(st: bs.Story, source: Path | None, no_source: bool) -> None:
         if s.kind in ("intro", "final") and s.screens:
             st.err(s.line, "ST011", f"{s.id}: у «было» и «стало» нет экранов — это карточки знакомства и итога")
         if s.kind == "step" and s.stage_from != s.stage_to:
-            st.err(s.line, "ST011", f"{s.id}: шаг с экранами стоит в одном этапе; диапазон — только у полосы ожидания")
+            st.err(s.line, "ST011", f"{s.id}: шаг с экранами стоит в одном этапе (B, а не B–D); диапазон этапов — только у шага без экранов: он рисуется полосой ожидания")
         if not s.source.strip() or s.source.strip() in bs.EMPTY:
             st.err(s.line, "ST016", f"{s.id}: нет источника — откуда в БФТ этот шаг (How to demo, ПТ, «Изменение в UJM», ответ на вопрос)")
         for txt in (s.title, s.text, s.was):

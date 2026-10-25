@@ -62,7 +62,17 @@ def review(root: Path, source: str | None = None) -> int:
         built = page.is_file() and page.stat().st_mtime >= max(
             [f.stat().st_mtime for d in (bp.PLAN_DIR, "backlog") for f in (root / d).rglob("*.md")] + [0])
         if built:
-            print(f"дальше: карта собрана — {page.name}; контракты стыков: ./blueprint.py contracts skeleton, затем ./blueprint.py contracts")
+            import bft_contracts as bc
+            pr.issues = []
+            cs = bc.parse(pr)
+            bc.check(pr, cs)
+            ct_err = sum(i.level == "ERROR" for i in pr.issues)
+            ct_open = sum(i.code == "CT020" for i in pr.issues)
+            if ct_err or ct_open:
+                print(f"дальше: карта собрана — {page.name}; контракты стыков: ошибок {ct_err}, стыков без контракта {ct_open} — "
+                      "./blueprint.py contracts skeleton, затем ./blueprint.py contracts")
+            else:
+                print(f"готово: карта {page.name} собрана, контрактов {len(cs)} без ошибок — итог по шагу 8 автопилота")
         else:
             print("дальше: ./blueprint.py build — схемы BPMN, картинки экранов, страница и архив")
     return 1 if errors else 0

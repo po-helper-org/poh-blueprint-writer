@@ -26,7 +26,7 @@ LLM не пишет код и не выбирает компоненты. Она
 Один файл `contracts/C-N.md` на границу системы, формат — Markdown с frontmatter и таблицами по
 шаблону `templates/contract.md` (YAML отпал: ему нужна внешняя библиотека, а проект живёт на одном
 python3; таблицы к тому же читаются человеком и правятся так же, как карточки карты). Стандарт —
-`resources/contracts.md`, эталон — шесть контрактов DineClub, реализовано в PR 1.
+`resources/contracts.md`, эталон — семь контрактов DineClub, реализовано в PR 1.
 
 ```markdown
 ---
@@ -128,7 +128,7 @@ prototype/
 
 ## План реализации (по PR)
 
-1. ✅ `templates/contract.md`, `resources/contracts.md`, `./blueprint.py contracts` (CT001–CT022), самотест и шесть контрактов DineClub.
+1. ✅ `templates/contract.md`, `resources/contracts.md`, `./blueprint.py contracts` (CT001–CT022), самотест и семь контрактов DineClub.
 2. `skeleton` для контрактов и spec из карточек карты; `groom fill` для них.
 3. `catalog.md`, `spec` lint, `runtime.js` + `components.css`, генерация статики.
 4. Генерация `api/main.py` + `docker-compose.yml`; smoke-тест «compose up → все шаги отдают 200».

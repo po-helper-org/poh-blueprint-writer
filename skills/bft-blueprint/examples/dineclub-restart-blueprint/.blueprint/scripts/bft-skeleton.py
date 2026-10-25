@@ -93,7 +93,9 @@ class Skeleton:
         taken: set[str] = set()
         for row in deps:
             if row and row[0].strip():
-                self.teams.append((team_id(row[0], taken), row[0].strip(), " ".join(row[1:])))
+                # внешняя система — `ext` (автопилот 4.1); вторая внешняя — ext2
+                tid = team_id("ext", taken) if re.search(r"внешн", " ".join(row), re.I) else team_id(row[0], taken)
+                self.teams.append((tid, row[0].strip(), " ".join(row[1:])))
         self.stage_of = self._stages()
 
     # --- этапы из истории ---------------------------------------------------------------------------
