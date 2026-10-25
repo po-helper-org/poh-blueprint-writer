@@ -177,6 +177,13 @@ curl -fsSL https://raw.githubusercontent.com/po-helper-org/poh-blueprint-writer/
 /release-plan [текст | путь к файлу] [--bft <путь к БФТ>] [--project <epic>-blueprint]
 ```
 
+Приёмка комплекта — последний шаг любого запуска, в том числе в pi.dev и других харнессах без слэш-команд.
+Она отклоняет рукописный HTML (на страницах скриптов стоит штамп `generator`), проект без задач и отсутствие zip:
+
+```bash
+python3 <skills_path>/bft-blueprint/scripts/bft-blueprint-verify.py .bft/documentation/<epic_slug>
+```
+
 Скрипты вручную:
 
 ```bash
