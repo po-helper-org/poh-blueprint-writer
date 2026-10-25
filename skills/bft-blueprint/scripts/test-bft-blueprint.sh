@@ -352,8 +352,12 @@ PL="$tmp/plan"; mkdir -p "$PL" && cp -r "$BGOLD" "$PL/g" && rm -rf "$PL/g/plan"
 python3 "$DIR/scripts/bft-plan.py" export "$PL/g" >/dev/null 2>&1 && diff -r "$PL/g/plan" "$DIR/examples/dineclub-restart-plan" >/dev/null \
   && ok "автопилот · export: план эталона совпадает с examples/dineclub-restart-plan" \
   || fail "автопилот · план эталона разошёлся — пересобери: bft-plan.py export (examples/dineclub-restart-plan)"
-cp -r "$PL/g" "$PL/same" && python3 "$DIR/scripts/bft-plan.py" apply "$PL/same" >/dev/null 2>&1 && diff -r "$PL/g" "$PL/same" >/dev/null \
+cp -r "$PL/g" "$PL/same" && python3 "$DIR/scripts/bft-plan.py" apply "$PL/same" >/dev/null 2>&1 && diff -r -x plan.applied "$PL/g" "$PL/same" >/dev/null \
   && ok "автопилот · apply того же плана — файлы не меняются" || fail "автопилот · apply не идемпотентен"
+python3 "$DIR/scripts/bft-plan.py" next "$PL/same" 2>&1 | grep -q "ещё не применён" && fail "автопилот · next после apply считает план неприменённым" \
+  || { sed -i '0,/^| В1 |/s/^| В1 | \([^|]*\)| \([^|]*\)|/| В1 | \1| \2(правка) |/' "$PL/same/plan/map.md"
+       python3 "$DIR/scripts/bft-plan.py" next "$PL/same" 2>&1 | grep -q "ещё не применён" \
+       && ok "автопилот · next: план после apply — применён; правка плана без apply — «ещё не применён»" || fail "автопилот · next не видит правку плана"; }
 cp -r "$PL/g" "$PL/new" && rm -f "$PL/new/backlog/tasks/"*.md "$PL/new/backlog/docs/screens/"*.md
 python3 "$DIR/scripts/bft-plan.py" apply "$PL/new" >/dev/null 2>&1; rc=$?
 python3 - "$DIR/scripts" "$PL/g" "$PL/new" <<'PY' && [ "$rc" -eq 0 ] && ok "автопилот · apply с нуля: та же карта, что у эталона" || fail "автопилот · apply с нуля дал другую карту (rc=$rc)"
@@ -489,7 +493,7 @@ python3 "$DIR/scripts/bft-groom.py" merge "$GR" >/dev/null 2>&1
 R="$GR/groom/report.md"
 [ -f "$GR/groom/1-audit/a-coverage.md" ] && ls "$GR/groom/2-refine/r-BP-1.1.md" >/dev/null \
   && grep -q "^## BP-1.1 · Ресторан подаёт заявку и попадает в каталог" "$GR/plan/map.md" && grep -q "Кто проверяет заявку ресторана?" "$GR/plan/map.md" \
-  && grep -q "BP-2 из r-BP-2.md: теряет НФТ-2$" "$R" && grep -q "BP-2.1 из r-BP-2.1.md: .*BL" "$R" \
+  && grep -q "BP-2 из r-BP-2.md: теряет НФТ-2 — " "$R" && grep -q "BP-2.1 из r-BP-2.1.md: .*BL" "$R" \
   && ok "груминг · audit → refine → merge: годная замена и вопрос — в план, ломающие — в отчёт" || fail "груминг · audit/refine/merge"
 # ID переезжает в блок, который сливается позже (r-BP-3 после r-BP-2): второй круг слияния принимает обе замены
 GD="$tmp/groom2" && cp -r "$BGOLD" "$GD" && rm -rf "$GD/plan"

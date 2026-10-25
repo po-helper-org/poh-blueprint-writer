@@ -193,6 +193,19 @@ def _replace_section(body: str, name: str, table: str) -> str:
     return body.rstrip("\n") + "\n\n" + block
 
 
+APPLIED = "plan.applied"   # .blueprint/plan.applied — хэш плана, который последний раз ушёл в бэклог
+
+
+def plan_hash(root: Path) -> str:
+    import hashlib
+    h = hashlib.sha1()
+    d = root / PLAN_DIR
+    for f in [d / "map.md"] + sorted((d / "screens").glob("*.md")):
+        if f.is_file():
+            h.update(f.name.encode() + b"\0" + f.read_bytes())
+    return h.hexdigest()[:16]
+
+
 def apply(pl: Plan, root: Path) -> list[str]:
     """План → проект. Возвращает строки отчёта; ошибки плана — в pl.issues, тогда ничего не пишется."""
     if any(i.level == "ERROR" for i in pl.issues):
@@ -300,6 +313,8 @@ def apply(pl: Plan, root: Path) -> list[str]:
     stray = [x for x in missing if any(re.match(r"^(stage:|layer:)", str(lb)) for lb in tasks[x].fm.get("labels") or [])]
     for x in stray:
         out.append(f"{x}: на карте, но не в плане — верни в план или убери метку stage: (./backlog.py task edit {x} --remove-label …)")
+    (root / ".blueprint").mkdir(exist_ok=True)
+    (root / ".blueprint" / APPLIED).write_text(plan_hash(root) + "\n", encoding="utf-8")   # next сверяет: план применён
     return out
 
 

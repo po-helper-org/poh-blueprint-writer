@@ -473,7 +473,7 @@ def merge(root: Path, wave: str = REFINE) -> int:
             # чужие ошибки не в счёт: пока в плане были {{…}}, полная проверка не шла, и они всплывают только сейчас
             new = {e for e in map_errs - base_map if e.split(":", 1)[0] == bid or e.startswith(bid + ".")}
             if lost or len(pl_errs) > len(base_pl) or new:
-                why = (f"теряет {', '.join(sorted(lost))}" if lost else
+                why = (f"теряет {', '.join(sorted(lost))} — оставь их в блоке или перенеси строкой в другой блок того же вида в этом же ответе" if lost else
                        "; ".join(f"{i.code} {i.msg}" for i in pl_errs[len(base_pl):][:3]) if len(pl_errs) > len(base_pl) else
                        "; ".join(sorted(new)[:3]))
                 if lost and rnd == 1:
@@ -494,11 +494,14 @@ def merge(root: Path, wave: str = REFINE) -> int:
         # заготовку каркаса заменяет вопрос ответа о том же блоке; ответ без вопросов её не стирает —
         # вопрос из БФТ остаётся строкой с текстом подсказки, а отчёт просит переписать его фразой
         answered = {f.stem[2:].upper() for f in outs}
-        asked = {where.upper().strip() for _, _, where, _ in q2}
+        asked: dict[str, list[set[str]]] = {}
+        for _, q, where, _ in q2:
+            asked.setdefault(where.upper().strip(), []).append(_stems(q))
         out_lines = []
         for ln in lines:
             hit = next((x for x in answered if f"| {x} |" in ln), None) if ln.startswith("| В") and bp.STUB.search(ln) else None
-            if hit and hit in asked:
+            # заготовку снимает только вопрос ответа о том же (общие ID или две трети слов); вопрос о другом — не замена
+            if hit and _dup(bp.STUB.search(ln).group(0), asked.get(hit, [])):
                 continue
             if hit:
                 hint = bp.STUB.search(ln).group(0)

@@ -39,9 +39,14 @@ def review(root: Path, source: str | None = None) -> int:
         print("дальше: ./blueprint.py skeleton, затем ./blueprint.py groom fill (автопилот, шаг 4)")
         return 0
     pf = root / bp.PLAN_DIR / "map.md"
-    tasks_dir = (pr.bdir or root / "backlog") / "tasks"
-    newest = max([f.stat().st_mtime for f in tasks_dir.glob("*.md")] + [0]) if tasks_dir.is_dir() else 0
-    if pf.is_file() and pf.stat().st_mtime > newest + 1 and "{{" not in pf.read_text(encoding="utf-8"):
+    stamp = root / ".blueprint" / bp.APPLIED
+    if stamp.is_file():
+        stale = stamp.read_text(encoding="utf-8").strip() != bp.plan_hash(root)
+    else:   # проект до отметки .applied — по времени файлов
+        tasks_dir = (pr.bdir or root / "backlog") / "tasks"
+        newest = max([f.stat().st_mtime for f in tasks_dir.glob("*.md")] + [0]) if tasks_dir.is_dir() else 0
+        stale = pf.is_file() and pf.stat().st_mtime > newest + 1
+    if pf.is_file() and stale and "{{" not in pf.read_text(encoding="utf-8"):
         # план новее бэклога: проверка бэклога сказала бы про старую карту
         print(f"карта: план {bp.PLAN_DIR}/map.md новее бэклога — ещё не применён")
         print("дальше: ./blueprint.py apply — он применит план и проверит карту по строкам плана")

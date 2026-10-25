@@ -439,6 +439,10 @@ def seams(pr: bl.Project) -> list[tuple[str, str, str]]:
         ca, cb = by_id[a], by_id[b]
         layers = {ca.layer, cb.layer}
         if "support" in layers:
+            # Support — общий ресурс или чужая система; договорённость (макет, правило) — не стык, а внешняя система в момент сервиса — стык
+            sup = ca if ca.layer == "support" else cb
+            if sup.team in ext and (ca.team != cb.team):
+                out.append((a, b, what))
             continue
         screen = layers == {"technology", "backstage"}
         other = ca.team != cb.team or ca.team == "?"
