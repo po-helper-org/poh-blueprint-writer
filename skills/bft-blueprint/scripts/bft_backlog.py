@@ -1,3 +1,5 @@
+
+
 #!/usr/bin/env python3
 """Service Blueprint в проекте Backlog.md — разбор и проверка формы.
 
@@ -8,6 +10,14 @@ markdown-файлы, которыми ИИ-агент управляет чер�
   backlog/config.yml                         task_prefix — префикс ID (bp → BP-12)
   backlog/docs/doc-… - Карта.md               паспорт <!-- bft-map … -->, «Команды», «Вопросы»
   backlog/docs/doc-… - История.md             история через экраны <!-- bft-story … -->
+  backlog/docs/doc-… - ADR.md                 этап «ADR и Системные требования» <!-- bft-adr … -->:
+                                             контекст, AS-IS, варианты, решение TO-BE, узкие места, компромиссы
+  backlog/docs/doc-… - Системные требования.md  та же ступень, системная аналитика <!-- bft-sysreq … -->:
+                                             контракты → параметры → источники → преобразования → AS-IS → изменения
+  backlog/docs/doc-… - Стыки.md               этап «Контроль стыковочных работ» <!-- bft-seams … -->:
+                                             участники стыков, обязательства, контракты, точки, риски
+  backlog/docs/doc-… - План-релиза.md         этап «План релиза / Delivery» <!-- bft-release … -->:
+                                             дорожки DEV/STAGE/PROD, шаги и ворота между стендами
   backlog/docs/screens/doc-… - F3 · ….md      требования к экрану для дизайнера
   backlog/tasks/bp-12 - ….md                  «Что делаем»: задача команды — постановка для техлида
   backlog/tasks/bp-12.1 - ….md                «Как это работает»: подзадача — техническая карточка
@@ -28,57 +38,191 @@ markdown-файлы, которыми ИИ-агент управляет чер�
 
 Стандарт — `resources/backlog_rules.md`. Только стандартная библиотека.
 """
+
 from __future__ import annotations
 
 import json
+
 import re
+
 import sys
+
 from dataclasses import dataclass, field
+
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 import bft_blueprint as bb  # noqa: E402
+
 import bft_story as bs  # noqa: E402
+
 import bft_screens as bsn  # noqa: E402
 
 FINAL = bs.FINAL
+
 KINDS = ("создать", "доработать", "используем", "уточнить")
+
 LAYERS = ("employee", "technology", "backstage", "support")
+
+# Этап «План релиза / Delivery»: дорожки-стенды, шаги, ворота между стендами.
+RELEASE_META = ("epic_slug", "version", "revised", "status")
+
+RELEASE_TRACKS = ("dev", "stage", "prod")
+
+RELEASE_TRACK_TITLE = {"dev": "DEV", "stage": "STAGE", "prod": "PROD"}
+
+RELEASE_STEP_TYPES = ("согласование", "задача devops", "предоставление доступа или данных",
+                      "утверждение", "проверка")
+
+RELEASE_STATUSES = ("не начат", "в работе", "готово", "требует ответа")
+
+RELEASE_GATE_KEYS = ("с", "кто", "критерий")
+
+GATE_HEADER = ("Ворота", "Кто утверждает", "Критерий перехода")
+
+STEP_HEADER = ("ID", "Стенд", "Что сделать", "Ответственный", "Тип", "Зависимости",
+               "Статус", "Критерий готовности")
+
+GATE_ID = re.compile(r"^G-?(?P<num>\d+)$", re.I)
+
+STEP_ID = re.compile(r"^R-?(?P<num>\d+)$", re.I)
+
 BRIEF = ("ASIS", "GAP", "TOBE", "HowToDemo", "Дополнительно")
+
 BRIEF_OPTIONAL = {"Дополнительно"}
+
 CARD = ("UserStory", "JobStory", "Параметры", "Процесс", "BPMN", "HowToDemo")
+
 CARD_REQUIRED = ("UserStory", "JobStory", "Параметры", "Процесс", "HowToDemo")
+
 # участники процесса, которые строят сервис, а не работают в нём: такая карточка — о проекте, а не о сервисе
 PROJECT_ROLE = re.compile(r"^(?:PO|СА|PM|PO .+|СА .+|продакт.*|владелец продукта|(?:системный |бизнес-)?аналитик|разработ\w*|команда.*|архитектор)$", re.I)
+
 MAX_STEPS = 12          # шагов процесса — дальше схема не читается, карточку делят на две
+
 MAX_LANES = 6
+
 PARAM_KEYS = {"вход": "in", "входы": "in", "управление": "ctl", "выход": "out", "выходы": "out",
               "механизм": "mech", "механизмы": "mech"}
+
 PARAM_NAME = {"in": "Вход", "ctl": "Управление", "out": "Выход", "mech": "Механизм"}
+
 MAP_META = ("epic_slug", "source_doc", "source_stage", "source_rev", "version", "revised", "status")
+
 TEAMS_HEADER = ("ID", "Команда")
+
 QUESTIONS_HEADER = ("ID", "Кому", "Вопрос", "Где", "Тип", "Ответ")
+
 Q_TYPES = ("вопрос", "блокер")
+
 MAX_TASK = 80
+
 MAX_CARD = 90
 
-TEAM_RE = re.compile(r"^[a-z][a-z0-9-]*$")
-SCREEN_TITLE = re.compile(r"^([A-H]\d{1,2})\s*·\s*(.+)$")
-SECTION_RE = re.compile(r"<!-- SECTION:([A-Z_]+):BEGIN -->\n?(.*?)\n?<!-- SECTION:\1:END -->", re.S)
-LIST_RE = {k: re.compile(rf"<!-- {k}:BEGIN -->\n?(.*?)\n?<!-- {k}:END -->", re.S) for k in ("AC", "DOD")}
-CHECK_ITEM = re.compile(r"^- \[([ xX])\] (?:#\d+ )?(.*)$")
-REQS_LINE = re.compile(r"^Требования(?: БФТ)?\s*:\s*(.*)$")
-STEP_RE = re.compile(r"^\d+\.\s+\S")
-META_OPEN = re.compile(r"^<!--\s*(bft-map|bft-story)\s*$")
-MERMAID = re.compile(r"```mermaid\n(.*?)\n```", re.S)
+# Этап «ADR и Системные требования»: после раскладки задач — как их реализовать. Два документа проекта:
+# «ADR» (<!-- bft-adr … --> — системный дизайн: контекст, ландшафт AS-IS, варианты, решение TO-BE,
+# узкие места, компромиссы, диаграмма AS-IS/TO-BE mermaid) и «Системные требования»
+# (<!-- bft-sysreq … --> — системная аналитика: контракты → параметры → источники → преобразования
+# → AS-IS → изменения → открытые вопросы). Включается, когда работа затрагивает устройство систем —
+# на карте есть карточки слоя Technology (вход этапа: БФТ, «История», задачи и карточки карты).
+ADR_META = ("epic_slug", "version", "revised", "status")
 
+ADR_STATUSES = ("черновик", "предложено", "принято", "отклонено", "заменено")
+
+ADR_CONTEXT_HEADER = ("Участник", "Роль в решении")            # кто и зачем участвует в решении
+
+ADR_DECISION_HEADER = ("ID", "Контракт", "Суть решения", "Обоснование")
+
+ADR_OPTION_HEADER = ("ID", "Вариант", "Надёжность", "Скорость реализации", "Соответствие требованиям", "Почему нет")
+
+BOTTLENECK_HEADER = ("ID", "Узкое место", "Тип", "Нагрузка", "Риск", "Прощупывание")
+
+COMPROMISE_HEADER = ("ID", "Компромисс", "Надёжность", "Скорость реализации", "Соответствие требованиям", "Чем платим")
+
+VARIANT_ID = re.compile(r"^V-?(?P<num>\d+)$", re.I)
+
+BOTTLENECK_ID = re.compile(r"^N-?(?P<num>\d+)$", re.I)
+
+COMPROMISE_ID = re.compile(r"^C-?(?P<num>\d+)$", re.I)
+
+# Системные требования: три вопроса на КАЖДЫЙ контракт — (1) какие данные нужны контракту,
+# (2) источник каждого параметра (система/сервис/поле/справочник), (3) какие преобразования
+# над данными нужны для контрактов и бизнес-логики.
+SYSREQ_META = ("epic_slug", "version", "revised", "status")
+
+SYSREQ_STATUSES = ("черновик", "согласован")
+
+CONTRACTS_HEADER = ("ID", "Контракт", "Потребитель", "Данные контракту", "Источник параметров", "Преобразования")
+
+SYSREQ_ASIS_HEADER = ("ID", "Как устроено сейчас", "Что меняется")
+
+SYSREQ_CHANGE_HEADER = ("ID", "Изменение", "Причина")
+
+SYSREQ_Q_HEADER = ("ID", "Кому", "Вопрос", "Ответ")
+
+CONTRACT_ID = re.compile(r"^K-?(?P<num>\d+)$", re.I)
+
+SYSROW_ID = re.compile(r"^(?:A|I)-?(?P<num>\d+)$", re.I)
+
+SYSQ_ID = re.compile(r"^Q-?(?P<num>\d+)$", re.I)
+
+# ADR-контракт в «Системных требованиях» — имя латиницей-слагом или [УТОЧНИТЬ …]
+SYS_CONTRACT_NAME = re.compile(r"^(?:[a-z][a-z0-9-]*|[А-Яа-яЁё][А-Яа-яЁё0-9 .,()-]*|\[УТОЧНИТЬ[^\]]*\])$")
+
+# Этап «Контроль стыковочных работ»: участники стыков, обязательства «кто → что → кому → срок»,
+# контракты по слоям (FE↔BE, BE↔BE, Infra), контрольные точки и риски. Документ проекта —
+# «Стыки» (<!-- bft-seams … -->); включается, когда задача режется между командами/сервисами.
+SEAMS_META = ("epic_slug", "version", "revised", "status")
+
+SEAM_HEADER = ("ID", "Стык", "Поставщик", "Потребитель", "Ответственный за контракт")
+
+SEAM_KINDS = ("fe-be", "be-be", "be-infra", "внешний")
+
+DELIVERY_HEADER = ("ID", "Кто", "Что", "Кому", "Срок", "Формат/место")
+
+SEAM_CONTRACT_HEADER = ("Стык", "Аспект", "Требование к фиксации")
+
+CHECKPOINT_HEADER = ("ID", "Точка", "Когда", "Что проверяется", "Кто проводит")
+
+RISK_HEADER = ("ID", "Риск", "Следствие", "Владелец", "Митигация")
+
+SEAM_ID = re.compile(r"^S-?(?P<num>\d+)$", re.I)
+
+DELIVERY_ID = re.compile(r"^D-?(?P<num>\d+)$", re.I)
+
+CHECKPOINT_ID = re.compile(r"^K-?(?P<num>\d+)$", re.I)
+
+RISK_ID = re.compile(r"^R-?(?P<num>\d+)$", re.I)
+
+# «Кто»/«Кому» в матрице обязательств и «Поставщик»/«Потребитель» — ID команд из «Команд» или [УТОЧНИТЬ …]
+TEAM_OR_STUB = re.compile(r"^(?:[a-z][a-z0-9-]*|\[УТОЧНИТЬ[^\]]*\])$")
+
+TEAM_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+
+SCREEN_TITLE = re.compile(r"^([A-H]\d{1,2})\s*·\s*(.+)$")
+
+SECTION_RE = re.compile(r"<!-- SECTION:([A-Z_]+):BEGIN -->\n?(.*?)\n?<!-- SECTION:\1:END -->", re.S)
+
+LIST_RE = {k: re.compile(rf"<!-- {k}:BEGIN -->\n?(.*?)\n?<!-- {k}:END -->", re.S) for k in ("AC", "DOD")}
+
+CHECK_ITEM = re.compile(r"^- \[([ xX])\] (?:#\d+ )?(.*)$")
+
+REQS_LINE = re.compile(r"^Требования(?: БФТ)?\s*:\s*(.*)$")
+
+STEP_RE = re.compile(r"^\d+\.\s+\S")
+
+META_OPEN = re.compile(r"^<!--\s*(bft-map|bft-story|bft-adr|bft-sysreq|bft-seams|bft-release)\s*$")
+
+MERMAID = re.compile(r"```mermaid\n(.*?)\n```", re.S)
 
 @dataclass
 class Item:
     """Значение параметра карточки: текст и ссылки на другие карточки."""
     text: str
     refs: list[str]
-
 
 @dataclass
 class Doc:
@@ -89,7 +233,6 @@ class Doc:
     meta: dict
     body: str
     off: int        # строк файла до тела
-
 
 @dataclass
 class BTask:
@@ -138,13 +281,11 @@ class BTask:
         except ValueError:
             return 1e9
 
-
 @dataclass
 class Team:
     id: str
     name: str
     line: int
-
 
 @dataclass
 class Question:
@@ -160,6 +301,228 @@ class Question:
     def open(self) -> bool:
         return self.answer.strip() in bb.EMPTY
 
+@dataclass
+class Option:
+    """Вариант реализации ADR: как выглядит по трём осям и почему не выбран (для TO-BE — почему да)."""
+    id: str
+    text: str
+    reliability: str      # надёжность: высокая/средняя/низкая или оценка словами
+    speed: str            # скорость реализации
+    fit: str              # соответствие требованиям
+    why_not: str          # почему нет (у выбранного — почему да)
+
+@dataclass
+class Decision:
+    """Решение TO-BE по контракту: суть и обоснование."""
+    id: str               # ID выбранного варианта V1…
+    contract: str
+    text: str
+    why: str
+    line: int
+
+@dataclass
+class Seam:
+    """Стык: кто поставщик, кто потребитель и кто отвечает за контракт."""
+    id: str
+    kind: str                      # fe-be | be-be | be-infra | внешний
+    supplier: str                  # ID команды из «Команд» или [УТОЧНИТЬ …]
+    consumer: str
+    owner: str                     # ответственный за контракт (роль/техлид; может быть [УТОЧНИТЬ …])
+    line: int
+
+@dataclass
+class Delivery:
+    """Обязательство стыка: кто, что и к какому сроку предоставляет кому."""
+    id: str
+    who: str                       # поставщик — ID команды или [УТОЧНИТЬ …]
+    what: str                      # артефакт: API-спека, мок, окружение, доступы…
+    to: str                        # потребитель — ID команды или [УТОЧНИТЬ …]
+    when: str                      # срок: рабочие дни от старта / привязка к спринту / [УТОЧНИТЬ …]
+    where: str                     # формат/место хранения
+    seam: str = ""                 # ID стыка S1… (заполняет проверка смысла)
+    line: int = 0
+
+@dataclass
+class ContractRow:
+    """Строка контракта по слою стыка: аспект и требование к фиксации."""
+    seam: str                      # ID стыка S1…
+    aspect: str
+    req: str
+    line: int
+
+@dataclass
+class Checkpoint:
+    """Контрольная точка стыка: что и когда проверяется, кто проводит."""
+    id: str
+    name: str
+    when: str
+    what: str
+    who: str
+    line: int
+
+@dataclass
+class Risk:
+    """Риск стыка и его владелец."""
+    id: str
+    text: str
+    effect: str
+    owner: str
+    mitigation: str
+    line: int
+
+@dataclass
+class Bottleneck:
+    """Узкое место TO-BE по нагрузке и надёжности."""
+    id: str
+    text: str
+    kind: str             # нагрузка | надёжность | данные
+    load: str             # оценка нагрузки: RPS, объём, пики
+    risk: str
+    probe: str            # как прощупать до релиза
+    line: int
+
+@dataclass
+class Compromise:
+    """Компромисс по трём осям: надёжность vs скорость реализации vs соответствие требованиям."""
+    id: str
+    text: str
+    reliability: str      # что получили по оси
+    speed: str
+    fit: str
+    cost: str             # чем платим
+    line: int
+
+@dataclass
+class ADR:
+    """Документ «ADR» (<!-- bft-adr … -->): этап «ADR и Системные требования», часть системного дизайна.
+
+    Разделы: «## Контекст» | Участник | Роль в решении |, «## AS-IS» — ландшафт систем текстом,
+    «## Варианты» | ID | Вариант | Надёжность | Скорость реализации | Соответствие требованиям | Почему нет |,
+    «## Решение TO-BE» | ID | Контракт | Суть решения | Обоснование |, «## Узкие места»
+    | ID | Узкое место | Тип | Нагрузка | Риск | Прощупывание |, «## Компромиссы»
+    | ID | Компромисс | Надёжность | Скорость реализации | Соответствие требованиям | Чем платим |.
+    ADR-диаграмма AS-IS/TO-BE — блок mermaid «## Диаграмма AS-IS/TO-BE». Открытые вопросы —
+    в «Вопросах» «Карты» («Где» — ID варианта/компромисса V1, C1)."""
+    meta: dict = field(default_factory=dict)
+    context: str = ""                                     # «## Контекст» таблица как текст
+    asis: str = ""                                        # «## AS-IS»: ландшафт систем текстом
+    options: list = field(default_factory=list)           # [Option]
+    decisions: list = field(default_factory=list)         # [Decision]
+    bottlenecks: list = field(default_factory=list)       # [Bottleneck]
+    compromises: list = field(default_factory=list)       # [Compromise]
+    diagram: str = ""                                     # mermaid-диаграмма AS-IS/TO-BE
+    doc: Doc | None = None
+
+    def by_id(self, vid: str) -> Option | None:
+        return next((o for o in self.options if o.id == vid), None)
+
+@dataclass
+class SysContract:
+    """Контракт «Системных требований»: три вопроса системной аналитики в одной строке."""
+    id: str
+    contract: str         # имя контракта — совпадает с ADR «Решение TO-BE» (проверяет AR003)
+    consumer: str         # кто потребляет: команда/система/роль
+    data: str             # (1) какие данные нужны контракту
+    source: str           # (2) источник каждого параметра: система/сервис/поле/справочник
+    transform: str        # (3) преобразования для контрактов и бизнес-логики
+    line: int
+
+@dataclass
+class SysAsIs:
+    """Строка AS-IS системных требований: как устроено сейчас."""
+    id: str               # A1…
+    text: str
+    change: str           # что меняется
+    line: int
+
+@dataclass
+class SysChange:
+    """Изменение системных требований: что и почему."""
+    id: str               # I1…
+    text: str
+    why: str
+    line: int
+
+@dataclass
+class SysQ:
+    """Открытый вопрос системных требований. Дублируется в «Вопросы» «Карты» («Где» — ID контракта K1)."""
+    id: str               # Q1…
+    to: str
+    text: str
+    answer: str
+    line: int
+
+    @property
+    def open(self) -> bool:
+        return self.answer.strip() in bb.EMPTY
+
+@dataclass
+class SysReq:
+    """Документ «Системные требования» (<!-- bft-sysreq … -->): этап «ADR и Системные требования»,
+    часть системной аналитики. Структура: контракты → параметры → источники → преобразования
+    → AS-IS → изменения → открытые вопросы — таблица контрактов отвечает на три вопроса по каждому
+    контракту, остальное — AS-IS, изменения и вопросы. Совпадение контрактов с ADR — AR003."""
+    meta: dict = field(default_factory=dict)
+    contracts: list = field(default_factory=list)         # [SysContract]
+    asis: list = field(default_factory=list)              # [SysAsIs]
+    changes: list = field(default_factory=list)           # [SysChange]
+    questions: list = field(default_factory=list)         # [SysQ]
+    doc: Doc | None = None
+
+    def by_id(self, cid: str) -> SysContract | None:
+        return next((c for c in self.contracts if c.id == cid), None)
+
+@dataclass
+class Seams:
+    """Этап «Контроль стыковочных работ»: документ проекта со стыками, обязательствами,
+    контрактами по слоям, контрольными точками и рисками. Открытые вопросы и блокеры —
+    в таблице «Вопросы» «Карты» («Где» — ID стыка S1…), параллельной структуры нет."""
+    meta: dict = field(default_factory=dict)
+    seams: list = field(default_factory=list)          # [Seam]
+    deliveries: list = field(default_factory=list)     # [Delivery]
+    contracts: list = field(default_factory=list)      # [ContractRow]
+    checkpoints: list = field(default_factory=list)    # [Checkpoint]
+    risks: list = field(default_factory=list)          # [Risk]
+    doc: Doc | None = None
+
+    def by_id(self, sid: str) -> Seam | None:
+        return next((s for s in self.seams if s.id == sid), None)
+
+@dataclass
+class ReleaseStep:
+    """Шаг дорожки «План релиза»: что сделать на стенде, чтобы задача прошла дальше."""
+    id: str
+    track: str                      # dev | stage | prod
+    action: str                     # что сделать
+    owner: str                      # роль или команда
+    kind: str                       # тип шага из RELEASE_STEP_TYPES
+    deps: list
+    status: str                     # статус из RELEASE_STATUSES
+    ready: str                      # критерий готовности
+    line: int
+
+@dataclass
+class ReleaseGate:
+    """Ворота между стендами: кто утверждает переход на следующий стенд и по какому критерию."""
+    frm: str                        # dev | stage (ворота после стендов, кроме последнего)
+    who: str                        # кто утверждает
+    criterion: str
+    line: int
+
+@dataclass
+class Release:
+    """Этап «План релиза / Delivery»: дорожки DEV/STAGE/PROD, шаги и ворота между ними."""
+    meta: dict = field(default_factory=dict)
+    steps: list = field(default_factory=list)    # [ReleaseStep]
+    gates: list = field(default_factory=list)    # [ReleaseGate]
+    doc: Doc | None = None
+
+    @property
+    def errors(self) -> list:
+        return [i for i in self.meta.get("_issues", []) if i.level == "ERROR"]
+
+    def by_track(self, track: str) -> list:
+        return [s for s in self.steps if s.track == track]
 
 @dataclass
 class Project:
@@ -170,6 +533,14 @@ class Project:
     title: str = ""
     map_doc: Doc | None = None
     story_doc: Doc | None = None
+    adr_doc: Doc | None = None
+    adr: ADR | None = None
+    sysreq_doc: Doc | None = None
+    sysreq: SysReq | None = None
+    seams_doc: Doc | None = None
+    seams: Seams | None = None
+    release_doc: Doc | None = None
+    release: Release | None = None
     story: bs.Story | None = None
     teams: list[Team] = field(default_factory=list)
     questions: list[Question] = field(default_factory=list)
@@ -233,7 +604,6 @@ def _scalar(v: str):
         return [_scalar(x) for x in re.findall(r"""'(?:[^']|'')*'|"(?:[^"\\]|\\.)*"|[^,\s][^,]*""", v[1:-1])]
     return v
 
-
 def yaml_front(text: str) -> tuple[dict | None, int]:
     """(ключи, число строк frontmatter вместе с ---). Не YAML-frontmatter — (None, 0)."""
     lines = text.split("\n")
@@ -282,7 +652,6 @@ def find_backlog(root: Path) -> Path | None:
             return root / name
     return None
 
-
 def _meta_comment(body: str, kind: str) -> tuple[dict, str] | None:
     """Метаданные в HTML-комментарии <!-- bft-map … --> в начале тела: в Backlog.md они не видны."""
     lines = body.split("\n")
@@ -301,7 +670,6 @@ def _meta_comment(body: str, kind: str) -> tuple[dict, str] | None:
     as_front = "\n".join(lines[:k] + ["---"] + lines[k + 1:end] + ["---"] + lines[end + 1:])
     return meta, as_front
 
-
 def _read_doc(pr: Project, f: Path) -> Doc | None:
     rel = f.relative_to(pr.root).as_posix()
     text = f.read_text(encoding="utf-8")
@@ -311,6 +679,394 @@ def _read_doc(pr: Project, f: Path) -> Doc | None:
         return None
     return Doc(str(fm["id"]), str(fm["title"]), f, rel, fm, "\n".join(text.split("\n")[off:]), off)
 
+def _table(d: Doc, secs: dict, name: str, header: tuple, err, code: str = "AR001") -> list[tuple[int, list[str]]]:
+    """Таблица раздела «## name» с заголовком header: [(строка, колонки)]; форма — кодом err."""
+    if name not in secs:
+        err(d.off + 1, code, f"нет раздела «## {name}» с таблицей")
+        return []
+    ln0, tbody = secs[name]
+    found = bb.tables(tbody, first_lineno=d.off + ln0 + 1)
+    if not found:
+        err(d.off + ln0, code, f"«{name}»: нет таблицы")
+        return []
+    hdr, rows = found[0]
+    if tuple(hdr) != header:
+        err(d.off + ln0, code, f"«{name}»: заголовок таблицы — {' | '.join(header)}")
+        return []
+    out = []
+    for ln, c in rows:
+        if len(c) != len(header):
+            err(ln, code, f"«{name}»: в строке {len(c)} колонок, нужно {len(header)}")
+            continue
+        out.append((ln, c))
+    return out
+
+def _norm_id(raw: str, pat: re.Pattern, tag: str) -> str:
+    m = pat.match(raw.strip())
+    return f"{tag}{int(m.group('num'))}" if m else ""
+
+def parse_adr(pr: Project, d: Doc) -> ADR:
+    """Документ «ADR» (<!-- bft-adr … -->): этап «ADR и Системные требования», системный дизайн.
+
+    Разделы: «## Контекст» | Участник | Роль в решении |, «## AS-IS» — ландшафт текстом,
+    «## Варианты» | ID | Вариант | Надёжность | Скорость реализации | Соответствие требованиям |
+    Почему нет |, «## Решение TO-BE» | ID | Контракт | Суть решения | Обоснование |,
+    «## Узкие места» | ID | Узкое место | Тип | Нагрузка | Риск | Прощупывание |, «## Компромиссы»
+    | ID | Компромисс | Надёжность | Скорость реализации | Соответствие требованиям | Чем платим |,
+    «## Диаграмма AS-IS/TO-BE» — mermaid. Форма проверяется здесь; смысл (выбор, оси, диаграмма) —
+    кодами AR в `bft-backlog-lint.py`."""
+    a = ADR(meta={k: v for k, v in d.meta.items() if not k.startswith("_")})
+    a.doc = d
+    issues: list[bb.Issue] = []
+    err = lambda ln, code, msg: issues.append(bb.Issue(ln, "ERROR", code, msg, d.rel))  # noqa: E731
+    for key in ADR_META:
+        if not a.meta.get(key):
+            err(d.off + 1, "AR001", f"паспорт <!-- bft-adr -->: нет ключа `{key}`")
+    lines = d.body.split("\n")
+    h1 = next((ln for ln in lines if ln.startswith("# ")), "")
+    if not h1:
+        err(d.off + 1, "AR001", "нет заголовка `# ADR: <инициатива>`")
+    if a.meta.get("status", "").lower() not in ADR_STATUSES:
+        err(d.off + 1, "AR001", f"статус «{a.meta.get('status', '')}» — один из: {', '.join(ADR_STATUSES)}")
+    secs = bb._sections(lines)
+    if "Контекст" in secs:
+        a.context = "\n".join(secs["Контекст"][1]).strip()
+        rows = _table(d, secs, "Контекст", ADR_CONTEXT_HEADER, err)
+        for ln, c in rows:
+            if not all(x.strip() for x in c):
+                err(ln, "AR001", "контексту нужны «Участник» и «Роль в решении»")
+    else:
+        err(d.off + 1, "AR001", "нет раздела «## Контекст» с таблицей")
+    if "AS-IS" in secs:
+        a.asis = "\n".join(secs["AS-IS"][1]).strip()
+    else:
+        err(d.off + 1, "AR001", "нет раздела «## AS-IS» — ландшафт систем как устроен сейчас")
+    ids: set[str] = set()
+    for ln, c in _table(d, secs, "Варианты", ADR_OPTION_HEADER, err):
+        vid = _norm_id(c[0], VARIANT_ID, "V")
+        if not vid or vid in ids:
+            err(ln, "AR001", f"вариант: ID вида V1…, уникален — «{c[0]}»")
+            continue
+        if not all(x.strip() for x in c[1:]):
+            err(ln, "AR001", f"{vid}: нужны «Вариант», оценки по трём осям и «Почему нет»")
+            continue
+        ids.add(vid)
+        a.options.append(Option(vid, c[1].strip(), c[2].strip(), c[3].strip(), c[4].strip(), c[5].strip()))
+    if "Решение TO-BE" in secs:
+        for ln, c in _table(d, secs, "Решение TO-BE", ADR_DECISION_HEADER, err):
+            if not all(x.strip() for x in c):
+                err(ln, "AR001", "решению нужны «ID» (вариант V1…), «Контракт», «Суть решения», «Обоснование»")
+                continue
+            a.decisions.append(Decision(c[0].strip().upper(), c[1].strip(), c[2].strip(), c[3].strip(), ln))
+    else:
+        err(d.off + 1, "AR001", "нет раздела «## Решение TO-BE» с таблицей")
+    # «Узкие места» и «Компромиссы» — условные разделы: нет таблицы — AR005 в check_adr подскажет;
+    # форма проверяется, только если раздел есть
+    if "Узкие места" in secs:
+        for ln, c in _table(d, secs, "Узкие места", BOTTLENECK_HEADER, err):
+            nid = _norm_id(c[0], BOTTLENECK_ID, "N")
+            if not nid or nid in {x.id for x in a.bottlenecks}:
+                err(ln, "AR001", f"узкое место: ID вида N1…, уникален — «{c[0]}»")
+                continue
+            if not all(x.strip() for x in c[1:]):
+                err(ln, "AR001", f"{nid}: нужны «Узкое место», «Тип», «Нагрузка», «Риск», «Прощупывание»")
+                continue
+            a.bottlenecks.append(Bottleneck(nid, c[1].strip(), c[2].strip().lower(), c[3].strip(), c[4].strip(), c[5].strip(), ln))
+    if "Компромиссы" in secs:
+        for ln, c in _table(d, secs, "Компромиссы", COMPROMISE_HEADER, err):
+            cid = _norm_id(c[0], COMPROMISE_ID, "C")
+            if not cid or cid in {x.id for x in a.compromises}:
+                err(ln, "AR001", f"компромисс: ID вида C1…, уникален — «{c[0]}»")
+                continue
+            if not all(x.strip() for x in c[1:]):
+                err(ln, "AR001", f"{cid}: нужны «Компромисс», оценки по трём осям и «Чем платим»")
+                continue
+            a.compromises.append(Compromise(cid, c[1].strip(), c[2].strip(), c[3].strip(), c[4].strip(), c[5].strip(), ln))
+    if "Диаграмма AS-IS/TO-BE" in secs:
+        mm = MERMAID.search("\n".join(secs["Диаграмма AS-IS/TO-BE"][1]))
+        a.diagram = f"```mermaid\n{mm.group(1)}\n```" if mm else ""
+        if not mm:
+            err(d.off + secs["Диаграмма AS-IS/TO-BE"][0], "AR001", "«Диаграмма AS-IS/TO-BE»: нет блока ```mermaid")
+    else:
+        err(d.off + 1, "AR001", "нет раздела «## Диаграмма AS-IS/TO-BE» с mermaid-схемой")
+    if not a.options:
+        err(d.off + 1, "AR001", "в «Вариантах» нет ни одного варианта — ADR выбирает между вариантами, а не описывает один")
+    a.meta["_issues"] = issues
+    return a
+
+def parse_sysreq(pr: Project, d: Doc) -> SysReq:
+    """Документ «Системные требования» (<!-- bft-sysreq … -->): этап «ADR и Системные требования»,
+    системная аналитика. Разделы: «## Контракты» | ID | Контракт | Потребитель | Данные контракту |
+    Источник параметров | Преобразования | — три вопроса на каждый контракт в одной строке;
+    «## AS-IS» | ID | Как устроено сейчас | Что меняется |, «## Изменения»
+    | ID | Изменение | Причина |, «## Открытые вопросы» | ID | Кому | Вопрос | Ответ |."""
+    s = SysReq(meta={k: v for k, v in d.meta.items() if not k.startswith("_")})
+    s.doc = d
+    issues: list[bb.Issue] = []
+    err = lambda ln, code, msg: issues.append(bb.Issue(ln, "ERROR", code, msg, d.rel))  # noqa: E731
+    for key in SYSREQ_META:
+        if not s.meta.get(key):
+            err(d.off + 1, "AR001", f"паспорт <!-- bft-sysreq -->: нет ключа `{key}`")
+    lines = d.body.split("\n")
+    h1 = next((ln for ln in lines if ln.startswith("# ")), "")
+    if not h1:
+        err(d.off + 1, "AR001", "нет заголовка `# Системные требования: <инициатива>`")
+    if s.meta.get("status", "").lower() not in SYSREQ_STATUSES:
+        err(d.off + 1, "AR001", f"статус «{s.meta.get('status', '')}» — Черновик или Согласован")
+    secs = bb._sections(lines)
+    cids: set[str] = set()
+    for ln, c in _table(d, secs, "Контракты", CONTRACTS_HEADER, err):
+        kid = _norm_id(c[0], CONTRACT_ID, "K")
+        if not kid or kid in cids:
+            err(ln, "AR001", f"контракт: ID вида K1…, уникален — «{c[0]}»")
+            continue
+        if not all(x.strip() for x in c[1:]):
+            err(ln, "AR001", f"{kid}: нужны «Контракт», «Потребитель», «Данные контракту», «Источник параметров», «Преобразования»")
+            continue
+        cids.add(kid)
+        s.contracts.append(SysContract(kid, c[1].strip(), c[2].strip(), c[3].strip(), c[4].strip(), c[5].strip(), ln))
+    if not s.contracts:
+        err(d.off + 1, "AR001", "в «Контрактах» нет ни одного контракта — для работ без контрактов документ не создаётся")
+    if "AS-IS" in secs:
+        aids: set[str] = set()
+        for ln, c in _table(d, secs, "AS-IS", SYSREQ_ASIS_HEADER, err):
+            aid = _norm_id(c[0], SYSROW_ID, "A")
+            if not aid or aid in aids:
+                err(ln, "AR001", f"AS-IS: ID вида A1…, уникален — «{c[0]}»")
+                continue
+            if not all(x.strip() for x in c[1:]):
+                err(ln, "AR001", f"{aid}: нужны «Как устроено сейчас» и «Что меняется»")
+                continue
+            aids.add(aid)
+            s.asis.append(SysAsIs(aid, c[1].strip(), c[2].strip(), ln))
+    else:
+        err(d.off + 1, "AR001", "нет раздела «## AS-IS» с таблицей")
+    if "Изменения" in secs:
+        iids: set[str] = set()
+        IID = re.compile(r"^I-?(?P<num>\d+)$", re.I)
+        for ln, c in _table(d, secs, "Изменения", SYSREQ_CHANGE_HEADER, err):
+            iid = _norm_id(c[0], IID, "I")
+            if not iid or iid in iids:
+                err(ln, "AR001", f"изменение: ID вида I1…, уникален — «{c[0]}»")
+                continue
+            if not all(x.strip() for x in c[1:]):
+                err(ln, "AR001", f"{iid}: нужны «Изменение» и «Причина»")
+                continue
+            iids.add(iid)
+            s.changes.append(SysChange(iid, c[1].strip(), c[2].strip(), ln))
+    else:
+        err(d.off + 1, "AR001", "нет раздела «## Изменения» с таблицей")
+    if "Открытые вопросы" in secs:
+        qids: set[str] = set()
+        for ln, c in _table(d, secs, "Открытые вопросы", SYSREQ_Q_HEADER, err):
+            qid = _norm_id(c[0], SYSQ_ID, "Q")
+            if not qid or qid in qids:
+                err(ln, "AR001", f"вопрос: ID вида Q1…, уникален — «{c[0]}»")
+                continue
+            if not c[1].strip() or not c[2].strip():
+                err(ln, "AR001", f"{qid}: нужны «Кому» и «Вопрос»")
+                continue
+            qids.add(qid)
+            s.questions.append(SysQ(qid, c[1].strip(), c[2].strip(), c[3].strip(), ln))
+    s.meta["_issues"] = issues
+    return s
+
+def parse_seams(pr: Project, d: Doc) -> Seams:
+    """Документ «Стыки» (<!-- bft-seams … -->): этап «Контроль стыковочных работ».
+
+    Разделы: «## Участники» | ID | Стык | Поставщик | Потребитель | Ответственный за контракт |
+    «## Обязательства» | ID | Кто | Что | Кому | Срок | Формат/место |, «## Контракты стыков»
+    | Стык | Аспект | Требование к фиксации |, «## Контрольные точки»
+    | ID | Точка | Когда | Что проверяется | Кто проводит |, «## Риски»
+    | ID | Риск | Следствие | Владелец | Митигация |. Открытые вопросы — в «Вопросах» «Карты»
+    («Где» — ID стыка S1…). Форма проверяется здесь; смысл (команды, ссылки на стыки) — кодами SM
+    в `bft-backlog-lint.py`.
+    """
+    sm = Seams(meta={k: v for k, v in d.meta.items() if not k.startswith("_")})
+    sm.doc = d
+    issues: list[bb.Issue] = []
+    err = lambda ln, code, msg: issues.append(bb.Issue(ln, "ERROR", code, msg, d.rel))  # noqa: E731
+    for key in SEAMS_META:
+        if not sm.meta.get(key):
+            err(d.off + 1, "SM001", f"паспорт <!-- bft-seams -->: нет ключа `{key}`")
+    body = d.body
+    lines = body.split("\n")
+    h1 = next((ln for ln in lines if ln.startswith("# ")), "")
+    if not h1:
+        err(d.off + 1, "SM001", "нет заголовка `# Стыки: <инициатива>`")
+    secs = bb._sections(lines)
+    ids: dict[str, set[str]] = {"S": set(), "D": set(), "K": set(), "R": set()}
+    for name, header, tag in (("Участники", SEAM_HEADER, "S"), ("Обязательства", DELIVERY_HEADER, "D"),
+                              ("Контрольные точки", CHECKPOINT_HEADER, "K"), ("Риски", RISK_HEADER, "R")):
+        if name not in secs:
+            err(d.off + 1, "SM001", f"нет раздела «## {name}» с таблицей")
+            continue
+        ln0, tbody = secs[name]
+        found = bb.tables(tbody, first_lineno=d.off + ln0 + 1)
+        if not found:
+            err(d.off + ln0, "SM001", f"«{name}»: нет таблицы")
+            continue
+        hdr, rows = found[0]
+        if tuple(hdr) != header:
+            err(d.off + ln0, "SM001", f"«{name}»: заголовок таблицы — {' | '.join(header)}")
+            continue
+        pat = {"S": SEAM_ID, "D": DELIVERY_ID, "K": CHECKPOINT_ID, "R": RISK_ID}[tag]
+        for ln, c in rows:
+            if len(c) != len(header):
+                err(ln, "SM001", f"«{name}»: в строке {len(c)} колонок, нужно {len(header)}")
+                continue
+            if tag == "S":
+                sid = _norm_id(c[0], pat, "S")
+                if not sid or sid in ids["S"]:
+                    err(ln, "SM001", f"стык: ID вида S1…, уникален — «{c[0]}»")
+                    continue
+                kind = c[1].strip().lower()
+                if kind not in SEAM_KINDS:
+                    err(ln, "SM001", f"{sid}: стык «{c[1]}» — один из: {', '.join(SEAM_KINDS)}")
+                    continue
+                if not all(x.strip() for x in c[2:]):
+                    err(ln, "SM001", f"{sid}: нужны «Поставщик», «Потребитель», «Ответственный за контракт»")
+                    continue
+                ids["S"].add(sid)
+                sm.seams.append(Seam(sid, kind, c[2].strip(), c[3].strip(), c[4].strip(), ln))
+            elif tag == "D":
+                did = _norm_id(c[0], pat, "D")
+                if not did or did in ids["D"]:
+                    err(ln, "SM001", f"обязательство: ID вида D1…, уникален — «{c[0]}»")
+                    continue
+                if not all(x.strip() for x in c[1:]):
+                    err(ln, "SM001", f"{did}: нужны «Кто», «Что», «Кому», «Срок», «Формат/место»")
+                    continue
+                ids["D"].add(did)
+                sm.deliveries.append(Delivery(did, c[1].strip(), c[2].strip(), c[3].strip(),
+                                              c[4].strip(), c[5].strip(), "", ln))
+            elif tag == "K":
+                kid = _norm_id(c[0], pat, "K")
+                if not kid or kid in ids["K"]:
+                    err(ln, "SM001", f"контрольная точка: ID вида K1…, уникален — «{c[0]}»")
+                    continue
+                if not all(x.strip() for x in c[1:]):
+                    err(ln, "SM001", f"{kid}: нужны «Точка», «Когда», «Что проверяется», «Кто проводит»")
+                    continue
+                ids["K"].add(kid)
+                sm.checkpoints.append(Checkpoint(kid, c[1].strip(), c[2].strip(), c[3].strip(), c[4].strip(), ln))
+            else:
+                rid = _norm_id(c[0], pat, "R")
+                if not rid or rid in ids["R"]:
+                    err(ln, "SM001", f"риск: ID вида R1…, уникален — «{c[0]}»")
+                    continue
+                if not all(x.strip() for x in c[1:]):
+                    err(ln, "SM001", f"{rid}: нужны «Риск», «Следствие», «Владелец», «Митигация»")
+                    continue
+                ids["R"].add(rid)
+                sm.risks.append(Risk(rid, c[1].strip(), c[2].strip(), c[3].strip(), c[4].strip(), ln))
+    # «Контракты стыков» — строки привязаны к стыку; без стыков таблица не читается
+    if "Контракты стыков" in secs:
+        ln0, tbody = secs["Контракты стыков"]
+        found = bb.tables(tbody, first_lineno=d.off + ln0 + 1)
+        if found:
+            hdr, rows = found[0]
+            if tuple(hdr) != SEAM_CONTRACT_HEADER:
+                err(d.off + ln0, "SM001", f"«Контракты стыков»: заголовок таблицы — {' | '.join(SEAM_CONTRACT_HEADER)}")
+            else:
+                for ln, c in rows:
+                    if len(c) != len(SEAM_CONTRACT_HEADER):
+                        err(ln, "SM001", f"«Контракты стыков»: в строке {len(c)} колонок, нужно {len(SEAM_CONTRACT_HEADER)}")
+                        continue
+                    if not all(x.strip() for x in c):
+                        err(ln, "SM001", "контракту нужны «Стык», «Аспект», «Требование к фиксации»")
+                        continue
+                    sm.contracts.append(ContractRow(c[0].strip().upper(), c[1].strip(), c[2].strip(), ln))
+    elif sm.seams:
+        err(d.off + 1, "SM001", "нет раздела «## Контракты стыков» с таблицей")
+    if not sm.seams:
+        err(d.off + 1, "SM001", "в «Участниках» нет ни одного стыка — для задач без стыков документ не создаётся")
+    sm.meta["_issues"] = issues
+    return sm
+
+def _norm_release_id(raw: str, pat: re.Pattern, tag: str) -> str:
+    m = pat.match(raw.strip())
+    return f"{tag}{int(m.group('num'))}" if m else ""
+
+def parse_release(pr: Project, d: Doc) -> Release:
+    """Документ «План релиза» (<!-- bft-release … -->): дорожки DEV/STAGE/PROD, шаги, ворота.
+
+    Разделы документа: «## Шаги» — таблица | ID | Стенд | Что сделать | Ответственный | Тип |
+    Зависимости | Статус | Критерий готовности |; «## Ворота» — | Ворота | Кто утверждает |
+    Критерий перехода |. Форма проверяется здесь; смысл (deps, статусы, чей переход) — гейтом BL.
+    """
+    rel = Release(meta={k: v for k, v in d.meta.items() if not k.startswith("_")})
+    rel.doc = d
+    issues: list[bb.Issue] = []
+    err = lambda ln, code, msg: issues.append(bb.Issue(ln, "ERROR", code, msg, d.rel))  # noqa: E731
+    for key in RELEASE_META:
+        if not rel.meta.get(key):
+            err(d.off + 1, "RL001", f"паспорт <!-- bft-release -->: нет ключа `{key}`")
+    body = d.body
+    lines = body.split("\n")
+    h1 = next((ln for ln in lines if ln.startswith("# ")), "")
+    if not h1:
+        err(d.off + 1, "RL001", "нет заголовка `# План релиза: <инициатива>`")
+    secs = bb._sections(lines)
+    step_ids: set[str] = set()
+    for name, header in (("Шаги", STEP_HEADER), ("Ворота", GATE_HEADER)):
+        if name not in secs:
+            if name == "Шаги":
+                err(d.off + 1, "RL001", f"нет раздела «## {name}» с таблицей шагов")
+            continue
+        ln0, tbody = secs[name]
+        found = bb.tables(tbody, first_lineno=d.off + ln0 + 1)
+        if not found:
+            err(d.off + ln0, "RL001", f"«{name}»: нет таблицы")
+            continue
+        hdr, rows = found[0]
+        if tuple(hdr) != header:
+            err(d.off + ln0, "RL001", f"«{name}»: заголовок таблицы — {' | '.join(header)}")
+            continue
+        for ln, c in rows:
+            if len(c) != len(header):
+                err(ln, "RL001", f"«{name}»: в строке {len(c)} колонок, нужно {len(header)}")
+                continue
+            if name == "Шаги":
+                sid = _norm_release_id(c[0], STEP_ID, "R")
+                if not sid or sid in step_ids:
+                    err(ln, "RL001", f"шаг: ID вида R1…, уникален — «{c[0]}»")
+                    continue
+                step_ids.add(sid)
+                track = c[1].strip().lower()
+                if track not in RELEASE_TRACKS:
+                    err(ln, "RL001", f"{sid}: стенд «{c[1]}» — один из dev, stage, prod")
+                    continue
+                if not c[2].strip() or not c[3].strip() or not c[4].strip():
+                    err(ln, "RL001", f"{sid}: нужны «Что сделать», «Ответственный», «Тип»")
+                    continue
+                kind = c[4].strip().lower()
+                if kind not in RELEASE_STEP_TYPES:
+                    err(ln, "RL001", f"{sid}: тип «{c[4]}» — один из: {', '.join(RELEASE_STEP_TYPES)}")
+                    continue
+                deps = [x.strip() for x in re.split(r"[;,]", c[5]) if x.strip() and x.strip() not in bb.EMPTY]
+                status = c[6].strip().lower()
+                if status not in RELEASE_STATUSES:
+                    err(ln, "RL001", f"{sid}: статус «{c[6]}» — один из: {', '.join(RELEASE_STATUSES)}")
+                    continue
+                if not c[7].strip():
+                    err(ln, "RL001", f"{sid}: нет критерия готовности")
+                    continue
+                rel.steps.append(ReleaseStep(sid, track, c[2].strip(), c[3].strip(), kind,
+                                             deps, status, c[7].strip(), ln))
+            else:
+                frm = c[0].strip().lower()
+                if frm not in RELEASE_TRACKS[:-1]:
+                    err(ln, "RL001", f"ворота «{c[0]}»: стенд — dev или stage (после PROD ворот нет)")
+                    continue
+                if not c[1].strip() or not c[2].strip():
+                    err(ln, "RL001", "воротам нужны «Кто утверждает» и «Критерий перехода»")
+                    continue
+                rel.gates.append(ReleaseGate(frm, c[1].strip(), c[2].strip(), ln))
+    if rel.steps and not any(s.track == "dev" for s in rel.steps):
+        err(d.off + 1, "RL001", "нет шагов на дорожке dev — с неё начинается путь задачи")
+    rel.meta["_issues"] = issues
+    return rel
 
 def _subsections(text: str, first: int) -> tuple[list[str], dict, list[tuple[int, str]]]:
     """Текст описания: (строки до первого ###, {раздел: (строка, текст)}, порядок [(строка, раздел)])."""
@@ -329,7 +1085,6 @@ def _subsections(text: str, first: int) -> tuple[list[str], dict, list[tuple[int
         secs[cur] = (start, "\n".join(buf).strip())
     return pre, secs, order
 
-
 def split_items(raw: str) -> list[str]:
     """Значения через «;», точка с запятой внутри скобок значение не делит."""
     out, buf, depth = [], "", 0
@@ -343,7 +1098,6 @@ def split_items(raw: str) -> list[str]:
             buf += ch
     out.append(buf)
     return [x.strip() for x in out if x.strip()]
-
 
 def parse_params(pr: Project, t: BTask, line: int, text: str) -> None:
     ref_group = re.compile(rf"\s*\(\s*(?:[←→]\s*)?{re.escape(pr.prefix)}-\d+(?:\.\d+)*(?:\s*,\s*(?:[←→]\s*)?{re.escape(pr.prefix)}-\d+(?:\.\d+)*)*\s*\)")
@@ -361,10 +1115,9 @@ def parse_params(pr: Project, t: BTask, line: int, text: str) -> None:
             txt = ref_group.sub("", v).strip() or v
             t.params.setdefault(key, []).append(Item(txt, refs))
 
-
 STEP_TASK = re.compile(r"^([^:?→]{1,40}?)\s*:\s*(\S.*)$")
-BRANCH = re.compile(r"^(.+?)\s*(?:→|->)\s*(.+)$")
 
+BRANCH = re.compile(r"^(.+?)\s*(?:→|->)\s*(.+)$")
 
 def parse_process(pr: "Project", c: BTask, line: int, text: str) -> None:
     """### Процесс: «- Участник: действие», «- ? вопрос» и под ним «  - ответ → Участник: действие | конец»."""
@@ -415,7 +1168,6 @@ def parse_process(pr: "Project", c: BTask, line: int, text: str) -> None:
     if len(lanes_of(c.proc)) > MAX_LANES:
         err(line, f"участников {len(lanes_of(c.proc))} (больше {MAX_LANES})")
 
-
 def lanes_of(proc: list) -> list[str]:
     out: list[str] = []
     for x in proc:
@@ -423,7 +1175,6 @@ def lanes_of(proc: list) -> list[str]:
             if lane not in out:
                 out.append(lane)
     return out
-
 
 def bpmn_of(c: BTask) -> str:
     """Процесс карточки в mermaid: дорожка — участник, развилка — ромб; тот же процесс — тот же текст.
@@ -495,7 +1246,6 @@ def bpmn_of(c: BTask) -> str:
     out.append("```")
     return "\n".join(out)
 
-
 def _read_task(pr: Project, f: Path) -> BTask | None:
     rel = f.relative_to(pr.root).as_posix()
     text = f.read_text(encoding="utf-8")
@@ -524,10 +1274,8 @@ def _read_task(pr: Project, f: Path) -> BTask | None:
                 t.ac.append((cm.group(1) != " ", cm.group(2).strip()))
     return t
 
-
 def _label(t: BTask, key: str) -> list[str]:
     return [x.split(":", 1)[1].strip() for x in t.labels if x.lower().startswith(key + ":")]
-
 
 def parse(root: Path) -> Project:
     pr = Project(root=root)
@@ -548,14 +1296,41 @@ def parse(root: Path) -> Project:
             pr.err(d.rel, 1, "BL005", f"второй документ с ID {d.id} — `backlog doctor`")
             continue
         pr.docs[d.id] = d
-        for kind in ("bft-map", "bft-story"):
+        for kind in ("bft-map", "bft-story", "bft-adr", "bft-sysreq", "bft-seams", "bft-release"):
             mc = _meta_comment(d.body, kind)
             if mc:
-                d.meta = {**d.meta, "_kind": kind}
+                d.meta = {**d.meta, "_kind": kind, **mc[0]}
                 if kind == "bft-map":
                     if pr.map_doc:
                         pr.err(d.rel, 1, "BL002", f"второй паспорт карты — уже есть {pr.map_doc.rel}")
                     pr.map_doc, pr.meta = d, mc[0]
+                elif kind == "bft-adr":
+                    if pr.adr_doc:
+                        pr.err(d.rel, 1, "AR002", f"второй «ADR» — уже есть {pr.adr_doc.rel}")
+                    d.meta = {**d.meta, **mc[0]}   # паспорт комментария — в мету документа
+                    pr.adr_doc = d
+                    pr.adr = parse_adr(pr, d)
+                    pr.issues.extend(pr.adr.meta.pop("_issues"))
+                elif kind == "bft-sysreq":
+                    if pr.sysreq_doc:
+                        pr.err(d.rel, 1, "AR002", f"вторые «Системные требования» — уже есть {pr.sysreq_doc.rel}")
+                    d.meta = {**d.meta, **mc[0]}
+                    pr.sysreq_doc = d
+                    pr.sysreq = parse_sysreq(pr, d)
+                    pr.issues.extend(pr.sysreq.meta.pop("_issues"))
+                elif kind == "bft-seams":
+                    if pr.seams_doc:
+                        pr.err(d.rel, 1, "SM002", f"вторые «Стыки» — уже есть {pr.seams_doc.rel}")
+                    d.meta = {**d.meta, **mc[0]}   # паспорт комментария — в мету документа
+                    pr.seams_doc = d
+                    pr.seams = parse_seams(pr, d)
+                    pr.issues.extend(pr.seams.meta.pop("_issues"))
+                elif kind == "bft-release":
+                    if pr.release_doc:
+                        pr.err(d.rel, 1, "RL002", f"второй план релиза — уже есть {pr.release_doc.rel}")
+                    pr.release_doc = d
+                    pr.release = parse_release(pr, d)
+                    pr.issues.extend(pr.release.meta.pop("_issues"))
                 else:
                     if pr.story_doc:
                         pr.err(d.rel, 1, "BL003", f"вторая история — уже есть {pr.story_doc.rel}")
@@ -660,9 +1435,15 @@ def parse(root: Path) -> Project:
         _check_task(pr, t, stages, team_ids)
     for c in pr.cards:
         _check_card(pr, c, stages, team_ids, task_ids, card_ids)
+    seam_ids = {s.id for s in pr.seams.seams} if pr.seams else set()
     for q in pr.questions:
-        if q.where not in task_ids | card_ids:
-            pr.err(pr.map_doc.rel, q.line, "BL010", f"{q.id}: «Где» — ID задачи или карточки карты ({pr.prefix}-12, {pr.prefix}-12.1), а не «{q.where}»")
+        adr_ids = set()
+        if pr.adr:
+            adr_ids = {o.id for o in pr.adr.options} | {c.id for c in pr.adr.compromises}
+        if pr.sysreq:
+            adr_ids |= {c.id for c in pr.sysreq.contracts}
+        if q.where not in task_ids | card_ids | adr_ids | seam_ids:
+            pr.err(pr.map_doc.rel, q.line, "BL010", f"{q.id}: «Где» — ID задачи, карточки карты ({pr.prefix}-12, {pr.prefix}-12.1), стыка (S1) или этапа ADR (K1, V1, C1), а не «{q.where}»")
         if q.kind not in Q_TYPES:
             pr.err(pr.map_doc.rel, q.line, "BL010", f"{q.id}: тип «{q.kind}» — вопрос или блокер")
         if not q.to or not q.text:
@@ -672,7 +1453,6 @@ def parse(root: Path) -> Project:
             if re.match(r"^doc-\d+", str(d), re.I) and str(d).split()[0].lower() not in {k.lower() for k in pr.docs}:
                 pr.err(t.rel, 1, "BL011", f"{t.id}: документа {d} нет в backlog/docs")
     return pr
-
 
 def _check_task(pr: Project, t: BTask, stages: set, team_ids: set) -> None:
     rel = t.rel
@@ -809,7 +1589,6 @@ def _check_card(pr: Project, c: BTask, stages: set, team_ids: set, task_ids: set
             for r in it.refs:
                 if r == c.id or r not in card_ids:
                     pr.err(rel, secs["Параметры"][0], "BL009", f"{c.id}: ссылка {r} в «{PARAM_NAME[key]}» — на другую карточку «Как это работает»")
-
 
 def sync_schema(pr: Project, write: bool) -> list[BTask]:
     """BPMN карточек — mermaid из «Процесса». Возвращает карточки, где блок устарел; write — переписать.

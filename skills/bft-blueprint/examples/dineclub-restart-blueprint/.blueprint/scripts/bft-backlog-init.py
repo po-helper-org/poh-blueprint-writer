@@ -47,7 +47,7 @@ TOOLS = ("backlog_cli.py", "bft_blueprint.py", "bft_story.py", "bft_screens.py",
          "proto_runtime.js", "proto_runtime.css",
          "page_kit.js", "map_page.js", "map_page.css")
 RULES = ("autopilot.md", "grooming.md", "backlog_rules.md", "screen_notes.md", "story_line.md", "contracts.md", "prototype.md")
-TEMPLATES = ("map.md", "screen.md", "contract.md", "prototype.md")   # шаблоны плана карты и контракта — .blueprint/templates/
+TEMPLATES = ("map.md", "screen.md", "adr.md", "sysreq.md", "seams.md", "contract.md", "prototype.md")   # шаблоны плана карты, этапов (ADR, стыки), контракта и прототипа — .blueprint/templates/
 VENDOR = ("mermaid.min.js", "mermaid.LICENSE")   # схемы на странице рисует mermaid из этой папки, без сети
 AGENT_FILES = ("CLAUDE.md", "AGENTS.md", "GEMINI.md")
 CONFIG = """project_name: "{name}"

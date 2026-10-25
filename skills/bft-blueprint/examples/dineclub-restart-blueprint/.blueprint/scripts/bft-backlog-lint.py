@@ -1,3 +1,5 @@
+
+
 #!/usr/bin/env python3
 """bft-backlog-lint — проверка Service Blueprint в проекте Backlog.md (гейт карты инициативы).
 
@@ -22,6 +24,18 @@
   BL016  требование из задачи, карточки или экрана не найдено в БФТ
   BL017  ФТ/ИТ/НФТ из БФТ не попало ни в одну задачу и ни в одну карточку
   BL018  технический язык в названии или сути: API, протоколы, БД
+  AR001  документы «ADR» (<!-- bft-adr -->) и «Системные требования» (<!-- bft-sysreq -->): паспорт, таблицы вариантов, решения, узких мест, компромиссов, контрактов
+  AR002  второй документ «ADR» или «Системные требования»
+  AR003  смысл этапа: ≥2 вариантов и явный выбор TO-BE, узкие места, компромиссы по трём осям, контракты совпадают с ADR, три вопроса системной аналитики
+  AR005  предупреждения: нет узких мест/компромиссов, на карте есть слой Technology, а документов нет — этап включён не был
+  SM001  документ «Стыки» (<!-- bft-seams -->): паспорт, таблицы участников, обязательств, контрактов, точек, рисков
+  SM002  второй документ «Стыки»
+  SM003  стыки: команды-участники из «Команд», обязательства и контракты привязаны к стыкам
+  SM005  стыки: предупреждения — стык без обязательств, условие включения этапа (≥2 команд, а документа нет)
+  RL001  документ «План релиза» (<!-- bft-release -->): паспорт, дорожки DEV/STAGE/PROD, шаги, ворота
+  RL002  второй документ «План релиза»
+  RL003  план релиза: зависимости шагов, ворота между стендами
+  RL005  план релиза: предупреждения — шаг без зависимостей, дорожка без ворот
   SN0xx  требования к экранам — `bft_screens.py`, `resources/screen_notes.md`
 
   ПРЕДУПРЕЖДЕНИЯ (код выхода 1 только с --strict)
@@ -43,6 +57,8 @@
   BL039  карточка названа так же, как её задача: название не говорит, что происходит в сервисе
   BL040  участник процесса без имени: «Система», «Сервис», «Приложение»
   BL041  карточка technology от лица сотрудника, который на этом этапе на виду у клиента, — слой employee
+  AR005  ADR без узких мест или компромиссов; на карте есть слой Technology (устройство систем), а документов «ADR»/«Системные требования» нет — этап включён не был
+  SM005  стык без обязательств; команд 2 и больше, а документа «Стыки» нет — этап включён не был
 
   СБОРКА (`bft-backlog-build.py`)
   BL029  `--check`: скрипты, правила или инструкции проекта устарели
@@ -54,28 +70,51 @@
 Формат вывода: <путь>:<строка>: <УРОВЕНЬ> <КОД> <сообщение>
 Коды выхода: 0 — ошибок нет; 1 — ошибки (или предупреждения с --strict); 2 — проект не прочитан.
 """
+
 from __future__ import annotations
 
 import argparse
+
 import importlib.util
+
 import re
+
 import sys
+
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+
 sys.path.insert(0, str(HERE))
+
+sys.path.insert(0, str(HERE))
+
 import bft_blueprint as bb  # noqa: E402
+
 import bft_backlog as bl  # noqa: E402
+
 import bft_graph as bg  # noqa: E402
 
 _spec = importlib.util.spec_from_file_location("bp_lint", HERE / "bft-blueprint-lint.py")
+
 _bp_lint = importlib.util.module_from_spec(_spec)
+
 _spec.loader.exec_module(_bp_lint)
+
+_spec.loader.exec_module(_bp_lint)
+
 API_PATTERNS = _bp_lint.API_PATTERNS
+
 NUM_RE = re.compile(r"\d[\d \u00a0.,:%]*\d|\d")   # число в одной строке: перенос строки его не склеивает
 
-
 def check(pr: bl.Project, source: Path | None, no_source: bool, explicit: bool = False) -> None:
+    # --- ADR и Системные требования -------------------------------------------------------------
+    check_adr(pr)
+    # --- контроль стыковочных работ -----------------------------------------------------------
+    check_seams(pr)
+    # --- план релиза / Delivery ----------------------------------------------------------------
+    check_release(pr)
+
     # --- полнота и связность -----------------------------------------------------------------
     if pr.story:
         for st in pr.story.stages:
@@ -182,6 +221,155 @@ def employee_hint(pr: bl.Project) -> None:
 def _norm(s: str) -> str:
     return re.sub(r"[^\w%]+", " ", s.lower().replace("ё", "е")).strip()
 
+def check_adr(pr: bl.Project) -> None:
+    """Смысл этапа «ADR и Системные требования»: ≥2 вариантов и явный выбор TO-BE, узкие места
+    по нагрузке/надёжности, компромиссы по трём осям, контракты «Системных требований» совпадают
+    с решением ADR и отвечают на три вопроса системной аналитики. Условие включения этапа —
+    на карте есть карточки слоя Technology: работа затрагивает устройство систем."""
+    # условие включения: слой Technology на карте — работа режется по системам; документы
+    # «ADR»/«Системные требования» создаются только для таких инициатив, для остальных их нет
+    tech_cards = [c for c in pr.cards if c.layer == "technology"]
+    if pr.adr is None and pr.sysreq is None and tech_cards:
+        pr.warn(pr.map_doc.rel if pr.map_doc else "", 1, "AR005",
+                f"на карте {len(tech_cards)} карточек слоя Technology, а документов «ADR»/«Системные требования» нет — "
+                "как реализовывать работу, никто не выбрал; если устройство систем эта работа не трогает, ничего не делай")
+    a, s = pr.adr, pr.sysreq
+    if a is not None and a.doc is not None:
+        doc = a.doc
+        # выбор: вариантов ≥2 и решение ссылается на один из них
+        if len(a.options) < 2:
+            pr.err(doc.rel, 1, "AR003",
+                   f"вариантов {len(a.options)} — ADR выбирает между вариантами, нужно не меньше двух")
+        vids = {o.id for o in a.options}
+        for d in a.decisions:
+            if d.id not in vids:
+                pr.err(doc.rel, d.line, "AR003", f"решение «{d.id}» — ID варианта из «Вариантов» (V1…), а не «{d.id}»")
+        if a.options and not a.decisions:
+            pr.err(doc.rel, 1, "AR003", "нет решения TO-BE — выбери вариант и обоснуй («## Решение TO-BE»)")
+        # у невыбранных вариантов — почему нет; у выбранного — почему да (в «Решении»)
+        chosen = {d.id for d in a.decisions}
+        for o in a.options:
+            if o.id not in chosen and o.why_not.strip().lower() in ("", "—", "-", "–", "выбран"):
+                pr.err(doc.rel, 1, "AR003", f"{o.id}: «Почему нет» — явное обоснование отклонения варианта")
+        # узкие места и компромиссы — не опция
+        if not a.bottlenecks:
+            pr.warn(doc.rel, 1, "AR005", "нет узких мест по нагрузке и надёжности — где TO-BE просядет под нагрузкой?")
+        if not a.compromises:
+            pr.warn(doc.rel, 1, "AR005", "нет компромиссов — надёжность vs скорость реализации vs соответствие требованиям платят друг другом, запиши чем")
+        # диаграмма AS-IS/TO-BE
+        if not a.diagram:
+            pr.warn(doc.rel, 1, "AR005", "нет ADR-диаграммы AS-IS/TO-BE (mermaid-блок в «## Диаграмма AS-IS/TO-BE»)")
+        # контракты «Системных требований» совпадают с решением ADR
+        if s is not None and s.doc is not None and a.decisions:
+            decided = {d.contract.strip().lower() for d in a.decisions}
+            for c in s.contracts:
+                if c.contract.strip().lower() not in decided:
+                    pr.err(s.doc.rel, c.line, "AR003",
+                           f"{c.id}: контракт «{c.contract}» — из «Решения TO-BE» ADR, такого контракта там нет")
+    if s is not None and s.doc is not None:
+        doc = s.doc
+        decided = {d.contract.strip().lower() for d in a.decisions} if (a is not None and a.decisions) else set()
+        if a is not None and a.decisions:
+            listed = {c.contract.strip().lower() for c in s.contracts}
+            for d in a.decisions:
+                if d.contract.strip().lower() not in listed:
+                    pr.err(doc.rel, 1, "AR003",
+                           f"контракт «{d.contract}» решён в ADR, но его нет в «Контрактах» — где данные, источники и преобразования?")
+        for c in s.contracts:
+            if not (c.data.strip() and c.source.strip() and c.transform.strip()):
+                pr.err(doc.rel, c.line, "AR003",
+                       f"{c.id}: три вопроса контракта — «Данные контракту», «Источник параметров», «Преобразования» — пустых быть не должно")
+        # открытые вопросы дублируются в «Вопросы» «Карты»
+        if pr.map_doc is not None:
+            kq = {(q.to.strip(), q.text.strip()) for q in pr.questions}
+            for q in s.questions:
+                if q.open and (q.to.strip(), q.text.strip()) not in kq:
+                    pr.warn(doc.rel, q.line, "AR005",
+                            f"{q.id}: нет в «Вопросах» «Карты» — продублируй («Где» — {next((c.id for c in s.contracts), 'K1')}), иначе ответ потеряется")
+
+def check_seams(pr: bl.Project) -> None:
+    """Смысл документа «Стыки»: участники из «Команд», обязательства и контракты привязаны
+    к стыкам, у каждого стыка есть обязательства; условие включения этапа — ≥2 команд на карте."""
+    # условие включения: этап нужен, когда работа режется между командами; документ «Стыки»
+    # создаётся только для таких инициатив — для задач без стыков его нет, и это не ошибка
+    teams_of_tasks = {t.team for t in pr.tasks if t.team and t.team != "?"}
+    if pr.seams is None and len(teams_of_tasks) >= 2:
+        pr.warn(pr.map_doc.rel if pr.map_doc else "", 1, "SM005",
+                f"на карте {len(teams_of_tasks)} команд, а документа «Стыки» нет — про контроль стыковочных "
+                "работ никто не договорился; если стыков в этой работе нет, ничего не делай")
+    sm = pr.seams
+    if sm is None or sm.doc is None:
+        return
+    doc = sm.doc
+    team_ids = {t.id for t in pr.teams}
+
+    def team_or_stub(ln: int, sid: str, val: str, label: str) -> None:
+        v = val.strip()
+        if bl.TEAM_OR_STUB.match(v):
+            if v not in team_ids and not v.startswith("[УТОЧНИТЬ"):
+                pr.err(doc.rel, ln, "SM003", f"{sid}: {label} «{v}» — ID команды из «Команд» или [УТОЧНИТЬ у кого]")
+        else:
+            pr.err(doc.rel, ln, "SM003", f"{sid}: {label} «{v}» — ID команды из «Команд» (латиницей-слагом) или [УТОЧНИТЬ …]")
+
+    seam_ids = {s.id for s in sm.seams}
+    for s in sm.seams:
+        team_or_stub(s.line, s.id, s.supplier, "поставщик")
+        team_or_stub(s.line, s.id, s.consumer, "потребитель")
+    for d in sm.deliveries:
+        team_or_stub(d.line, d.id, d.who, "кто")
+        team_or_stub(d.line, d.id, d.to, "кому")
+    for c in sm.contracts:
+        if c.seam not in seam_ids:
+            pr.err(doc.rel, c.line, "SM003", f"контракт: стык «{c.seam}» — ID стыка из «Участников» (S1…)")
+    # обязательства и контракты привязаны к стыкам: строка «Стык: S1» в «Что»/«Требование»,
+    # «Кто»+«Кому» совпадают с участниками — заполняет apply плана, здесь проверяем
+    seam_by_pair = {(s.supplier, s.consumer): s.id for s in sm.seams}
+    for d in sm.deliveries:
+        sid = seam_by_pair.get((d.who, d.to))
+        d.seam = sid or ""
+        if not sid:
+            pr.err(doc.rel, d.line, "SM003",
+                   f"{d.id}: «Кто» + «Кому» ({d.who} → {d.to}) не совпадают ни с одним стыком из «Участников»")
+    covered = {d.seam for d in sm.deliveries if d.seam}
+    for s in sm.seams:
+        if s.id not in covered:
+            pr.warn(doc.rel, s.line, "SM005", f"{s.id}: стык без обязательств — кто и что предоставляет по контракту?")
+    contract_seams = {c.seam for c in sm.contracts}
+    for s in sm.seams:
+        if s.id not in contract_seams:
+            pr.warn(doc.rel, s.line, "SM005", f"{s.id}: стык без строки контракта — что фиксируем на стыке ({s.kind})?")
+    if sm.meta.get("status", "").lower() not in ("черновик", "согласован"):
+        pr.warn(doc.rel, 1, "SM005", f"статус стыков «{sm.meta.get('status')}» — Черновик или Согласован")
+
+def check_release(pr: bl.Project) -> None:
+    """Смысл плана релиза: зависимости указывают на существующие шаги, ворота закрыты, статусы честные."""
+    rel = pr.release
+    if rel is None or rel.doc is None:
+        return
+    doc = rel.doc
+    ids = {s.id for s in rel.steps}
+    for s in rel.steps:
+        for d in s.deps:
+            if d.upper() not in ids:
+                pr.err(doc.rel, s.line, "RL003", f"{s.id}: зависимости «{d}» — ID шага R1… из «Шагов»")
+        if not s.deps and s.id != next((x.id for x in rel.steps if x.track == s.track), ""):
+            pr.warn(doc.rel, s.line, "RL005", f"{s.id}: без зависимостей — с чего начинается шаг?")
+    gates_by_from: dict[str, int] = {}
+    for g in rel.gates:
+        nxt = bl.RELEASE_TRACKS[bl.RELEASE_TRACKS.index(g.frm) + 1]
+        if not rel.by_track(g.frm):
+            pr.err(doc.rel, g.line, "RL003", f"ворота {g.frm.upper()} → {nxt.upper()}: на дорожке {g.frm.upper()} нет шагов")
+        gates_by_from[g.frm] = gates_by_from.get(g.frm, 0) + 1
+    for frm, n in gates_by_from.items():
+        if n > 1:
+            nxt = bl.RELEASE_TRACKS[bl.RELEASE_TRACKS.index(frm) + 1]
+            pr.err(doc.rel, rel.gates[0].line if n else 1, "RL003", f"ворот после {frm.upper()} — {n}: переход на {nxt.upper()} один")
+    if rel.by_track("stage") and "dev" not in gates_by_from:
+        pr.warn(doc.rel, 1, "RL005", "есть дорожка STAGE, но нет ворот dev → stage — кто утверждает переход?")
+    if rel.by_track("prod") and "stage" not in gates_by_from:
+        pr.warn(doc.rel, 1, "RL005", "есть дорожка PROD, но нет ворот stage → prod — кто утверждает переход?")
+    if rel.meta.get("status", "").lower() not in ("черновик", "согласован"):
+        pr.warn(doc.rel, 1, "RL005", f"статус плана релиза «{rel.meta.get('status')}» — Черновик или Согласован")
 
 def graph_gates(pr: bl.Project, source: Path, texts: list) -> None:
     """Полнота по графу БФТ: роли (ПТ), семейства ID, критерии приёмки."""
@@ -201,14 +389,12 @@ def graph_gates(pr: bl.Project, source: Path, texts: list) -> None:
         if a.ac and a.kind != "БТ" and _norm(a.ac)[:40] not in acs:
             pr.warn(pr.map_doc.rel, 1, "BL038", f"{a.id}: критерий приёмки из БФТ «{a.ac[:70]}» — нет в «Критериях приемки» задач; перенеси дословно")
 
-
 def tech(pr: bl.Project, t: bl.BTask, text: str) -> None:
     for pat, what in API_PATTERNS:
         m = pat.search(text)
         if m:
             pr.err(t.rel, 2, "BL018", f"{t.id}: {what} «{m.group(0)}» — устройство API и БД живёт у СА, не на карте")
             return
-
 
 def resolve_source(pr: bl.Project, explicit: str | None) -> Path | None:
     if explicit:
@@ -221,16 +407,22 @@ def resolve_source(pr: bl.Project, explicit: str | None) -> Path | None:
             return base / doc
     return pr.root.parent / doc
 
-
 def run(root: Path, source: str | None, no_source: bool) -> bl.Project:
     pr = bl.parse(root)
     if not pr.errors:
         check(pr, resolve_source(pr, source), no_source, explicit=bool(source))
     return pr
 
-
 # как исправить — по строке на код: печатается под отчётом (`--hints`, ./blueprint.py next и apply)
 HINTS = {
+    "AR001": "«ADR»: паспорт <!-- bft-adr --> (epic_slug, version, revised, status: Черновик/Предложено/Принято/Отклонено/Заменено), «## Контекст» | Участник | Роль в решении |, «## AS-IS» текстом, «## Варианты» | ID | Вариант | Надёжность | Скорость реализации | Соответствие требованиям | Почему нет |, «## Решение TO-BE» | ID | Контракт | Суть решения | Обоснование |, «## Узкие места» | ID | Узкое место | Тип | Нагрузка | Риск | Прощупывание |, «## Компромиссы» | ID | Компромисс | Надёжность | Скорость реализации | Соответствие требованиям | Чем платим |, «## Диаграмма AS-IS/TO-BE» mermaid; «Системные требования»: паспорт <!-- bft-sysreq -->, «## Контракты» | ID | Контракт | Потребитель | Данные контракту | Источник параметров | Преобразования |, «## AS-IS» | ID | Как устроено сейчас | Что меняется |, «## Изменения» | ID | Изменение | Причина |, «## Открытые вопросы» | ID | Кому | Вопрос | Ответ |",
+    "AR002": "документы «ADR» и «Системные требования» — по одному: с паспортом <!-- bft-adr --> / <!-- bft-sysreq --> в проекте один",
+    "AR003": "ADR: вариантов ≥2, у каждого явное «Почему нет», решение TO-BE ссылается на ID варианта; узкие места и компромиссы по трём осям «надёжность vs скорость реализации vs соответствие требованиям»; контракты «Системных требований» — те же, что в «Решении TO-BE», и по каждому три вопроса: данные, источники, преобразования",
+    "AR005": "нет узких мест/компромиссов/диаграммы — допиши разделы; слой Technology на карте без документов «ADR»/«Системные требования» — этап не проводился, создай документы или оставь как есть, если устройство систем не трогается",
+    "SM001": "«Стыки»: паспорт <!-- bft-seams --> (epic_slug, version, revised, status) и таблицы «## Участники» | ID | Стык | Поставщик | Потребитель | Ответственный за контракт |, «## Обязательства» | ID | Кто | Что | Кому | Срок | Формат/место |, «## Контракты» | Стык | Аспект | Требование к фиксации |, «## Контрольные точки» | ID | Точка | Когда | Что проверяется | Кто проводит |, «## Риски» | ID | Риск | Следствие | Владелец | Митигация |",
+    "SM002": "документ «Стыки» один: с паспортом <!-- bft-seams --> в проекте один",
+    "SM003": "участники стыков и обязательств — ID команд из «Команд» (латиницей-слагом) или [УТОЧНИТЬ у кого]; «Кто» + «Кому» обязательства — пара поставщик → потребитель одного из стыков; контракт — ID стыка из «Участников»",
+    "SM005": "стык без обязательств или контракта — допиши строки; команд 2 и больше без документа «Стыки» — этап «Контроль стыковочных работ» не проводился, создай документ или оставь как есть, если стыков нет",
     "BL002": "«Карта»: паспорт <!-- bft-map --> в начале и заголовок «# Карта: …» — так их создаёт bft-backlog-init.py, не трогай",
     "BL003": "«История» с ошибками ST: исправь <epic>-story.md (bft-story-lint.py) и пересоздай проект или правь документ «История»",
     "BL004": "таблицы «## Команды» (| ID | Команда |, ID латиницей) и «## Вопросы» (| ID | Кому | Вопрос | Где | Тип | Ответ |) в плане",
@@ -263,6 +455,10 @@ HINTS = {
     "BL035": "один кандидат — это исполнитель: «команда: id»; сомнение — строкой «Вопросов»",
     "BL033": "UserStory пишется от лица того, кто пользуется результатом карточки (гость, официант, контент-менеджер, PO), а не команды, которая её делает",
     "SN001": "файл экрана — plan/screens/<ID>.md, ID из таблицы «Экраны» «Истории»",
+    "RL001": "«План релиза»: паспорт <!-- bft-release --> (epic_slug, version, revised, status), «## Шаги» | ID | Стенд | Что сделать | Ответственный | Тип | Зависимости | Статус | Критерий готовности |, «## Ворота» | Ворота | Кто утверждает | Критерий перехода |",
+    "RL002": "план релиза один: документ с <!-- bft-release --> в проекте один",
+    "RL003": "шаг: зависимости — ID шагов R1… из «Шагов»; ворота — по одному на переход dev → stage и stage → prod",
+    "RL005": "дорожка без ворот: кто утверждает переход на следующий стенд? шаг без зависимостей: с чего начинается?",
     "SN003": "экран: «# Название», картинки, затем ## Product, ## Design, ## Functions — по порядку, заметки — ### под вкладкой",
     "SN004": "у заметки ### нужен заголовок и текст; заголовки во вкладке не повторяются",
     "SN005": "сценарий Functions: строки **Дано** / **Когда** / **Тогда** — без **Тогда** не сценарий",
@@ -272,14 +468,12 @@ HINTS = {
     "SN023": "у экрана истории нет требований — добавь plan/screens/<ID>.md (можно коротко: по заметке во вкладке)",
 }
 
-
 def hints(pr: bl.Project) -> None:
     codes = sorted({i.code for i in pr.issues if i.code in HINTS}, key=lambda c: (c[:2], c))
     if codes:
         print("как исправить:")
         for c in codes:
             print(f"  {c} — {HINTS[c]}")
-
 
 def report(pr: bl.Project, strict: bool, name: str = "backlog-lint") -> int:
     for i in sorted(pr.issues, key=lambda i: (i.level != "ERROR", i.path, i.line)):
@@ -293,7 +487,6 @@ def report(pr: bl.Project, strict: bool, name: str = "backlog-lint") -> int:
           f"задач вне карты {pr.other}, открытых вопросов {sum(q.open for q in pr.questions)} (блокеров {len(blockers)}) — "
           f"ошибок {errors}, предупреждений {warns}")
     return 1 if errors or (strict and warns) else 0
-
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
@@ -316,6 +509,8 @@ def main() -> int:
         hints(pr)
     return rc
 
+if __name__ == "__main__":
+    sys.exit(main())
 
 if __name__ == "__main__":
     sys.exit(main())
