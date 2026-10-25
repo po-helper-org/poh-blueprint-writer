@@ -5,6 +5,10 @@
   "use strict";
   const D = JSON.parse(document.getElementById("map-data").textContent);
   const { esc, chip } = BPK;
+  /* слой «Архитектура»: данные ADR и системных требований — объявлены до первого
+     использования (mstack ниже читает AR/SR при загрузке, экран — по клику) */
+  const AR = D.adr || null, SR = D.sysreq || null;
+  let arCur = "adr"; /* активная вкладка слоя «Архитектура» — тоже до первого использования */
   /* файлы проекта — от страницы: страница лежит в папке проекта (blueprint.html) или рядом с ней */
   const B = D.base || "", fileURL = p => /^(https?:|data:)/.test(p) ? p : B + p.split("/").map(encodeURIComponent).join("/");
   const body = document.body, grid = document.getElementById("grid");
@@ -44,6 +48,11 @@
   document.getElementById("teams").innerHTML = D.teams.filter(t => used[t.id]).map(t => `<button class="tchip" data-tf="${t.id}" style="--c:${TEAM[t.id].c}"><i></i>${esc(t.name)}<b>${nTasks(used[t.id])}</b></button>`).join("") +
     (used["?"] ? `<button class="tchip" data-tf="?" style="--c:var(--red)"><i class="u"></i>Команда не определена<b>${nTasks(used["?"])}</b></button>` : "");
   if (uniqBlk.length) document.getElementById("bdot").textContent = uniqBlk.length;
+  /* стыки: кнопка меню видна, только если в проекте есть документ «Стыки» */
+  if (D.seams && D.seams.items && D.seams.items.length) {
+    const sb = document.querySelector("[data-seamspanel]"), sc = document.getElementById("seamcnt");
+    sb.hidden = false; sc.hidden = false; sc.textContent = D.seams.items.length;
+  }
 
   /* ---------- меню: всё, что раньше было в шапке, — поверх карты ---------- */
   const burger = document.getElementById("burger");
@@ -369,7 +378,8 @@
     body.dataset.view = v;
     document.querySelectorAll("button[data-view]").forEach(b => b.classList.toggle("on", b.dataset.view === v));
     if (v === "rel") { if (RL) { rlBoard(); gridRel.scrollIntoView({ block: "start" }) } return }
-    if (was === "rel") { window.scrollTo(0, 0) }
+    if (v === "adr") { if (AR || SR) { adrBoard(); adrGrid.scrollIntoView({ block: "start" }) } return }
+    if (was === "rel" || was === "adr") { window.scrollTo(0, 0) }
     const col = was === "see" ? firstVisible(hh, hs, 132) : was === "rel" ? 0 : firstVisible(mh, work, 96);
     if (v === "see") hs.scrollLeft = hh[col] ? hh[col].offsetLeft - 132 : 0;
     else { work.scrollTop = 0; work.scrollLeft = mh[col] ? mh[col].offsetLeft - 96 : 0 }
@@ -377,8 +387,8 @@
   }
   body.dataset.view = "see";
 
-  /* ---------- телефон: шаг за шагом сверху вниз; план релиза — первой секцией ---------- */
-  document.getElementById("mstack").innerHTML = (RL ? `<section class="ms rlms"><div class="mh2"><span class="n">↗</span><div><b>План релиза</b><small>DEV → STAGE → PROD, ворота переходов</small></div></div><div class="wl" id="mrel"></div></section>` : "") + COLS.map((col, c) => {
+  /* ---------- телефон: шаг за шагом сверху вниз; план релиза и архитектура — секциями в начале стека ---------- */
+  document.getElementById("mstack").innerHTML = (RL ? `<section class="ms rlms"><div class="mh2"><span class="n">↗</span><div><b>План релиза</b><small>DEV → STAGE → PROD, ворота переходов</small></div></div><div class="wl" id="mrel"></div></section>` : "") + ((AR || SR) ? `<section class="ms arsms"><div class="mh2"><span class="n">A</span><div><b>Архитектура</b><small>ADR и системные требования: как реализуем</small></div></div><div id="madr"></div></section>` : "") + COLS.map((col, c) => {
     const tasks = D.tasks.filter(t => t.stage === col.id), procs = D.cards.filter(p => p.stage === col.id);
     return `<section class="ms"><div class="mh2"><span class="n">${c === COLS.length - 1 ? "✓" : c + 1}</span><div><b>${esc(col.name)}</b>${col.when ? `<small>${esc(col.when)}</small>` : ""}</div></div>
       <div class="wl">${seenHTML(c)}</div>${tasks.length ? `<span class="lb">Что делаем</span><div class="wl">${tasks.map(taskHTML).join("")}</div>` : ""}
@@ -392,6 +402,23 @@
       return `<span class="lb">${esc(t.title)}</span>` + (steps.map((s, i) => rlCard(s, 0, i)).join("") || '<p class="rlempty">Шагов нет</p>') +
         (gate ? `<div class="rlgate" style="margin:4px -14px 8px"><span class="rlgl">ВОРОТА → ${esc(TRACK_T[gate.to])}</span><span class="rlgw">${esc(gate.who)}</span><span class="rlgc">${esc(gate.criterion)}</span></div>` : "");
     }).join("");
+  }
+  /* телефон: архитектура — те же вкладки и таблицы, диаграмма текстом mermaid;
+     рендер отложен до конца файла (arInit) — adrOpen/sysOpen и табличные хелперы
+     объявлены ниже по файлу, при загрузке сразу их звать нельзя (TDZ) */
+  function arInit() {
+    if (!(AR || SR)) return;
+    const mr = document.getElementById("madr");
+    if (!mr) return;
+    {
+      arCur = "adr";
+      mr.innerHTML = `<div class="arwrap"><div class="arnav">${AR ? `<button data-artab="adr" class="on">ADR</button>` : ""}${SR ? `<button data-artab="sys">Системные требования</button>` : ""}</div>${AR ? adrOpen() : ""}${SR ? sysOpen() : ""}</div>`;
+      mr.querySelectorAll("[data-artab]").forEach(b => b.addEventListener("click", () => {
+        arCur = b.dataset.artab;
+        mr.querySelectorAll("[data-artab]").forEach(x => x.classList.toggle("on", x === b));
+        mr.innerHTML = `<div class="arwrap"><div class="arnav">${AR ? `<button data-artab="adr"${arCur === "adr" ? ' class="on"' : ""}>ADR</button>` : ""}${SR ? `<button data-artab="sys"${arCur === "sys" ? ' class="on"' : ""}>Системные требования</button>` : ""}</div>${arCur === "adr" && AR ? adrOpen() : ""}${arCur === "sys" && SR ? sysOpen() : ""}</div>`;
+      }));
+    }
   }
 
   /* ---------- боковая панель ---------- */
@@ -521,6 +548,55 @@
     mermaidLib().then(m => m.render(`mm${++mmN}`, code)).then(r => { if (box.isConnected) { box.innerHTML = r.svg; box.classList.add("ok") } })
       .catch(() => box.classList.add("raw"));
   }
+
+  /* ---------- слой «Архитектура»: ADR и Системные требования — как реализуем работу ----------
+     Данные — ключи adr и sysreq #map-data (появляются, когда в проекте есть документы «ADR»
+     и «Системные требования»). Слой: варианты и явный выбор TO-BE, узкие места, компромиссы
+     по трём осям, ADR-диаграмма AS-IS/TO-BE (mermaid из проекта), контракты с тремя вопросами
+     системной аналитики, AS-IS/изменения и открытые вопросы. AR/SR объявлены рядом с D вверху файла. */
+  const adrGrid = document.getElementById("adr");
+  const AR_KIND = { "нагрузка": "нагрузка", "надёжность": "надёжность", "данные": "данные" };
+  const th = cols => `<tr>${cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr>`;
+  const tr = cols => `<tr>${cols.map(c => `<td>${esc(c)}</td>`).join("")}</tr>`;
+  const arTable = (title, rows, cols) => `<details class="cmpast arsec"${title === "Решение TO-BE" ? " open" : ""}><summary>${esc(title)} · ${rows.length}</summary>`
+    + `<div class="tbl"><table><thead>${th(cols)}</thead><tbody>${rows.join("")}</tbody></table></div></details>`;
+  function adrOpen(d) {
+    const chosen = new Set((AR.decisions || []).map(x => x.id));
+    const opt = o => tr([o.id + (chosen.has(o.id) ? " ✓" : ""), o.text, o.rel, o.speed, o.fit, chosen.has(o.id) ? "ВЫБРАН: " + (AR.decisions.find(d => d.id === o.id) || {}).why : o.whyNot]);
+    const parts = [];
+    if (AR.asis) parts.push(`<div class="arlead"><h4>AS-IS · ландшафт</h4><p>${esc(AR.asis)}</p></div>`);
+    if ((AR.decisions || []).length) parts.push(arTable("Решение TO-BE", AR.decisions.map(d => tr([d.id + " ✓", d.contract, d.text, d.why])), ["ID", "Контракт", "Суть решения", "Обоснование"]));
+    if ((AR.options || []).length) parts.push(arTable("Варианты", AR.options.map(opt), ["ID", "Вариант", "Надёжность", "Скорость", "Соответствие", "Почему нет"]));
+    if ((AR.bottlenecks || []).length) parts.push(arTable("Узкие места", AR.bottlenecks.map(n => tr([n.id, n.text, AR_KIND[n.kind] || n.kind, n.load, n.risk, n.probe])), ["ID", "Узкое место", "Тип", "Нагрузка", "Риск", "Прощупывание"]));
+    if ((AR.compromises || []).length) parts.push(arTable("Компромиссы", AR.compromises.map(c => tr([c.id, c.text, c.rel, c.speed, c.fit, c.cost])), ["ID", "Компромисс", "Надёжность", "Скорость", "Соответствие", "Чем платим"]));
+    const openQ = (D.questions || []).filter(q => q.open && /^(?:V|C)\d+/.test(q.where));
+    return parts.join("") + (openQ.length ? `<div class="qdiv">Открытые вопросы ADR · ${openQ.length}</div><ul class="qul">${openQ.map(qItem).join("")}</ul>` : "");
+  }
+  function sysOpen() {
+    const parts = [];
+    if ((SR.contracts || []).length) parts.push(arTable("Контракты · три вопроса на каждый", SR.contracts.map(c => tr([c.id, c.contract, c.consumer, c.data, c.source, c.transform])), ["ID", "Контракт", "Потребитель", "Данные контракту", "Источник параметров", "Преобразования"]));
+    if ((SR.asis || []).length) parts.push(arTable("AS-IS", SR.asis.map(x => tr([x.id, x.text, x.change])), ["ID", "Как устроено сейчас", "Что меняется"]));
+    if ((SR.changes || []).length) parts.push(arTable("Изменения", SR.changes.map(x => tr([x.id, x.text, x.why])), ["ID", "Изменение", "Причина"]));
+    if ((SR.questions || []).length) parts.push(arTable("Открытые вопросы", SR.questions.map(q => tr([q.id, q.to, q.text, q.answer || "—"])), ["ID", "Кому", "Вопрос", "Ответ"]));
+    return parts.join("");
+  }
+  function adrBoard() {
+    if (!adrGrid) return;
+    if (!AR && !SR) { adrGrid.innerHTML = ""; return }
+    const status = AR ? AR.status : SR.status;
+    const diag = AR && AR.diagram ? `<div class="ardiag"><h4>ADR-диаграмма AS-IS / TO-BE</h4><div class="bpmnw"><pre>${esc(AR.diagram)}</pre></div><details class="mmcode"><summary>Текст схемы</summary><pre>${esc(AR.diagram)}</pre></details></div>` : "";
+    const tab = (id, on, label, n) => `<button data-artab="${id}"${on ? ' class="on"' : ""}>${esc(label)}${n != null ? ` · ${n}` : ""}</button>`;
+    const nA = AR ? (AR.options || []).length + (AR.bottlenecks || []).length + (AR.compromises || []).length : 0;
+    const nS = SR ? (SR.contracts || []).length + (SR.asis || []).length + (SR.changes || []).length : 0;
+    adrGrid.innerHTML = `<div class="arwrap"><div class="arhead"><span class="arst">${esc(status)}</span><h2>ADR и Системные требования</h2>
+      <p>Как реализуем работу на карте: варианты и выбор TO-BE, узкие места и компромиссы; по каждому контракту — данные, источники, преобразования.</p>
+      <nav class="arnav">${AR ? tab("adr", arCur === "adr", "ADR", nA) : ""}${SR ? tab("sys", arCur === "sys", "Системные требования", nS) : ""}</nav></div>
+      ${diag}${arCur === "adr" && AR ? adrOpen() : ""}${arCur === "sys" && SR ? sysOpen() : ""}</div>`;
+    const box = adrGrid.querySelector(".bpmnw");
+    if (box) drawMermaid(box);
+  }
+  function setArTab(t) { arCur = t; adrBoard(); adrGrid.scrollIntoView({ block: "start" }) }
+
   function openProc(id) {
     const c = PROC[id], t = TASK[c.task], L = LAYER[c.layer], P = c.params || {};
     const row = k => (P[k] || []).length ? `<div class="pp"><span>${PNAME[k]}</span><ul>${P[k].map(it => `<li>${mdInline(it.t)}${it.r.length ? " " + it.r.map(idChip).join(" ") : ""}</li>`).join("")}</ul></div>` : "";
@@ -538,6 +614,35 @@
   function copyText(txt, btn) {
     const lab = btn.textContent, done = () => { btn.textContent = "Скопировано ✓"; setTimeout(() => btn.textContent = lab, 1600) };
     (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(done).catch(() => { const ta = document.createElement("textarea"); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); done() } catch (er) { } ta.remove() });
+  }
+
+  /* ---------- стыки: панель «Контроль стыковочных работ» — из документа «Стыки» проекта ---------- */
+  function seamsPanel() {
+    const S = D.seams || null;
+    if (!S) return;
+    const TEAM_NAME = id => { const t = (D.teams || []).find(x => x.id === id); return t ? esc(t.name) : esc(id) };
+    const th = cols => `<tr>${cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr>`;
+    const td = cols => `<tr>${cols.map(c => `<td>${esc(c)}</td>`).join("")}</tr>`;
+    const table = (title, rows, cols) => `<details class="cmpast"${title === "Участники" ? " open" : ""}><summary>${esc(title)} · ${rows.length}</summary>`
+      + `<div class="tbl"><table><thead>${th(cols)}</thead><tbody>${rows.join("")}</tbody></table></div></details>`;
+    const KIND = { "fe-be": "FE↔BE", "be-be": "BE↔BE", "be-infra": "BE↔Infra", "внешний": "внешний сервис" };
+    const parts = [];
+    parts.push(table("Участники", S.items.map(s => td([s.id, KIND[s.kind] || s.kind, `${TEAM_NAME(s.supplier)} → ${TEAM_NAME(s.consumer)}`, s.owner])),
+      ["ID", "Стык", "Поставщик → потребитель", "Ответственный за контракт"]));
+    if (S.deliveries.length) parts.push(table("Обязательства · кто → что → кому → срок",
+      S.deliveries.map(d => td([d.id, TEAM_NAME(d.who), d.what, TEAM_NAME(d.to), d.when, d.where])),
+      ["ID", "Кто", "Что", "Кому", "Срок", "Формат/место"]));
+    if (S.contracts.length) parts.push(table("Контракты по слоям",
+      S.contracts.map(c => td([c.seam, c.aspect, c.req])), ["Стык", "Аспект", "Требование к фиксации"]));
+    if (S.checkpoints.length) parts.push(table("Контрольные точки",
+      S.checkpoints.map(k => td([k.id, k.name, k.when, k.what, k.who])), ["ID", "Точка", "Когда", "Что проверяется", "Кто проводит"]));
+    if (S.risks.length) parts.push(table("Риски", S.risks.map(r => td([r.id, r.text, r.effect, r.owner, r.mitigation])),
+      ["ID", "Риск", "Следствие", "Владелец", "Митигация"]));
+    const openQ = (D.questions || []).filter(q => q.open && /^S\d+/.test(q.where));
+    panel(`Стыки · ${S.items.length}`, parts.join("") + (openQ.length
+      ? `<div class="qdiv">Открытые вопросы стыков · ${openQ.length}</div><ul class="qul">${openQ.map(qItem).join("")}</ul>` : ""),
+      "seams");
+    side.scrollTop = 0;
   }
 
   /* ---------- инструкции, легенда, блокеры ---------- */
@@ -583,6 +688,9 @@
     const vw = t.closest("button[data-view]"); if (vw) return setView(vw.dataset.view);
     if (t.closest('[data-menu="close"]') || t.closest(".mscrim")) return menu(false);
     if (t.closest("[data-tf-clear]")) return teamFilter("");
+    /* слой «Архитектура»: вкладки ADR / Системные требования, пункт меню */
+    const at = t.closest("[data-artab]"); if (at) return setArTab(at.dataset.artab);
+    if (t.closest("[data-adrmenu]")) { menu(false); if (AR || SR) return setView("adr") }
     /* слой «Релиз»: шаг, ворота, статусы, дорожки, команда для бэклога */
     const rgo = t.closest("[data-rlgo]"); if (rgo) return rlGo(rgo.dataset.rlgo);
     const rgt = t.closest("[data-rlgate]"); if (rgt) return openRelease(rlStepOfTrack(rgt.dataset.rlgate));
@@ -785,6 +893,7 @@
   document.addEventListener("click", e => {
     const p = e.target.closest("[data-cmpanel]"); if (p) { menu(false); return cmPanel() }
     if (e.target.closest("[data-qpanel]")) { menu(false); return qPanel("") }
+    if (e.target.closest("[data-seamspanel]")) { menu(false); return seamsPanel() }
     const sb = e.target.closest("[data-src]"); if (sb) return srcPop ? srcClose() : srcOpen(sb);
     const sc = e.target.closest("[data-srccopy]"); if (sc) return copyText(srcPop.dataset.paths, sc);
     const qq = e.target.closest("[data-q]"); if (qq) { const k = qq.dataset.q; return qPanel(qEdit === k && side.dataset.ctx === "q" ? "" : k) }
@@ -803,5 +912,6 @@
   document.querySelectorAll(".hh,.mh:not(.corner)").forEach(x => x.dataset.cmk = "stage:" + x.querySelector("b").textContent);
   cmPaint();
 
+  arInit(); /* телефон: секция «Архитектура» — после объявления всех хелперов */
   window.BPMAP = { setView, cmPanel, qPanel, qSave, cmTarget, cmPrompt, promptNow, execCmd, openProc, openTask, openSeen, openScreen, openNote, zoom, srcFiles, openRelease, rlBoard, rlCmd };
 })();
