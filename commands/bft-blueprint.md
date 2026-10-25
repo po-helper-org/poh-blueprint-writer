@@ -80,6 +80,14 @@ python3 <skills_path>/bft-blueprint/scripts/bft-backlog-build.py <docs_path>/<ep
 
 Ненулевой код — причина в выводе, исправить через `./backlog.py task edit` или `./backlog.py doc update` и прогнать снова. Сборка по сломанному проекту файлов не пишет.
 
+Приёмка комплекта — последний шаг, без неё результат не отдают:
+
+```bash
+python3 <skills_path>/bft-blueprint/scripts/bft-blueprint-verify.py <docs_path>/<epic_slug>
+```
+
+Она требует страницы со штампом скрипта, проект Backlog.md с задачами и документами и zip. **HTML руками не пишется** — ни диаграмма, ни свой шаблон, ни `service-blueprint.html`: страницы дают только `bft-story-render.py` и `bft-backlog-build.py`.
+
 ### САМОПРОВЕРКА ИСТОРИИ
 
 1. Каждый персонаж — ряд «Знакомьтесь» → шаги → «И с тех пор», слева направо?
@@ -100,4 +108,5 @@ python3 <skills_path>/bft-blueprint/scripts/bft-backlog-build.py <docs_path>/<ep
 7. Работа режется между командами — есть документ «Стыки»: у каждого стыка обязательства и строка контракта (нет `SM003`, `SM005`), участники — команды из «Команд»?
 8. У каждого экрана истории есть документ «F3 · …» в `screens/` с тремя вкладками, Functions — сценарии с **Тогда**, без `SN0xx`?
 9. Задачи и документы созданы `./backlog.py`, у карточек есть UserStory, JobStory и «Процесс», сборка дала `<epic_slug>-map.html` и `<epic_slug>-blueprint.zip`?
-10. На STOP показаны пути к странице и архиву, задачи по командам, блокеры и вопросы «кому — что»?
+10. `bft-blueprint-verify.py` дал 0, в папке нет лишних `.html` (кроме `-story.html` и `-map.html`)?
+11. На STOP показаны пути к странице и архиву, задачи по командам, блокеры и вопросы «кому — что»?
