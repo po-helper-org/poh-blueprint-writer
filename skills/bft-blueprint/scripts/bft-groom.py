@@ -379,9 +379,14 @@ def _stems(q: str) -> set[str]:
 
 
 def _dup(q: str, seen: list[set[str]]) -> bool:
-    """Тот же вопрос другими словами: две трети основ слов общие."""
+    """Тот же вопрос другими словами: две трети основ слов общие. Вопросы о разных ID (ИТ-1 и ИТ-2, P5 и P7) — разные."""
     s = _stems(q)
-    return any(s and len(s & t) >= 0.66 * min(len(s), len(t)) for t in seen)
+    ids = {x for x in s if re.search(r"\d", x)}
+
+    def other(t: set[str]) -> bool:
+        tid = {x for x in t if re.search(r"\d", x)}
+        return bool(ids and tid and ids != tid)
+    return any(s and not other(t) and len(s & t) >= 0.66 * min(len(s), len(t)) for t in seen)
 
 
 # --- слияние -----------------------------------------------------------------------------------------
@@ -432,9 +437,16 @@ def merge(root: Path, wave: str = REFINE) -> int:
     members = set(bg.build(src).members) if src and src.is_file() else None
     applied, rejected, skipped = [], [], []
     outs = sorted((root / GROOM / wave / "out").glob("*.md"))
-    for f in outs:
-        owner = f.stem[2:].upper() if f.stem[:2] in ("r-", "f-") else ""
-        for bid, text in replacements(f.read_text(encoding="utf-8")):
+    queue = [(f, f.stem[2:].upper() if f.stem[:2] in ("r-", "f-") else "", bid, text)
+             for f in outs for bid, text in replacements(f.read_text(encoding="utf-8"))]
+    # ID может переехать в блок, который сливается позже: замена, «теряющая» ID, ждёт второго круга
+    deferred: list = []
+    for rnd in (1, 2):
+        if rnd == 2:
+            queue = [x[:4] for x in deferred]
+            if not queue:
+                break
+        for f, owner, bid, text in queue:
             spans = block_spans(lines)
             own_task = owner and "." not in owner
             ok_target = bid == owner or (own_task and bid not in spans and bid.rsplit(".", 1)[0] == owner)
@@ -451,35 +463,66 @@ def merge(root: Path, wave: str = REFINE) -> int:
                 kids = [i for i in spans if i == owner or i.startswith(owner + ".")]
                 end = max(spans[i][1] for i in kids)
                 trial[end:end] = text.split("\n") + [""]
-            lost = _kept_ids(old, members) - _kept_ids(text, members)  # ID требований и семейств старого блока остаются в новом
+            # ID требований и семейств старого блока остаются в новом — или переехали в другой блок плана (автопилот 4: «ID переезжают вместе с текстом»)
+            lost = _kept_ids(old, members) - _kept_ids(text, members)
+            if lost:   # переезд — только в блок того же вида: из карточки в карточку, из задачи в задачу
+                tsp = block_spans(trial)
+                rest = "\n".join("\n".join(trial[x:y]) for i, (x, y) in tsp.items() if i != bid and ("." in i) == ("." in bid))
+                lost -= _kept_ids(rest, members)
             pl_errs, map_errs = _map_errors(sand, "\n".join(trial))
             # чужие ошибки не в счёт: пока в плане были {{…}}, полная проверка не шла, и они всплывают только сейчас
             new = {e for e in map_errs - base_map if e.split(":", 1)[0] == bid or e.startswith(bid + ".")}
             if lost or len(pl_errs) > len(base_pl) or new:
-                why = (f"теряет {', '.join(sorted(lost))}" if lost else
+                why = (f"теряет {', '.join(sorted(lost))} — оставь их в блоке или перенеси строкой в другой блок того же вида в этом же ответе" if lost else
                        "; ".join(f"{i.code} {i.msg}" for i in pl_errs[len(base_pl):][:3]) if len(pl_errs) > len(base_pl) else
                        "; ".join(sorted(new)[:3]))
-                rejected.append(f"{bid} из {f.name}: {why}")
+                if lost and rnd == 1:
+                    deferred.append((f, owner, bid, text, why))
+                else:
+                    rejected.append(f"{bid} из {f.name}: {why}")
                 continue
             lines, base_map = trial, map_errs
+            if rnd == 2:
+                deferred = [d for d in deferred if (d[0], d[2]) != (f, bid)]
             applied.append(f"{bid} ← {f.name}" + ("" if bid in spans else " (новая карточка)"))
     # вопросы волн: без повторов, «Где» — существующий ID; заготовки каркаса заменяют ответы заполнения
     _, _, q1 = findings(root, AUDIT) if wave == REFINE else ({}, [], [])
     _, _, q2 = findings(root, wave)
     spans = block_spans(lines)
+    kept_q: list[str] = []
     if wave == FILL:
+        # заготовку каркаса заменяет вопрос ответа о том же блоке; ответ без вопросов её не стирает —
+        # вопрос из БФТ остаётся строкой с текстом подсказки, а отчёт просит переписать его фразой
         answered = {f.stem[2:].upper() for f in outs}
-        lines = [ln for ln in lines if not (ln.startswith("| В") and bp.STUB.search(ln) and any(f"| {x} |" in ln for x in answered))]
+        asked: dict[str, list[set[str]]] = {}
+        for _, q, where, _ in q2:
+            asked.setdefault(where.upper().strip(), []).append(_stems(q))
+        out_lines = []
+        for ln in lines:
+            hit = next((x for x in answered if f"| {x} |" in ln), None) if ln.startswith("| В") and bp.STUB.search(ln) else None
+            # заготовку снимает только вопрос ответа о том же (общие ID или две трети слов); вопрос о другом — не замена
+            if hit and _dup(bp.STUB.search(ln).group(0), asked.get(hit, [])):
+                continue
+            if hit:
+                hint = bp.STUB.search(ln).group(0)
+                quote = re.search(r"«(.+)»", hint)
+                ln = ln.replace(hint, "Уточнить: " + (quote.group(1) if quote else hint.strip("{} ")).rstrip(" .…") + "?")
+                kept_q.append(ln)
+            out_lines.append(ln)
+        lines = out_lines
     text = "\n".join(lines)
     qsec = section(lines, "Вопросы")
     have = {re.sub(r"\W+", " ", r.split("|")[3]).strip().lower() for r in qsec.split("\n") if r.startswith("| В")}
     seen = [_stems(r.split("|")[3]) for r in qsec.split("\n") if r.startswith("| В")]
     nums = [int(m) for m in re.findall(r"^\| В(\d+) \|", qsec, re.M)]
-    added = []
+    added, merged_q = [], []
     for who, q, where, kind in q1 + q2:
         key = re.sub(r"\W+", " ", q).strip().lower()
         where = where.upper().strip()
-        if not q or key in have or where not in spans or _dup(q, seen):
+        if not q or key in have:
+            continue
+        if where not in spans or _dup(q, seen):
+            merged_q.append(f"- «{q}» ({where}) — " + ("«Где» не ID блока плана" if where not in spans else "похож на вопрос, который уже есть"))
             continue
         have.add(key)
         seen.append(_stems(q))
@@ -499,7 +542,7 @@ def merge(root: Path, wave: str = REFINE) -> int:
     pl = bp.parse(root)
     report = ["# Отчёт груминга", "",
               f"Ответов волны {wave}: {len(outs)}. Замен применено: {len(applied)}, отклонено: {len(rejected)}, "
-              f"не своих блоков: {len(skipped)}. Новых вопросов: {len(added)}. План до слияния — `{GROOM}/map.before.md`.", ""]
+              f"не своих блоков: {len(skipped)}. Новых вопросов: {len(added)}, не добавлено как повтор: {len(merged_q)}. План до слияния — `{GROOM}/map.before.md`.", ""]
     left = [b.id for b in pl.blocks if bp.STUB.search(block_text(text.split("\n"), block_spans(text.split("\n")), b.id))] if pl.blocks else []
     if left:
         report += ["## Осталось незаполненным — допиши сам или запусти пакеты этих блоков ещё раз", "", "- " + ", ".join(left), ""]
@@ -510,9 +553,14 @@ def merge(root: Path, wave: str = REFINE) -> int:
     report += ["## Критичные находки — проверь, что закрыты", ""] + ([f"- {x}" for x in crit] or ["- нет"]) + [""]
     if added:
         report += ["## Новые вопросы", ""] + added + [""]
+    if merged_q:
+        report += ["## Вопросы не добавлены — проверь, что смысл не потерян; другой вопрос — допиши строкой сам", ""] + merged_q + [""]
+    if kept_q:
+        report += ["## Вопросы-заготовки без ответа — сохранены как есть, перепиши каждый одной фразой", ""] + kept_q + [""]
     (root / GROOM / "report.md").write_text("\n".join(report), encoding="utf-8")
-    print(f"groom merge: применено {len(applied)}, отклонено {len(rejected)}, пропущено {len(skipped)}, вопросов +{len(added)} — "
-          f"{root / GROOM / 'report.md'}")
+    print(f"groom merge: применено {len(applied)}, отклонено {len(rejected)}, пропущено {len(skipped)}, вопросов +{len(added)}"
+          + (f", заготовок вопросов сохранено {len(kept_q)} — перепиши их фразой" if kept_q else "") + f" — {root / GROOM / 'report.md'}")
+    print("groom merge: план слит; ниже — проверка всей карты после слияния (ошибки чинятся в плане, затем ./blueprint.py apply)")
     if pl.issues:
         for i in pl.issues:
             print(f"{i.path}:{i.line}: {i.level} {i.code} {i.msg}")

@@ -33,7 +33,28 @@ def review(root: Path, source: str | None = None) -> int:
     """Проверка карты, адресованная плану: строка плана, код, сообщение; ниже — как исправить."""
     lint = _lint()
     pr = lint.run(root, source, False)
-    pl = bp.parse(root) if (root / bp.PLAN_DIR / "map.md").is_file() else None
+    if not pr.tasks and not (root / bp.PLAN_DIR / "map.md").is_file():
+        # карты ещё нет: «потерянные требования» пустого бэклога — не ошибки, а работа шага 4
+        print("карта: задач нет, плана plan/map.md нет — начни с каркаса")
+        print("дальше: ./blueprint.py skeleton, затем ./blueprint.py groom fill (автопилот, шаг 4)")
+        return 0
+    pf = root / bp.PLAN_DIR / "map.md"
+    stamp = root / ".blueprint" / bp.APPLIED
+    if stamp.is_file():
+        stale = stamp.read_text(encoding="utf-8").strip() != bp.plan_hash(root)
+    else:   # проект до отметки .applied — по времени файлов
+        tasks_dir = (pr.bdir or root / "backlog") / "tasks"
+        newest = max([f.stat().st_mtime for f in tasks_dir.glob("*.md")] + [0]) if tasks_dir.is_dir() else 0
+        stale = pf.is_file() and pf.stat().st_mtime > newest + 1
+    if pf.is_file() and stale and "{{" not in pf.read_text(encoding="utf-8"):
+        # план новее бэклога: проверка бэклога сказала бы про старую карту
+        print(f"карта: план {bp.PLAN_DIR}/map.md новее бэклога — ещё не применён")
+        print("дальше: ./blueprint.py apply — он применит план и проверит карту по строкам плана")
+        return 0
+    if pf.is_file() and "{{" in pf.read_text(encoding="utf-8"):
+        print(f"карта: в {bp.PLAN_DIR}/map.md остались места {{{{…}}}} — ./blueprint.py groom fill или допиши сам, затем ./blueprint.py apply")
+        return 0
+    pl = bp.parse(root) if pf.is_file() else None
     where: dict[str, str] = {}
     if pl:
         for b in pl.blocks:
@@ -58,7 +79,23 @@ def review(root: Path, source: str | None = None) -> int:
     if errors:
         print("дальше: исправь план и снова ./blueprint.py apply")
     else:
-        print("дальше: ./blueprint.py build — схемы BPMN, картинки экранов, страница и архив")
+        page = root / f"{pr.meta.get('epic_slug', '')}-map.html"
+        built = page.is_file() and page.stat().st_mtime >= max(
+            [f.stat().st_mtime for d in (bp.PLAN_DIR, "backlog") for f in (root / d).rglob("*.md")] + [0])
+        if built:
+            import bft_contracts as bc
+            pr.issues = []
+            cs = bc.parse(pr)
+            bc.check(pr, cs)
+            ct_err = sum(i.level == "ERROR" for i in pr.issues)
+            ct_open = sum(i.code == "CT020" for i in pr.issues)
+            if ct_err or ct_open:
+                print(f"дальше: карта собрана — {page.name}; контракты стыков: ошибок {ct_err}, стыков без контракта {ct_open} — "
+                      "./blueprint.py contracts skeleton, затем ./blueprint.py contracts")
+            else:
+                print(f"готово: карта {page.name} собрана, контрактов {len(cs)} без ошибок — итог по шагу 8 автопилота")
+        else:
+            print("дальше: ./blueprint.py build — схемы BPMN, картинки экранов, страница и архив")
     return 1 if errors else 0
 
 

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="bft-blueprint prototype">
+<title>dineclub-restart: Перезапуск акции DineClub — «билет Acme Tickets = скидка 10%» — прототип</title>
+<link rel="stylesheet" href="runtime.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><b>Прототип</b> <span id="title"></span></div>
+  <nav class="apps" id="apps" aria-label="Приложения"></nav>
+  <div class="tools">
+    <span class="api" id="api" title="Откуда приходят ответы">MockAPI</span>
+    <button id="review" aria-pressed="false" title="Клик по точке экрана — замечание">Замечания <span id="pins">0</span></button>
+    <button id="export" title="Скачать замечания: review.json и review.md">Выгрузить</button>
+  </div>
+</header>
+<main class="layout">
+  <aside class="steps" id="steps" aria-label="Шаги"></aside>
+  <section class="stage">
+    <div class="step-head" id="stepHead"></div>
+    <div class="device-wrap"><div class="device" id="device"></div></div>
+    <div class="nav">
+      <button id="prev">← Назад</button>
+      <span id="pos"></span>
+      <button id="next" class="primary">Далее →</button>
+    </div>
+  </section>
+  <aside class="panel" id="panel" aria-label="Как это работает"></aside>
+</main>
+<div class="pop" id="pop" hidden>
+  <textarea id="popText" rows="3" placeholder="Что не так в этой точке?"></textarea>
+  <div><button id="popSave" class="primary">Сохранить</button> <button id="popCancel">Отмена</button></div>
+</div>
+<script src="spec.js"></script>
+<script src="runtime.js"></script>
+</body>
+</html>

@@ -352,8 +352,12 @@ PL="$tmp/plan"; mkdir -p "$PL" && cp -r "$BGOLD" "$PL/g" && rm -rf "$PL/g/plan"
 python3 "$DIR/scripts/bft-plan.py" export "$PL/g" >/dev/null 2>&1 && diff -r "$PL/g/plan" "$DIR/examples/dineclub-restart-plan" >/dev/null \
   && ok "автопилот · export: план эталона совпадает с examples/dineclub-restart-plan" \
   || fail "автопилот · план эталона разошёлся — пересобери: bft-plan.py export (examples/dineclub-restart-plan)"
-cp -r "$PL/g" "$PL/same" && python3 "$DIR/scripts/bft-plan.py" apply "$PL/same" >/dev/null 2>&1 && diff -r "$PL/g" "$PL/same" >/dev/null \
+cp -r "$PL/g" "$PL/same" && python3 "$DIR/scripts/bft-plan.py" apply "$PL/same" >/dev/null 2>&1 && diff -r -x plan.applied "$PL/g" "$PL/same" >/dev/null \
   && ok "автопилот · apply того же плана — файлы не меняются" || fail "автопилот · apply не идемпотентен"
+python3 "$DIR/scripts/bft-plan.py" next "$PL/same" 2>&1 | grep -q "ещё не применён" && fail "автопилот · next после apply считает план неприменённым" \
+  || { sed -i '0,/^| В1 |/s/^| В1 | \([^|]*\)| \([^|]*\)|/| В1 | \1| \2(правка) |/' "$PL/same/plan/map.md"
+       python3 "$DIR/scripts/bft-plan.py" next "$PL/same" 2>&1 | grep -q "ещё не применён" \
+       && ok "автопилот · next: план после apply — применён; правка плана без apply — «ещё не применён»" || fail "автопилот · next не видит правку плана"; }
 cp -r "$PL/g" "$PL/new" && rm -f "$PL/new/backlog/tasks/"*.md "$PL/new/backlog/docs/screens/"*.md
 python3 "$DIR/scripts/bft-plan.py" apply "$PL/new" >/dev/null 2>&1; rc=$?
 python3 - "$DIR/scripts" "$PL/g" "$PL/new" <<'PY' && [ "$rc" -eq 0 ] && ok "автопилот · apply с нуля: та же карта, что у эталона" || fail "автопилот · apply с нуля дал другую карту (rc=$rc)"
@@ -560,14 +564,16 @@ python3 "$DIR/scripts/bft-skeleton.py" "$SK/p" >/dev/null 2>&1; M="$SK/p/plan/ma
 ( for x in БТ-1 ПТ-А1 ПТ-А3 ПТ-B1 ПТ-B2 ПТ-C2 ИТ-3 ФТ-1 ФТ-6 НФТ-1 НФТ-3 P1 P3 P8 I1 I4 G1 G3; do grep -q "$x" "$M" || exit 1; done ) \
   && grep -q "^- Повторная передача чека не создаёт вторую продажу (ФТ-3)" "$M" \
   && grep -q "^- Когда месяц закончился, хочу сформировать акты всем партнёрам одной операцией, чтобы не сводить таблицы. (ПТ-B1)" "$M" \
-  && grep -q "P3 цена закупки: Агентская –, Комиссионная –, Перепродажа ●" "$M" \
-  && grep -qF "Экран «Закрытие месяца»: Список партнёров периода, статус акта, расхождения сверки (ИТ-3)" "$M" \
+  && grep -q "P3 цена закупки: не применяется: агентская, комиссионная; обязателен: перепродажа" "$M" \
+  && grep -qF "Управление:** Список партнёров периода, статус акта, расхождения сверки (ИТ-3)" "$M" \
+  && [ -f "$SK/p/plan/screens/A1.md" ] && grep -q "^Источник: ИТ-" "$SK/p/plan/screens/A1.md" \
   && [ -z "$(python3 "$DIR/scripts/bft-plan.py" apply "$SK/p" 2>&1 | grep ERROR | grep -v PL007 | grep -v 'вид «{{')" ] \
   && ok "каркас · каждый атом и ID семейства на месте; критерии, JobStory, матрица — дословно; ошибки только {{…}}" || fail "каркас · раскладка"
-cp -r "$SK/p" "$SK/f" && python3 - "$SK/f/plan/map.md" <<'PY'
+cp -r "$SK/p" "$SK/f" && rm -f "$SK/f/plan/screens/"*.md && python3 - "$SK/f/plan/map.md" <<'PY'
 import re, sys
 p = sys.argv[1]; t = open(p, encoding="utf-8").read()
 t = re.sub(r"^вид: \{\{.*\}\}$", "вид: создать", t, flags=re.M)
+t = re.sub(r"^этап: \{\{.*\}\}$", "этап: D", t, flags=re.M)
 t = re.sub(r"^- \{\{4–10 шагов.*\}\}$", "- Менеджер партнёров: Открывает профиль\n- ? Данные полные\n  - да → Система продаж: Сохраняет профиль\n  - нет → конец\n- Менеджер партнёров: Видит результат", t, flags=re.M)
 t = re.sub(r"^- \{\{исключение.*\}\}\n", "", t, flags=re.M)
 # план релиза: перечисления (тип, статус) — допустимыми значениями, остальное — как обычно
@@ -590,16 +596,18 @@ python3 "$DIR/scripts/bft-groom.py" fill "$SK/p" >/dev/null 2>&1; FO="$SK/p/groo
 n_pk=$(ls "$SK/p/groom/0-fill"/f-*.md | wc -l); n_bl=$(grep -c "^## BP-" "$M")
 fblk() { awk -v h="^## $1 " '$0 ~ h {f=1; print; next} f && /^## / {exit} f' "$SK/f/plan/map.md"; }
 { printf '## Замены\n'; fblk BP-1.1; } > "$FO/f-BP-1.1.md"
-{ printf '## Вопросы\n| Кому | Вопрос | Где | Тип |\n| --- | --- | --- | --- |\n| PO | Кто подтверждает договор партнёра перед активацией? | BP-1.2 | вопрос |\n| PO | Кто подтверждает договор партнёра до активации профиля? | BP-1.2 | вопрос |\n\n## Замены\n'; fblk BP-1.2; } > "$FO/f-BP-1.2.md"
-{ printf '## Замены\n'; fblk BP-2.1 | sed 's/P3 цена закупки[^;]*;//'; } > "$FO/f-BP-2.1.md"
+{ printf '## Вопросы\n| Кому | Вопрос | Где | Тип |\n| --- | --- | --- | --- |\n| PO | Кто подтверждает договор партнёра перед активацией? | BP-2.1 | вопрос |\n| PO | Кто подтверждает договор партнёра до активации профиля? | BP-2.1 | вопрос |\n\n## Замены\n'; fblk BP-2.1; } > "$FO/f-BP-2.1.md"
+{ printf '## Замены\n'; fblk BP-5.1 | sed 's/P3 цена закупки[^;]*;//'; } > "$FO/f-BP-5.1.md"
+{ printf '## Замены\n'; fblk BP-6.1; } > "$FO/f-BP-6.1.md"   # ответ без «Вопросов»: заготовка вопроса G2 не теряется
 python3 "$DIR/scripts/bft-groom.py" merge "$SK/p" fill >/dev/null 2>&1
-[ "$n_pk" -eq "$n_bl" ] && grep -q "^- BP-1.1 ← f-BP-1.1.md" "$SK/p/groom/report.md" && grep -q "^- BP-1.2 ← f-BP-1.2.md" "$SK/p/groom/report.md" && grep -q "BP-2.1 из f-BP-2.1.md: теряет P3" "$SK/p/groom/report.md" \
+[ "$n_pk" -eq "$n_bl" ] && grep -q "^- BP-1.1 ← f-BP-1.1.md" "$SK/p/groom/report.md" && grep -q "^- BP-2.1 ← f-BP-2.1.md" "$SK/p/groom/report.md" && grep -q "BP-5.1 из f-BP-5.1.md: теряет P3" "$SK/p/groom/report.md" \
   && grep -q "Осталось незаполненным" "$SK/p/groom/report.md" && ! awk '/^## BP-1.1 /{f=1;next} f&&/^## /{exit} f' "$M" | grep -q "{{" \
   && [ "$(grep -c 'Кто подтверждает договор партнёра' "$M")" -eq 1 ] \
-  && ok "каркас · groom fill: пакет на блок; merge fill берёт заполненный блок, потерю P3 отклоняет, повтор вопроса — одной строкой" || fail "каркас · groom fill/merge fill"
-cp -r "$SK/f" "$SK/cand" && sed -i '0,/^команда: prodazh$/s//команда: кандидаты: prodazh, kataloga/' "$SK/cand/plan/map.md"
+  && grep -q "^| В[0-9]* | PO | Уточнить: Партнёры-банки передают продажи раз в сутки пакетом.*| BP-6.1 |" "$M" && grep -q "Вопросы-заготовки без ответа" "$SK/p/groom/report.md" \
+  && ok "каркас · groom fill: пакет на блок; merge fill берёт заполненный блок, потерю P3 отклоняет, повтор вопроса — одной строкой, вопрос без ответа сохраняет" || fail "каркас · groom fill/merge fill"
+cp -r "$SK/f" "$SK/cand" && sed -i '0,/^команда: sales$/s//команда: кандидаты: sales, cat/' "$SK/cand/plan/map.md"
 out="$(python3 "$DIR/scripts/bft-plan.py" apply "$SK/cand" 2>&1)"
-! grep -qE "PL003|BL006" <<<"$out" && grep -rq "кандидат:kataloga" "$SK/cand/backlog/tasks" \
+! grep -qE "PL003|BL006" <<<"$out" && grep -rq "кандидат:cat" "$SK/cand/backlog/tasks" \
   && ok "план · «команда: кандидаты: a, b» читается как кандидаты" || fail "план · «команда: кандидаты:»"
 
 # план релиза: round-trip — разделы «Релиз» и «Ворота релиза» через apply/export, идемпотентность, гейты RL
@@ -779,8 +787,115 @@ python3 "$DIR/scripts/bft-groom.py" merge "$GR" >/dev/null 2>&1
 R="$GR/groom/report.md"
 [ -f "$GR/groom/1-audit/a-coverage.md" ] && ls "$GR/groom/2-refine/r-BP-1.1.md" >/dev/null \
   && grep -q "^## BP-1.1 · Ресторан подаёт заявку и попадает в каталог" "$GR/plan/map.md" && grep -q "Кто проверяет заявку ресторана?" "$GR/plan/map.md" \
-  && grep -q "BP-2 из r-BP-2.md: теряет НФТ-2, ФТ-4" "$R" && grep -q "BP-2.1 из r-BP-2.1.md: .*BL" "$R" \
+  && grep -q "BP-2 из r-BP-2.md: теряет НФТ-2 — " "$R" && grep -q "BP-2.1 из r-BP-2.1.md: .*BL" "$R" \
   && ok "груминг · audit → refine → merge: годная замена и вопрос — в план, ломающие — в отчёт" || fail "груминг · audit/refine/merge"
+# ID переезжает в блок, который сливается позже (r-BP-3 после r-BP-2): второй круг слияния принимает обе замены
+GD="$tmp/groom2" && cp -r "$BGOLD" "$GD" && rm -rf "$GD/plan"
+python3 "$DIR/scripts/bft-groom.py" audit "$GD" >/dev/null 2>&1 && python3 "$DIR/scripts/bft-groom.py" refine "$GD" >/dev/null 2>&1
+OD="$GD/groom/2-refine/out" && mkdir -p "$OD"
+blk2() { awk -v h="^## $1 " '$0 ~ h {f=1; print; next} f && /^## / {exit} f' "$GD/plan/map.md"; }
+{ printf '## Замены\n'; blk2 BP-2 | sed 's/^Требования БФТ: ФТ-3, ФТ-4, НФТ-2/Требования БФТ: ФТ-3, ФТ-4/'; } > "$OD/r-BP-2.md"
+{ printf '## Замены\n'; blk2 BP-3 | sed 's/^\(Требования БФТ: .*\)$/\1, НФТ-2/'; } > "$OD/r-BP-3.md"
+python3 "$DIR/scripts/bft-groom.py" merge "$GD" >/dev/null 2>&1
+grep -q "^- BP-2 ← r-BP-2.md" "$GD/groom/report.md" && grep -q "^- BP-3 ← r-BP-3.md" "$GD/groom/report.md" \
+  && ok "груминг · ID переехал в блок, слитый позже, — второй круг принимает замену" || fail "груминг · отложенная замена"
+( cd "$GD" && ./backlog.py task archive BP-19.1 >/dev/null && [ -f backlog/archive/tasks/bp-19.1*.md ] && ! ./backlog.py task list --plain | grep -q "BP-19.1" ) \
+  && ok "CLI · task archive убирает карточку в backlog/archive/tasks" || fail "CLI · task archive"
+
+# слой employee: официант на виду у гостя в слое technology — BL041
+EM="$tmp/emp" && cp -r "$BGOLD" "$EM" && sed -i 's/^  - layer:employee$/  - layer:technology/' "$EM/backlog/tasks/bp-15.1 "*.md
+python3 "$DIR/scripts/bft-backlog-lint.py" "$EM" --no-source 2>&1 | grep -q "WARN BL041 BP-15.1" \
+  && ! python3 "$DIR/scripts/bft-backlog-lint.py" "$BGOLD" --no-source 2>&1 | grep -q BL041 \
+  && ok "карта · BL041: сотрудник на виду у клиента в technology — подсказка employee" || fail "карта · BL041"
+
+# каркас на других БФТ: экран другого этапа — своя задача; сотрудник на виду у клиента — employee
+LY="$tmp/ly" && mkdir -p "$LY/faq" "$LY/car"
+cp "$FIX/golden_deep_document.md" "$LY/faq/direct-faq.md" && cp "$FIX/faq_story.md" "$LY/faq/direct-faq-story.md"
+cp "$FIX/car_deep_document.md" "$LY/car/car-service-booking.md" && cp "$FIX/car_story.md" "$LY/car/car-service-booking-story.md"
+for x in faq/direct-faq car/car-service-booking; do
+  python3 "$DIR/scripts/bft-backlog-init.py" "$LY/$x-story.md" --dir "$LY/$x-p" --auto >/dev/null 2>&1; python3 "$DIR/scripts/bft-skeleton.py" "$LY/$x-p" >/dev/null 2>&1
+done
+FM="$LY/faq/direct-faq-p/plan/map.md"; CM="$LY/car/car-service-booking-p/plan/map.md"
+! grep "^Требования БФТ:" "$FM" | grep -q "ИТ-1.*ИТ-2\|ИТ-2.*ИТ-1" \
+  && [ "$(grep -c '^слой: employee' "$CM")" -eq 1 ] && grep -A1 "^слой: employee" "$CM" | grep -q "^экраны: D1" \
+  && ! grep -B3 "^слой: employee" "$FM" | grep -q employee \
+  && grep -A1 "^## BP-[0-9]* · Задержка публикации изменений" "$FM" | grep -q "^этап: B" \
+  && ok "каркас · экраны разных этапов — в разных задачах; этап без задачи получает задачу своего требования; мастер-приёмщик при клиенте — employee, экран клиента — technology" || fail "каркас · раскладка по этапам и employee"
+tm() { awk -v h="^## $1 " '$0 ~ h {f=1; next} f && /^команда: / {print $2; exit} f && /^## / {exit}' "$CM"; }
+[ "$(tm BP-2)" = int ] && [ "$(tm BP-3)" = int ] && [ "$(tm BP-10)" = pay ] && [ "$(tm BP-13)" = loy ] && [ "$(tm BP-1)" = loy ] \
+  && [ "$(grep -c '^кандидаты:' "$SK/p/plan/map.md")" -eq 0 ] \
+  && ok "каркас · команда по «Зависимостям»: редкое слово весит больше общего, окончания не мешают" || fail "каркас · подбор команды"
+
+# контракты стыков (Design First): эталон строго чист, на сломанной копии — каждый код CT
+CTL="$DIR/scripts/bft-contracts.py"
+python3 "$CTL" lint "$BGOLD" --strict >/dev/null 2>&1 \
+  && ok "контракты · эталон DineClub: 7 контрактов, 0 ошибок и предупреждений" || fail "контракты · эталон не проходит --strict"
+( cd "$BGOLD" && ./blueprint.py contracts >/dev/null 2>&1 ) && ok "контракты · ./blueprint.py contracts" || fail "контракты · ./blueprint.py contracts"
+CB="$tmp/ct" && cp -r "$BGOLD" "$CB" && C="$CB/contracts"
+sed -i 's/^boundary: external/boundary: outer/; s/| barcode | string | да | path | ФТ-1, извне: штрихкод с билета Acme Tickets |/| bar code | string | да | path | |/; s/"discount": 10, //; /TeamA --> Приложение-сканер/d; s/| 1 | Acme Tickets | barcode |/| 1 | Acme Tickets | ticket_no |/' "$C/C-3.md"
+sed -i 's/штрихкод, ресторан/PRIMARY KEY штрихкод, ресторан/; s/^cards: .*/cards: BP-99.1/' "$C/C-5.md"
+sed -i 's|^op: .*|op: GET /v1/restaurants/{rid}|; s/"walk_minutes": 6/"walk_minutes": "шесть минут пешком от площадки (ИТ-4)"/; s/^caller: Витрина$/caller: Каталог UnitB/; s/^callee: Каталог UnitB$/callee: Витрина/' "$C/C-2.md"
+sed -i 's/ФТ-19, извне: ID партнёра в DineClub/ФТ-19/' "$C/C-6.md"
+sed -i '/^## Цепочка/,$d; s/^cards: .*/cards: BP-17.1/' "$C/C-4.md"
+sed -i '/^## Ошибки/,/^## Sequence/{/^| 4/d}' "$C/C-2.md"
+sed -i 's/^| Хранилище | Какие данные нужны | Источник |/| Хранилище | Данные | Источник |/' "$C/C-5.md"
+cp "$C/C-1.md" "$C/C-7.md"
+out="$(python3 "$CTL" lint "$CB" --source "$FIX/golden_deep_document.md" 2>&1)"; rc=$?
+miss=""; for c in CT001 CT002 CT003 CT004 CT005 CT006 CT007 CT008 CT009 CT010 CT012 CT014 CT015 CT020 CT021 CT022; do grep -q " $c " <<<"$out" || miss="$miss $c"; done
+[ "$rc" -eq 1 ] && [ -z "$miss" ] && ok "контракты · сломанная копия: CT001–CT015, CT020–CT022" || fail "контракты · нет в выводе:$miss (rc=$rc)"
+# каркас: стык без контракта (C-6 убран) → CT020; skeleton заводит C-8 на ту же пару карточек, незаполненный — только CT011
+CS="$tmp/cts" && cp -r "$BGOLD" "$CS" && rm "$CS/contracts/C-6.md"
+out1="$(python3 "$CTL" lint "$CS" 2>&1)"; python3 "$CTL" skeleton "$CS" >/dev/null 2>&1; out2="$(python3 "$CTL" lint "$CS" 2>&1)"
+grep -q "WARN CT020 BP-1.1 → BP-2.1" <<<"$out1" && grep -q "^cards: BP-1.1, BP-2.1" "$CS/contracts/C-8.md" && grep -q "ERROR CT011 C-8" <<<"$out2" \
+  && [ "$(grep -c " ERROR " <<<"$out2")" -eq 1 ] && ! grep -q CT020 <<<"$out2" && [ "$(ls "$CS/contracts" | wc -l)" -eq 8 ] \
+  && ok "контракты · skeleton: стык без контракта → каркас C-8 с картой в шапке, незаполненный — только CT011" || fail "контракты · skeleton"
+# внешний стык текстом («из внешней системы»), без карточки на той стороне: CT020 и external-каркас на эту карточку
+CX="$tmp/ctx" && cp -r "$BGOLD" "$CX" && sed -i '0,/^- \*\*Вход:\*\* /s//- **Вход:** Рейтинги из внешней системы; /' "$CX/backlog/tasks/bp-9.1 "*.md
+out1="$(python3 "$CTL" lint "$CX" 2>&1)"; python3 "$CTL" skeleton "$CX" >/dev/null 2>&1
+grep -q "WARN CT020 BP-9.1 «Рейтинги из внешней системы»: внешний стык" <<<"$out1" && grep -q "^boundary: external" "$CX/contracts/C-8.md" && grep -q "^cards: BP-9.1$" "$CX/contracts/C-8.md" \
+  && ok "контракты · внешняя система текстом во «Входе» — внешний стык и external-каркас" || fail "контракты · внешний стык текстом"
+# not-seams.md: связь с причиной — не стык (CT020 молчит), строка без причины или не про стык — CT013
+CW="$tmp/ctw" && cp -r "$BGOLD" "$CW" && rm "$CW/contracts/C-6.md"
+printf '| Откуда | Куда | Почему не обмен данными |\n| --- | --- | --- |\n| BP-1.1 | BP-2.1 | список ресторанов DineClub передаёт UnitB вручную раз в неделю |\n| BP-4.1 | BP-7.1 | — |\n' > "$CW/contracts/not-seams.md"
+out="$(python3 "$CTL" lint "$CW" 2>&1)"
+! grep -q "CT020 BP-1.1 → BP-2.1" <<<"$out" && grep -q "ERROR CT013 BP-4.1 → BP-7.1" <<<"$out" \
+  && ok "контракты · not-seams.md: связь с причиной — не стык, строка не про стык — CT013" || fail "контракты · not-seams.md"
+
+# прототип по контрактам: каркас раскладывает вызовы, коды PT, сборка байт в байт, замечания → вопросы карты
+PTL="$DIR/scripts/bft-proto.py"
+python3 "$PTL" lint "$BGOLD" --strict >/dev/null 2>&1 && ok "прототип · эталон DineClub: план показа без ошибок и предупреждений" || fail "прототип · эталон не проходит --strict"
+PB="$tmp/proto" && cp -r "$BGOLD" "$PB" && python3 "$PTL" build "$PB" >/dev/null 2>&1 \
+  && diff -r "$PB/prototype" "$BGOLD/prototype" >/dev/null && [ -z "$(python3 "$PTL" build "$PB" 2>&1 | grep -v 'обновлено файлов 0' | grep 'обновлено')" ] \
+  && python3 -m py_compile "$PB/prototype/api/main.py" && node --check "$PB/prototype/web/runtime.js" 2>/dev/null \
+  && grep -q '"C-3"' "$PB/prototype/api/spec.json" && grep -q "image: python:3.12-slim" "$PB/prototype/docker-compose.yml" \
+  && ok "прототип · сборка: web, api, docker-compose — совпадает с эталоном, повтор ничего не меняет, main.py и runtime.js компилируются" || fail "прототип · сборка"
+pblk() { awk -v h="^## $1 " '$0 ~ h {f=1; print; next} f && /^## / {exit} f' "$PB/prototype/spec.md"; }
+python3 "$PTL" skeleton "$PB" --force >/dev/null 2>&1
+pblk Ш13 | grep -q "^вызов: C-3$" && pblk Ш13 | grep -q "^экраны: F2$" && pblk Ш13 | grep -q "^успех: F3$" && pblk Ш13 | grep -q "^отказ: F4 = TICKET_NOT_FOUND$" \
+  && pblk Ш4 | grep -q "^вызов: C-1, C-2$" && pblk Ш5 | grep -q "^вызов: —$" && pblk Ш14 | grep -q "^вызов: —$" \
+  && pblk C-7 | grep -q "^приложение: backend$" && [ "$(grep -n '^## C-7 ' "$PB/prototype/spec.md" | cut -d: -f1)" -lt "$(grep -n '^## Ш5 ' "$PB/prototype/spec.md" | cut -d: -f1)" ] \
+  && pblk Ш15 | grep -q "^вызов: C-4$" && pblk Ш15 | grep -q "^успех: F5$" \
+  && [ -z "$(grep '{{' "$PB/prototype/spec.md" | grep -v '^ввод: ')" ] \
+  && ok "прототип · каркас: сканер запускает C-3 (успех F3, отказ F4), фото чека — на своём шаге, GET — на экранах данных, триггер — шаг за кадром перед результатом; модели — только значения" || fail "прототип · каркас"
+cp "$BGOLD/prototype/spec.md" "$PB/prototype/spec.md"
+sed -i '0,/^приложение: staff$/s//приложение: officiant/; s/^экраны: D1, D2$/экраны: D1, X9/; s/^вызов: C-4$/вызов: C-4, C-99/; s/^ввод: barcode = 4600123456789; restaurant_id = r-12; photo/ввод: barcode = 4600123456789; restaurant_id = r-12; color = red; photo/; s/^показать: receipt_id, compensation$/показать: receipt_id, compensation, price/; s/^отказ: — = RECEIPT_EXISTS$/отказ: — = NOPE/; s/^вызов: C-6$/вызов: —/' "$PB/prototype/spec.md"
+printf '\n## Ш99 · Лишний шаг\nприложение: client\nприложение: client\nэкраны: —\nвызов: {{C-1 или —}}\n' >> "$PB/prototype/spec.md"
+out="$(python3 "$PTL" lint "$PB" 2>&1)"; miss=""
+for c in PT001 PT002 PT003 PT004 PT005 PT006 PT007 PT008 PT009 PT020; do grep -q " $c " <<<"$out" || miss="$miss $c"; done
+[ -z "$miss" ] && ok "прототип · сломанный план показа: PT001–PT009, PT020" || fail "прототип · нет в выводе:$miss"
+python3 - "$DIR/scripts" <<'PY' && ok "прототип · глагол шага ↔ вид операции: «Добавляю» — POST, «Переношу» — cancel, «Оплачиваю» — платёж, «запись» — не глагол" || fail "прототип · глагол шага ↔ операция"
+import sys; sys.path.insert(0, sys.argv[1])
+import bft_proto as b
+assert b.op_kind("POST /v1/questions") == "create" and b.op_kind("PATCH /v1/questions/{id}") == "update"
+assert b.op_kind("POST /v1/bookings/{ref}/cancel") == "cancel" and b.op_kind("POST /v1/invoices/{id}/payments") == "pay"
+assert b.step_kinds("Добавляю вопрос на карточку") == {"create"} and "cancel" in b.step_kinds("Передумал — переношу запись")
+assert "create" not in b.step_kinds("Передумал — переношу запись") and b.step_kinds("Оплачиваю счёт") == {"pay"}
+PY
+PR="$tmp/proto-review" && cp -r "$BGOLD" "$PR" && python3 "$DIR/scripts/bft-plan.py" export "$PR" >/dev/null 2>&1
+printf '{"pins": [{"step": "Ш13", "screen": "F2", "block": "Сканировать", "text": "Кнопка мелкая для официанта", "x": 50, "y": 80}]}' > "$tmp/review.json"
+python3 "$PTL" review "$PR" "$tmp/review.json" >/dev/null 2>&1 \
+  && grep -q "^| В[0-9]* | PO | Кнопка мелкая для официанта (прототип Ш13, экран F2, «Сканировать») | BP-15.1 | вопрос | — |" "$PR/plan/map.md" \
+  && ok "прототип · замечание по точке экрана → вопрос карты на карточке экрана" || fail "прототип · review"
 
 # приёмка комплекта: страницы со штампом скрипта, проект с задачами, zip; рукописный HTML не принимается
 VD="$tmp/verify/dineclub-restart" && mkdir -p "$VD" && cp "$SGOLD" "$VD/dineclub-restart-story.md" && cp -r "$BGOLD" "$VD/dineclub-restart-blueprint"

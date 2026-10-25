@@ -109,6 +109,32 @@ export'ом; проверки — коды AR001–AR005. Шаблоны — `te
 эталон — [`examples/dineclub-restart-blueprint/`](skills/bft-blueprint/examples/dineclub-restart-blueprint)
 и его страница [`examples/dineclub-restart-map.html`](skills/bft-blueprint/examples/dineclub-restart-map.html).
 
+**Контракты стыков (Design First)** — `contracts/C-N.md` в проекте карты: кто кого вызывает, поля
+запроса и ответа с источником в БФТ, пример ответа, ошибки, Sequence, цепочка преобразований за
+кадром и какие данные нужны из хранилища. Проверка `./blueprint.py contracts` (коды CT) ловит стык
+команд без контракта, поле без требования, вызов без ответа, вход цепочки ниоткуда, SQL в «Данных».
+Стандарт — [`resources/contracts.md`](skills/bft-blueprint/resources/contracts.md), эталон — семь
+контрактов DineClub в [`contracts/`](skills/bft-blueprint/examples/dineclub-restart-blueprint/contracts).
+## Прототип по контрактам
+
+`/bft-blueprint <epic> --prototype` — из карты и контрактов собирается показ для заказчика:
+история через экраны шаг за шагом, где на каждом стыке видно Sequence, метод, поля запроса и ответа
+с источником в БФТ, ошибки, цепочку за кадром и какие данные нужны из хранилища.
+
+```bash
+./blueprint.py prototype skeleton   # план показа prototype/spec.md: шаги, вызовы, экраны успеха и отказа
+./blueprint.py prototype lint       # коды PT
+./blueprint.py prototype build      # prototype/: web, api (FastAPI одним файлом), docker-compose.yml
+cd prototype && docker compose up   # http://localhost:8080, MockAPI — http://localhost:8000/docs
+```
+
+Экраны берутся из «Истории» как есть, данные — из контрактов, раскладку шагов и вызовов делает каркас:
+модель вписывает только значения для демо. Без Docker — `prototype/web/index.html`, MockAPI отвечает в
+браузере. Замечания — клик по точке экрана, выгрузка `review.json`, `./blueprint.py prototype review` —
+вопросы на карте. Правила — [`resources/prototype.md`](skills/bft-blueprint/resources/prototype.md),
+эталон — [`prototype/`](skills/bft-blueprint/examples/dineclub-restart-blueprint/prototype) DineClub,
+замысел — [`docs/prototype-design.md`](docs/prototype-design.md).
+
 Пошагово, от БФТ до карты, — [`docs/step-by-step.md`](docs/step-by-step.md).
 
 ## Автопилот: один промпт
@@ -125,7 +151,8 @@ export'ом; проверки — коды AR001–AR005. Шаблоны — `te
 5. `./blueprint.py apply` — до нуля ошибок, с адресом строки плана и подсказкой к каждому коду;
 6. рубрика качества и сводка `./blueprint.py next`; для глубины — груминг роем агентов
    `./blueprint.py groom audit|refine|merge` ([`resources/grooming.md`](skills/bft-blueprint/resources/grooming.md));
-7. сборка.
+7. контракты стыков: `./blueprint.py contracts skeleton` раскладывает стыки карты по файлам, `./blueprint.py contracts` проверяет;
+8. сборка.
 
 Решения сведены в таблицы, форма — в шаблоны, проверки — в скрипты: маршрут рассчитан на модели
 уровня Haiku и Sonnet.
