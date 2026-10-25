@@ -196,14 +196,32 @@
   }
 
   // --- «Как это работает» ----------------------------------------------------------------------------
-  let seqN = 0;
-  function seqCode(c) {
-    const ids = {}, parts = [];
-    const pid = (n) => ids[n] || (ids[n] = "P" + (parts.push(n)));
-    c.sequence.forEach((x) => { pid(x.from); pid(x.to); });
-    const lines = ["sequenceDiagram"].concat(parts.map((n, i) => `  participant P${i + 1} as ${n.replace(/[;:#"]/g, " ")}`));
-    c.sequence.forEach((x) => lines.push(`  ${pid(x.from)}${x.arrow === "-->" ? "-->>" : "->>"}${pid(x.to)}: ${x.msg.replace(/[;#]/g, " ")}`));
-    return lines.join("\n");
+  // Sequence — свой SVG: колонка на участника, строка на сообщение; вызов — сплошная стрелка, ответ — пунктир
+  function seqSvg(c) {
+    const parts = [];
+    c.sequence.forEach((x) => [x.from, x.to].forEach((n) => { if (!parts.includes(n)) parts.push(n); }));
+    const col = 128, top = 44, row = 34, W = Math.max(parts.length * col, 300), H = top + c.sequence.length * row + 50;
+    const cx = (n) => col / 2 + parts.indexOf(n) * col;
+    const lines = (t, max) => { const w = t.split(/\s+/), out = [""]; w.forEach((x) => { if ((out[out.length - 1] + " " + x).trim().length > max) out.push(x); else out[out.length - 1] = (out[out.length - 1] + " " + x).trim(); }); return out.slice(0, 2); };
+    let g = `<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>`;
+    parts.forEach((n) => {
+      const x = cx(n);
+      g += `<line x1="${x}" y1="${top}" x2="${x}" y2="${H - 30}" class="life"/>`;
+      [[4, top - 4], [H - 34, H - 4]].forEach(([y1]) => {
+        g += `<rect x="${x - col / 2 + 6}" y="${y1}" width="${col - 12}" height="32" rx="6" class="actor"/>` +
+          lines(n, 15).map((t, i, a) => `<text x="${x}" y="${y1 + 16 + (i - (a.length - 1) / 2) * 12 + 4}" class="an">${esc(t)}</text>`).join("");
+      });
+    });
+    c.sequence.forEach((m, i) => {
+      const y = top + 26 + i * row, x1 = cx(m.from), x2 = cx(m.to);
+      if (x1 === x2) {
+        g += `<path d="M${x1},${y - 8} h26 v12 h-24" class="msg" marker-end="url(#ah)"/><text x="${x1 + 30}" y="${y - 2}" class="ml" text-anchor="start">${esc(m.msg)}</text>`;
+        return;
+      }
+      g += `<line x1="${x1}" y1="${y}" x2="${x2 + (x2 > x1 ? -2 : 2)}" y2="${y}" class="msg${m.arrow === "-->" ? " ret" : ""}" marker-end="url(#ah)"/>` +
+        `<text x="${(x1 + x2) / 2}" y="${y - 6}" class="ml">${esc(m.msg.length > 40 ? m.msg.slice(0, 39) + "…" : m.msg)}</text>`;
+    });
+    return `<svg viewBox="0 0 ${W} ${H}" width="${W}" role="img" aria-label="Sequence ${esc(c.id)}">${g}</svg>`;
   }
 
   function table(rows, cols) {
@@ -227,7 +245,7 @@
       h += `<div class="call"><h5>${esc(c.id)} · ${esc(c.title)}</h5>
         <div class="who">${esc(c.caller)} → ${esc(c.callee)} · ${esc(c.boundary)}</div>
         <div class="op"><b>${esc(c.op.split(" ")[0])}</b> ${esc(c.op.split(" ").slice(1).join(" "))}</div>
-        ${c.sequence.length ? `<h4>Sequence</h4><div class="seq" data-seq="${esc(id)}"></div>` : ""}
+        ${c.sequence.length ? `<h4>Sequence</h4><div class="seq">${seqSvg(c)}</div>` : ""}
         <h4>Запрос</h4>${table(c.request, ["Поле", "Тип", "Обяз.", "Где", "Источник"]) || '<p class="muted">без полей</p>'}
         <h4>Ответ</h4>${table(c.response, ["Поле", "Тип", "Источник"])}
         <h4>Сценарий показа</h4><div class="chips2">` +
@@ -247,12 +265,6 @@
     const mine = pins.filter((p) => p.step === s.id);
     if (mine.length) h += `<h4>Замечания шага</h4><div class="pinlist">` + mine.map((p) => `<div><b>${pins.indexOf(p) + 1}</b> ${esc(p.screen || "")} · ${esc(p.text)}</div>`).join("") + "</div>";
     $("panel").innerHTML = h;
-    if (window.mermaid) {
-      document.querySelectorAll("[data-seq]").forEach(async (box) => {
-        try { const { svg } = await window.mermaid.render("seq" + ++seqN, seqCode(contract(box.dataset.seq))); box.innerHTML = svg; }
-        catch (e) { box.innerHTML = `<pre class="log">${esc(seqCode(contract(box.dataset.seq)))}</pre>`; }
-      });
-    }
   }
 
   function render() { renderApps(); renderSteps(); renderScreen(); renderPanel(); $("pins").textContent = pins.length; }
@@ -363,7 +375,6 @@
     if (e.key === "ArrowRight") next();
     if (e.key === "ArrowLeft") prev();
   });
-  if (window.mermaid) window.mermaid.initialize({ startOnLoad: false, theme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "neutral", securityLevel: "strict" });
   render();
   probe();
 })();

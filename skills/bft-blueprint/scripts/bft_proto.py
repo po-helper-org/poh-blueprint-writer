@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -413,7 +412,7 @@ def build(pr: bl.Project, sp: Spec, contracts: list[bc.Contract], out: Path) -> 
     data = compile_spec(pr, sp, contracts)
     blob = json.dumps(data, ensure_ascii=False, indent=1, sort_keys=True)
     web, api = out / "web", out / "api"
-    for d in (web, api, web / "vendor"):
+    for d in (web, api):
         d.mkdir(parents=True, exist_ok=True)
     files = {
         web / "index.html": (HERE / "proto_page.html").read_text(encoding="utf-8").replace("{{TITLE}}", _esc(data["title"])),
@@ -430,10 +429,6 @@ def build(pr: bl.Project, sp: Spec, contracts: list[bc.Contract], out: Path) -> 
         if not f.is_file() or f.read_text(encoding="utf-8") != text:
             f.write_text(text, encoding="utf-8")
             written.append(str(f.relative_to(out)))
-    mm = next((p for p in (pr.root / ".blueprint" / "vendor" / "mermaid.min.js", HERE.parent / "vendor" / "mermaid.min.js") if p.is_file()), None)
-    if mm and (not (web / "vendor" / "mermaid.min.js").is_file() or (web / "vendor" / "mermaid.min.js").stat().st_size != mm.stat().st_size):
-        shutil.copyfile(mm, web / "vendor" / "mermaid.min.js")
-        written.append("web/vendor/mermaid.min.js")
     return written
 
 

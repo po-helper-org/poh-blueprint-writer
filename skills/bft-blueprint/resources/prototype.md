@@ -102,7 +102,7 @@
 prototype/
   spec.md               план показа — источник, правится руками
   docker-compose.yml    web (8080) и api (8000)
-  web/                  index.html, runtime.js, runtime.css, spec.js, vendor/mermaid.min.js — без сети
+  web/                  index.html, runtime.js, runtime.css, spec.js — без сети и внешних библиотек
   api/main.py           FastAPI одним файлом: маршрут на каждый op контракта
   api/spec.json         контракты и шаги — вход MockAPI
   README.md

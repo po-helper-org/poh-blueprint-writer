@@ -136,7 +136,7 @@ prototype/
 4. ✅ Сборка `./blueprint.py prototype build`: `web/` (пошаговый показ без сборщиков и сети), `api/main.py`
    (FastAPI одним файлом, маршрут на каждый `op`, ошибки по `X-Mock-Error`, 422 без обязательных полей),
    `docker-compose.yml`; без Docker MockAPI отвечает в браузере. Проверено: файл, uvicorn, `docker compose up`.
-5. ✅ Панель «Как это работает»: Sequence (mermaid), метод, поля с источником в БФТ, сценарии ошибок,
+5. ✅ Панель «Как это работает»: Sequence (свой SVG, без mermaid), метод, поля с источником в БФТ, сценарии ошибок,
    цепочка, данные хранилища, живой запрос и ответ.
 6. ✅ Замечания: пин по клику, `review.json`/`review.md`, `./blueprint.py prototype review` → «Вопросы» карты.
 7. ✅ `--prototype` в SKILL.md, README, `resources/prototype.md`, самотест.
