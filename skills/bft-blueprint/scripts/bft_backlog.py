@@ -8,6 +8,10 @@ markdown-файлы, которыми ИИ-агент управляет чер�
   backlog/config.yml                         task_prefix — префикс ID (bp → BP-12)
   backlog/docs/doc-… - Карта.md               паспорт <!-- bft-map … -->, «Команды», «Вопросы»
   backlog/docs/doc-… - История.md             история через экраны <!-- bft-story … -->
+  backlog/docs/doc-… - ADR.md                 этап «ADR и Системные требования» <!-- bft-adr … -->:
+                                             контекст, AS-IS, варианты, решение TO-BE, узкие места, компромиссы
+  backlog/docs/doc-… - Системные требования.md  та же ступень, системная аналитика <!-- bft-sysreq … -->:
+                                             контракты → параметры → источники → преобразования → AS-IS → изменения
   backlog/docs/screens/doc-… - F3 · ….md      требования к экрану для дизайнера
   backlog/tasks/bp-12 - ….md                  «Что делаем»: задача команды — постановка для техлида
   backlog/tasks/bp-12.1 - ….md                «Как это работает»: подзадача — техническая карточка
@@ -62,6 +66,38 @@ Q_TYPES = ("вопрос", "блокер")
 MAX_TASK = 80
 MAX_CARD = 90
 
+# Этап «ADR и Системные требования»: после раскладки задач — как их реализовать. Два документа проекта:
+# «ADR» (<!-- bft-adr … --> — системный дизайн: контекст, ландшафт AS-IS, варианты, решение TO-BE,
+# узкие места, компромиссы, диаграмма AS-IS/TO-BE mermaid) и «Системные требования»
+# (<!-- bft-sysreq … --> — системная аналитика: контракты → параметры → источники → преобразования
+# → AS-IS → изменения → открытые вопросы). Включается, когда работа затрагивает устройство систем —
+# на карте есть карточки слоя Technology (вход этапа: БФТ, «История», задачи и карточки карты).
+ADR_META = ("epic_slug", "version", "revised", "status")
+ADR_STATUSES = ("черновик", "предложено", "принято", "отклонено", "заменено")
+ADR_CONTEXT_HEADER = ("Участник", "Роль в решении")            # кто и зачем участвует в решении
+ADR_DECISION_HEADER = ("ID", "Контракт", "Суть решения", "Обоснование")
+ADR_OPTION_HEADER = ("ID", "Вариант", "Надёжность", "Скорость реализации", "Соответствие требованиям", "Почему нет")
+BOTTLENECK_HEADER = ("ID", "Узкое место", "Тип", "Нагрузка", "Риск", "Прощупывание")
+COMPROMISE_HEADER = ("ID", "Компромисс", "Надёжность", "Скорость реализации", "Соответствие требованиям", "Чем платим")
+VARIANT_ID = re.compile(r"^V-?(?P<num>\d+)$", re.I)
+BOTTLENECK_ID = re.compile(r"^N-?(?P<num>\d+)$", re.I)
+COMPROMISE_ID = re.compile(r"^C-?(?P<num>\d+)$", re.I)
+
+# Системные требования: три вопроса на КАЖДЫЙ контракт — (1) какие данные нужны контракту,
+# (2) источник каждого параметра (система/сервис/поле/справочник), (3) какие преобразования
+# над данными нужны для контрактов и бизнес-логики.
+SYSREQ_META = ("epic_slug", "version", "revised", "status")
+SYSREQ_STATUSES = ("черновик", "согласован")
+CONTRACTS_HEADER = ("ID", "Контракт", "Потребитель", "Данные контракту", "Источник параметров", "Преобразования")
+SYSREQ_ASIS_HEADER = ("ID", "Как устроено сейчас", "Что меняется")
+SYSREQ_CHANGE_HEADER = ("ID", "Изменение", "Причина")
+SYSREQ_Q_HEADER = ("ID", "Кому", "Вопрос", "Ответ")
+CONTRACT_ID = re.compile(r"^K-?(?P<num>\d+)$", re.I)
+SYSROW_ID = re.compile(r"^(?:A|I)-?(?P<num>\d+)$", re.I)
+SYSQ_ID = re.compile(r"^Q-?(?P<num>\d+)$", re.I)
+# ADR-контракт в «Системных требованиях» — имя латиницей-слагом или [УТОЧНИТЬ …]
+SYS_CONTRACT_NAME = re.compile(r"^(?:[a-z][a-z0-9-]*|[А-Яа-яЁё][А-Яа-яЁё0-9 .,()-]*|\[УТОЧНИТЬ[^\]]*\])$")
+
 TEAM_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 SCREEN_TITLE = re.compile(r"^([A-H]\d{1,2})\s*·\s*(.+)$")
 SECTION_RE = re.compile(r"<!-- SECTION:([A-Z_]+):BEGIN -->\n?(.*?)\n?<!-- SECTION:\1:END -->", re.S)
@@ -69,7 +105,7 @@ LIST_RE = {k: re.compile(rf"<!-- {k}:BEGIN -->\n?(.*?)\n?<!-- {k}:END -->", re.S
 CHECK_ITEM = re.compile(r"^- \[([ xX])\] (?:#\d+ )?(.*)$")
 REQS_LINE = re.compile(r"^Требования(?: БФТ)?\s*:\s*(.*)$")
 STEP_RE = re.compile(r"^\d+\.\s+\S")
-META_OPEN = re.compile(r"^<!--\s*(bft-map|bft-story)\s*$")
+META_OPEN = re.compile(r"^<!--\s*(bft-map|bft-story|bft-adr|bft-sysreq)\s*$")
 MERMAID = re.compile(r"```mermaid\n(.*?)\n```", re.S)
 
 
@@ -162,6 +198,137 @@ class Question:
 
 
 @dataclass
+class Option:
+    """Вариант реализации ADR: как выглядит по трём осям и почему не выбран (для TO-BE — почему да)."""
+    id: str
+    text: str
+    reliability: str      # надёжность: высокая/средняя/низкая или оценка словами
+    speed: str            # скорость реализации
+    fit: str              # соответствие требованиям
+    why_not: str          # почему нет (у выбранного — почему да)
+
+
+@dataclass
+class Decision:
+    """Решение TO-BE по контракту: суть и обоснование."""
+    id: str               # ID выбранного варианта V1…
+    contract: str
+    text: str
+    why: str
+    line: int
+
+
+@dataclass
+class Bottleneck:
+    """Узкое место TO-BE по нагрузке и надёжности."""
+    id: str
+    text: str
+    kind: str             # нагрузка | надёжность | данные
+    load: str             # оценка нагрузки: RPS, объём, пики
+    risk: str
+    probe: str            # как прощупать до релиза
+    line: int
+
+
+@dataclass
+class Compromise:
+    """Компромисс по трём осям: надёжность vs скорость реализации vs соответствие требованиям."""
+    id: str
+    text: str
+    reliability: str      # что получили по оси
+    speed: str
+    fit: str
+    cost: str             # чем платим
+    line: int
+
+
+@dataclass
+class ADR:
+    """Документ «ADR» (<!-- bft-adr … -->): этап «ADR и Системные требования», часть системного дизайна.
+
+    Разделы: «## Контекст» | Участник | Роль в решении |, «## AS-IS» — ландшафт систем текстом,
+    «## Варианты» | ID | Вариант | Надёжность | Скорость реализации | Соответствие требованиям | Почему нет |,
+    «## Решение TO-BE» | ID | Контракт | Суть решения | Обоснование |, «## Узкие места»
+    | ID | Узкое место | Тип | Нагрузка | Риск | Прощупывание |, «## Компромиссы»
+    | ID | Компромисс | Надёжность | Скорость реализации | Соответствие требованиям | Чем платим |.
+    ADR-диаграмма AS-IS/TO-BE — блок mermaid «## Диаграмма AS-IS/TO-BE». Открытые вопросы —
+    в «Вопросах» «Карты» («Где» — ID варианта/компромисса V1, C1)."""
+    meta: dict = field(default_factory=dict)
+    context: str = ""                                     # «## Контекст» таблица как текст
+    asis: str = ""                                        # «## AS-IS»: ландшафт систем текстом
+    options: list = field(default_factory=list)           # [Option]
+    decisions: list = field(default_factory=list)         # [Decision]
+    bottlenecks: list = field(default_factory=list)       # [Bottleneck]
+    compromises: list = field(default_factory=list)       # [Compromise]
+    diagram: str = ""                                     # mermaid-диаграмма AS-IS/TO-BE
+    doc: Doc | None = None
+
+    def by_id(self, vid: str) -> Option | None:
+        return next((o for o in self.options if o.id == vid), None)
+
+
+@dataclass
+class SysContract:
+    """Контракт «Системных требований»: три вопроса системной аналитики в одной строке."""
+    id: str
+    contract: str         # имя контракта — совпадает с ADR «Решение TO-BE» (проверяет AR003)
+    consumer: str         # кто потребляет: команда/система/роль
+    data: str             # (1) какие данные нужны контракту
+    source: str           # (2) источник каждого параметра: система/сервис/поле/справочник
+    transform: str        # (3) преобразования для контрактов и бизнес-логики
+    line: int
+
+
+@dataclass
+class SysAsIs:
+    """Строка AS-IS системных требований: как устроено сейчас."""
+    id: str               # A1…
+    text: str
+    change: str           # что меняется
+    line: int
+
+
+@dataclass
+class SysChange:
+    """Изменение системных требований: что и почему."""
+    id: str               # I1…
+    text: str
+    why: str
+    line: int
+
+
+@dataclass
+class SysQ:
+    """Открытый вопрос системных требований. Дублируется в «Вопросы» «Карты» («Где» — ID контракта K1)."""
+    id: str               # Q1…
+    to: str
+    text: str
+    answer: str
+    line: int
+
+    @property
+    def open(self) -> bool:
+        return self.answer.strip() in bb.EMPTY
+
+
+@dataclass
+class SysReq:
+    """Документ «Системные требования» (<!-- bft-sysreq … -->): этап «ADR и Системные требования»,
+    часть системной аналитики. Структура: контракты → параметры → источники → преобразования
+    → AS-IS → изменения → открытые вопросы — таблица контрактов отвечает на три вопроса по каждому
+    контракту, остальное — AS-IS, изменения и вопросы. Совпадение контрактов с ADR — AR003."""
+    meta: dict = field(default_factory=dict)
+    contracts: list = field(default_factory=list)         # [SysContract]
+    asis: list = field(default_factory=list)              # [SysAsIs]
+    changes: list = field(default_factory=list)           # [SysChange]
+    questions: list = field(default_factory=list)         # [SysQ]
+    doc: Doc | None = None
+
+    def by_id(self, cid: str) -> SysContract | None:
+        return next((c for c in self.contracts if c.id == cid), None)
+
+
+@dataclass
 class Project:
     root: Path
     bdir: Path | None = None
@@ -170,6 +337,10 @@ class Project:
     title: str = ""
     map_doc: Doc | None = None
     story_doc: Doc | None = None
+    adr_doc: Doc | None = None
+    adr: ADR | None = None
+    sysreq_doc: Doc | None = None
+    sysreq: SysReq | None = None
     story: bs.Story | None = None
     teams: list[Team] = field(default_factory=list)
     questions: list[Question] = field(default_factory=list)
@@ -310,6 +481,202 @@ def _read_doc(pr: Project, f: Path) -> Doc | None:
         pr.err(rel, 1, "BL005", "документ без frontmatter Backlog.md (id, title) — создавай через `backlog doc create`")
         return None
     return Doc(str(fm["id"]), str(fm["title"]), f, rel, fm, "\n".join(text.split("\n")[off:]), off)
+
+
+def _table(d: Doc, secs: dict, name: str, header: tuple, err, code: str = "AR001") -> list[tuple[int, list[str]]]:
+    """Таблица раздела «## name» с заголовком header: [(строка, колонки)]; форма — кодом err."""
+    if name not in secs:
+        err(d.off + 1, code, f"нет раздела «## {name}» с таблицей")
+        return []
+    ln0, tbody = secs[name]
+    found = bb.tables(tbody, first_lineno=d.off + ln0 + 1)
+    if not found:
+        err(d.off + ln0, code, f"«{name}»: нет таблицы")
+        return []
+    hdr, rows = found[0]
+    if tuple(hdr) != header:
+        err(d.off + ln0, code, f"«{name}»: заголовок таблицы — {' | '.join(header)}")
+        return []
+    out = []
+    for ln, c in rows:
+        if len(c) != len(header):
+            err(ln, code, f"«{name}»: в строке {len(c)} колонок, нужно {len(header)}")
+            continue
+        out.append((ln, c))
+    return out
+
+
+def _norm_id(raw: str, pat: re.Pattern, tag: str) -> str:
+    m = pat.match(raw.strip())
+    return f"{tag}{int(m.group('num'))}" if m else ""
+
+
+def parse_adr(pr: Project, d: Doc) -> ADR:
+    """Документ «ADR» (<!-- bft-adr … -->): этап «ADR и Системные требования», системный дизайн.
+
+    Разделы: «## Контекст» | Участник | Роль в решении |, «## AS-IS» — ландшафт текстом,
+    «## Варианты» | ID | Вариант | Надёжность | Скорость реализации | Соответствие требованиям |
+    Почему нет |, «## Решение TO-BE» | ID | Контракт | Суть решения | Обоснование |,
+    «## Узкие места» | ID | Узкое место | Тип | Нагрузка | Риск | Прощупывание |, «## Компромиссы»
+    | ID | Компромисс | Надёжность | Скорость реализации | Соответствие требованиям | Чем платим |,
+    «## Диаграмма AS-IS/TO-BE» — mermaid. Форма проверяется здесь; смысл (выбор, оси, диаграмма) —
+    кодами AR в `bft-backlog-lint.py`."""
+    a = ADR(meta={k: v for k, v in d.meta.items() if not k.startswith("_")})
+    a.doc = d
+    issues: list[bb.Issue] = []
+    err = lambda ln, code, msg: issues.append(bb.Issue(ln, "ERROR", code, msg, d.rel))  # noqa: E731
+    for key in ADR_META:
+        if not a.meta.get(key):
+            err(d.off + 1, "AR001", f"паспорт <!-- bft-adr -->: нет ключа `{key}`")
+    lines = d.body.split("\n")
+    h1 = next((ln for ln in lines if ln.startswith("# ")), "")
+    if not h1:
+        err(d.off + 1, "AR001", "нет заголовка `# ADR: <инициатива>`")
+    if a.meta.get("status", "").lower() not in ADR_STATUSES:
+        err(d.off + 1, "AR001", f"статус «{a.meta.get('status', '')}» — один из: {', '.join(ADR_STATUSES)}")
+    secs = bb._sections(lines)
+    if "Контекст" in secs:
+        a.context = "\n".join(secs["Контекст"][1]).strip()
+        rows = _table(d, secs, "Контекст", ADR_CONTEXT_HEADER, err)
+        for ln, c in rows:
+            if not all(x.strip() for x in c):
+                err(ln, "AR001", "контексту нужны «Участник» и «Роль в решении»")
+    else:
+        err(d.off + 1, "AR001", "нет раздела «## Контекст» с таблицей")
+    if "AS-IS" in secs:
+        a.asis = "\n".join(secs["AS-IS"][1]).strip()
+    else:
+        err(d.off + 1, "AR001", "нет раздела «## AS-IS» — ландшафт систем как устроен сейчас")
+    ids: set[str] = set()
+    for ln, c in _table(d, secs, "Варианты", ADR_OPTION_HEADER, err):
+        vid = _norm_id(c[0], VARIANT_ID, "V")
+        if not vid or vid in ids:
+            err(ln, "AR001", f"вариант: ID вида V1…, уникален — «{c[0]}»")
+            continue
+        if not all(x.strip() for x in c[1:]):
+            err(ln, "AR001", f"{vid}: нужны «Вариант», оценки по трём осям и «Почему нет»")
+            continue
+        ids.add(vid)
+        a.options.append(Option(vid, c[1].strip(), c[2].strip(), c[3].strip(), c[4].strip(), c[5].strip()))
+    if "Решение TO-BE" in secs:
+        for ln, c in _table(d, secs, "Решение TO-BE", ADR_DECISION_HEADER, err):
+            if not all(x.strip() for x in c):
+                err(ln, "AR001", "решению нужны «ID» (вариант V1…), «Контракт», «Суть решения», «Обоснование»")
+                continue
+            a.decisions.append(Decision(c[0].strip().upper(), c[1].strip(), c[2].strip(), c[3].strip(), ln))
+    else:
+        err(d.off + 1, "AR001", "нет раздела «## Решение TO-BE» с таблицей")
+    # «Узкие места» и «Компромиссы» — условные разделы: нет таблицы — AR005 в check_adr подскажет;
+    # форма проверяется, только если раздел есть
+    if "Узкие места" in secs:
+        for ln, c in _table(d, secs, "Узкие места", BOTTLENECK_HEADER, err):
+            nid = _norm_id(c[0], BOTTLENECK_ID, "N")
+            if not nid or nid in {x.id for x in a.bottlenecks}:
+                err(ln, "AR001", f"узкое место: ID вида N1…, уникален — «{c[0]}»")
+                continue
+            if not all(x.strip() for x in c[1:]):
+                err(ln, "AR001", f"{nid}: нужны «Узкое место», «Тип», «Нагрузка», «Риск», «Прощупывание»")
+                continue
+            a.bottlenecks.append(Bottleneck(nid, c[1].strip(), c[2].strip().lower(), c[3].strip(), c[4].strip(), c[5].strip(), ln))
+    if "Компромиссы" in secs:
+        for ln, c in _table(d, secs, "Компромиссы", COMPROMISE_HEADER, err):
+            cid = _norm_id(c[0], COMPROMISE_ID, "C")
+            if not cid or cid in {x.id for x in a.compromises}:
+                err(ln, "AR001", f"компромисс: ID вида C1…, уникален — «{c[0]}»")
+                continue
+            if not all(x.strip() for x in c[1:]):
+                err(ln, "AR001", f"{cid}: нужны «Компромисс», оценки по трём осям и «Чем платим»")
+                continue
+            a.compromises.append(Compromise(cid, c[1].strip(), c[2].strip(), c[3].strip(), c[4].strip(), c[5].strip(), ln))
+    if "Диаграмма AS-IS/TO-BE" in secs:
+        mm = MERMAID.search("\n".join(secs["Диаграмма AS-IS/TO-BE"][1]))
+        a.diagram = f"```mermaid\n{mm.group(1)}\n```" if mm else ""
+        if not mm:
+            err(d.off + secs["Диаграмма AS-IS/TO-BE"][0], "AR001", "«Диаграмма AS-IS/TO-BE»: нет блока ```mermaid")
+    else:
+        err(d.off + 1, "AR001", "нет раздела «## Диаграмма AS-IS/TO-BE» с mermaid-схемой")
+    if not a.options:
+        err(d.off + 1, "AR001", "в «Вариантах» нет ни одного варианта — ADR выбирает между вариантами, а не описывает один")
+    a.meta["_issues"] = issues
+    return a
+
+
+def parse_sysreq(pr: Project, d: Doc) -> SysReq:
+    """Документ «Системные требования» (<!-- bft-sysreq … -->): этап «ADR и Системные требования»,
+    системная аналитика. Разделы: «## Контракты» | ID | Контракт | Потребитель | Данные контракту |
+    Источник параметров | Преобразования | — три вопроса на каждый контракт в одной строке;
+    «## AS-IS» | ID | Как устроено сейчас | Что меняется |, «## Изменения»
+    | ID | Изменение | Причина |, «## Открытые вопросы» | ID | Кому | Вопрос | Ответ |."""
+    s = SysReq(meta={k: v for k, v in d.meta.items() if not k.startswith("_")})
+    s.doc = d
+    issues: list[bb.Issue] = []
+    err = lambda ln, code, msg: issues.append(bb.Issue(ln, "ERROR", code, msg, d.rel))  # noqa: E731
+    for key in SYSREQ_META:
+        if not s.meta.get(key):
+            err(d.off + 1, "AR001", f"паспорт <!-- bft-sysreq -->: нет ключа `{key}`")
+    lines = d.body.split("\n")
+    h1 = next((ln for ln in lines if ln.startswith("# ")), "")
+    if not h1:
+        err(d.off + 1, "AR001", "нет заголовка `# Системные требования: <инициатива>`")
+    if s.meta.get("status", "").lower() not in SYSREQ_STATUSES:
+        err(d.off + 1, "AR001", f"статус «{s.meta.get('status', '')}» — Черновик или Согласован")
+    secs = bb._sections(lines)
+    cids: set[str] = set()
+    for ln, c in _table(d, secs, "Контракты", CONTRACTS_HEADER, err):
+        kid = _norm_id(c[0], CONTRACT_ID, "K")
+        if not kid or kid in cids:
+            err(ln, "AR001", f"контракт: ID вида K1…, уникален — «{c[0]}»")
+            continue
+        if not all(x.strip() for x in c[1:]):
+            err(ln, "AR001", f"{kid}: нужны «Контракт», «Потребитель», «Данные контракту», «Источник параметров», «Преобразования»")
+            continue
+        cids.add(kid)
+        s.contracts.append(SysContract(kid, c[1].strip(), c[2].strip(), c[3].strip(), c[4].strip(), c[5].strip(), ln))
+    if not s.contracts:
+        err(d.off + 1, "AR001", "в «Контрактах» нет ни одного контракта — для работ без контрактов документ не создаётся")
+    if "AS-IS" in secs:
+        aids: set[str] = set()
+        for ln, c in _table(d, secs, "AS-IS", SYSREQ_ASIS_HEADER, err):
+            aid = _norm_id(c[0], SYSROW_ID, "A")
+            if not aid or aid in aids:
+                err(ln, "AR001", f"AS-IS: ID вида A1…, уникален — «{c[0]}»")
+                continue
+            if not all(x.strip() for x in c[1:]):
+                err(ln, "AR001", f"{aid}: нужны «Как устроено сейчас» и «Что меняется»")
+                continue
+            aids.add(aid)
+            s.asis.append(SysAsIs(aid, c[1].strip(), c[2].strip(), ln))
+    else:
+        err(d.off + 1, "AR001", "нет раздела «## AS-IS» с таблицей")
+    if "Изменения" in secs:
+        iids: set[str] = set()
+        IID = re.compile(r"^I-?(?P<num>\d+)$", re.I)
+        for ln, c in _table(d, secs, "Изменения", SYSREQ_CHANGE_HEADER, err):
+            iid = _norm_id(c[0], IID, "I")
+            if not iid or iid in iids:
+                err(ln, "AR001", f"изменение: ID вида I1…, уникален — «{c[0]}»")
+                continue
+            if not all(x.strip() for x in c[1:]):
+                err(ln, "AR001", f"{iid}: нужны «Изменение» и «Причина»")
+                continue
+            iids.add(iid)
+            s.changes.append(SysChange(iid, c[1].strip(), c[2].strip(), ln))
+    else:
+        err(d.off + 1, "AR001", "нет раздела «## Изменения» с таблицей")
+    if "Открытые вопросы" in secs:
+        qids: set[str] = set()
+        for ln, c in _table(d, secs, "Открытые вопросы", SYSREQ_Q_HEADER, err):
+            qid = _norm_id(c[0], SYSQ_ID, "Q")
+            if not qid or qid in qids:
+                err(ln, "AR001", f"вопрос: ID вида Q1…, уникален — «{c[0]}»")
+                continue
+            if not c[1].strip() or not c[2].strip():
+                err(ln, "AR001", f"{qid}: нужны «Кому» и «Вопрос»")
+                continue
+            qids.add(qid)
+            s.questions.append(SysQ(qid, c[1].strip(), c[2].strip(), c[3].strip(), ln))
+    s.meta["_issues"] = issues
+    return s
 
 
 def _subsections(text: str, first: int) -> tuple[list[str], dict, list[tuple[int, str]]]:
@@ -548,7 +915,7 @@ def parse(root: Path) -> Project:
             pr.err(d.rel, 1, "BL005", f"второй документ с ID {d.id} — `backlog doctor`")
             continue
         pr.docs[d.id] = d
-        for kind in ("bft-map", "bft-story"):
+        for kind in ("bft-map", "bft-story", "bft-adr", "bft-sysreq"):
             mc = _meta_comment(d.body, kind)
             if mc:
                 d.meta = {**d.meta, "_kind": kind}
@@ -556,6 +923,20 @@ def parse(root: Path) -> Project:
                     if pr.map_doc:
                         pr.err(d.rel, 1, "BL002", f"второй паспорт карты — уже есть {pr.map_doc.rel}")
                     pr.map_doc, pr.meta = d, mc[0]
+                elif kind == "bft-adr":
+                    if pr.adr_doc:
+                        pr.err(d.rel, 1, "AR002", f"второй «ADR» — уже есть {pr.adr_doc.rel}")
+                    d.meta = {**d.meta, **mc[0]}   # паспорт комментария — в мету документа
+                    pr.adr_doc = d
+                    pr.adr = parse_adr(pr, d)
+                    pr.issues.extend(pr.adr.meta.pop("_issues"))
+                elif kind == "bft-sysreq":
+                    if pr.sysreq_doc:
+                        pr.err(d.rel, 1, "AR002", f"вторые «Системные требования» — уже есть {pr.sysreq_doc.rel}")
+                    d.meta = {**d.meta, **mc[0]}
+                    pr.sysreq_doc = d
+                    pr.sysreq = parse_sysreq(pr, d)
+                    pr.issues.extend(pr.sysreq.meta.pop("_issues"))
                 else:
                     if pr.story_doc:
                         pr.err(d.rel, 1, "BL003", f"вторая история — уже есть {pr.story_doc.rel}")
@@ -661,8 +1042,13 @@ def parse(root: Path) -> Project:
     for c in pr.cards:
         _check_card(pr, c, stages, team_ids, task_ids, card_ids)
     for q in pr.questions:
-        if q.where not in task_ids | card_ids:
-            pr.err(pr.map_doc.rel, q.line, "BL010", f"{q.id}: «Где» — ID задачи или карточки карты ({pr.prefix}-12, {pr.prefix}-12.1), а не «{q.where}»")
+        adr_ids = set()
+        if pr.adr:
+            adr_ids = {o.id for o in pr.adr.options} | {c.id for c in pr.adr.compromises}
+        if pr.sysreq:
+            adr_ids |= {c.id for c in pr.sysreq.contracts}
+        if q.where not in task_ids | card_ids | adr_ids:
+            pr.err(pr.map_doc.rel, q.line, "BL010", f"{q.id}: «Где» — ID задачи, карточки карты ({pr.prefix}-12, {pr.prefix}-12.1), стыка (S1) или этапа ADR (K1, V1, C1), а не «{q.where}»")
         if q.kind not in Q_TYPES:
             pr.err(pr.map_doc.rel, q.line, "BL010", f"{q.id}: тип «{q.kind}» — вопрос или блокер")
         if not q.to or not q.text:
