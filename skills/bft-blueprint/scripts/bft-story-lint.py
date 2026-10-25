@@ -120,7 +120,10 @@ def check(st: bs.Story, source: Path | None, no_source: bool) -> None:
         for b in (s for s in steps if s.kind == "band"):
             lo, hi = st.stage_index(b.stage_from), st.stage_index(b.stage_to)
             inside = [s.id for s in steps if s is not b and lo <= st.stage_index(s.stage_from) <= hi]
-            if inside:
+            if inside and lo == hi:
+                st.err(b.line, "ST011", f"{b.id}: шаг без экранов рисуется полосой ожидания на весь этап {b.stage_from}, а на этом этапе у персонажа уже есть {', '.join(inside)} — "
+                       "дай шагу экран из «Экранов» или объедини его с соседним шагом")
+            elif inside:
                 st.err(b.line, "ST011", f"{b.id}: шаг без экранов с диапазоном этапов рисуется полосой ожидания («ждёт мероприятия») и перекрывает шаги {', '.join(inside)} того же персонажа — сузь диапазон до одного этапа или дай шагу экран")
 
     # --- карточки ------------------------------------------------------------------------

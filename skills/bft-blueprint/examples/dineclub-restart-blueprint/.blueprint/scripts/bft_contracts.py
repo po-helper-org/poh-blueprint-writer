@@ -17,6 +17,7 @@ import bft_blueprint as bb
 import bft_backlog as bl
 
 DIR = "contracts"
+WAIVE = "not-seams.md"   # связи, которые не обмен данными: | Откуда | Куда | Почему не обмен данными |
 BOUNDARIES = ("external", "frontend-backend", "service-service", "service-db")
 METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 ID_RE = re.compile(r"^C-\d+$")
@@ -167,7 +168,7 @@ def parse(pr: bl.Project) -> list[Contract]:
     if not d.is_dir():
         return out
     seen: dict[str, str] = {}
-    for f in sorted(d.glob("*.md"), key=lambda p: [int(x) if x.isdigit() else x for x in re.split(r"(\d+)", p.name)]):
+    for f in sorted((x for x in d.glob("*.md") if x.name != WAIVE), key=lambda p: [int(x) if x.isdigit() else x for x in re.split(r"(\d+)", p.name)]):
         c = read(pr, f)
         if c is None:
             continue
@@ -344,11 +345,35 @@ def check(pr: bl.Project, contracts: list[Contract], reqs: dict | None = None) -
                         pr.err(c.rel, n, "CT009", f"{c.id}: «{hit.group(0)}» — устройство хранилища; в контракте — только какие данные нужны")
 
     covered = [set(c.cards) for c in contracts]
+    waived = waivers(pr, seams(pr))
     for a, b, what in seams(pr):
-        if not any({a, b} <= x for x in covered):
+        if not any({a, b} <= x for x in covered) and frozenset((a, b)) not in waived:
             card = pr.task(b)
             pr.warn(card.rel if card else "", 1, "CT020", f"{a} → {b} «{what}»: стык без контракта — "
                     f"./blueprint.py contracts skeleton заведёт его, или добавь {a} и {b} в cards: одного контракта")
+
+
+def waivers(pr: bl.Project, found: list | None = None) -> dict:
+    """contracts/not-seams.md: связи карты, которые стыком не считаются, с причиной. {frozenset(a, b): причина}."""
+    f = pr.root / DIR / WAIVE
+    if not f.is_file():
+        return {}
+    rel = f"{DIR}/{WAIVE}"
+    rows, errs = _table(f.read_text(encoding="utf-8"), 1, ("Откуда", "Куда", "Почему не обмен данными"))
+    for n, msg in errs:
+        pr.err(rel, n, "CT013", msg)
+    pairs = {frozenset((a, b)) for a, b, _ in (found if found is not None else seams(pr))}
+    out = {}
+    for r in rows:
+        a, b, why = (r.cells.get(k, "").strip() for k in ("Откуда", "Куда", "Почему не обмен данными"))
+        key = frozenset((a, b))
+        if key not in pairs:
+            pr.err(rel, r.line, "CT013", f"{a} → {b}: такого стыка на карте нет — строка лишняя")
+        elif len(why.split()) < 3 or bb.MARKER in why:
+            pr.err(rel, r.line, "CT013", f"{a} → {b}: причина — фразой, почему по связи не ходят данные между системами («макет передаётся дизайнером вручную»)")
+        else:
+            out[key] = why
+    return out
 
 
 def seams(pr: bl.Project) -> list[tuple[str, str, str]]:
@@ -378,7 +403,7 @@ def _team_name(pr: bl.Project, tid: str) -> str:
 def skeleton(pr: bl.Project, contracts: list[Contract]) -> list[tuple[str, str]]:
     """Каркас контрактов: по файлу на стык карты без контракта. Шапка, карточки и требования — из карты;
     поля, пример, ошибки, цепочка — места {{…}} с подсказкой, откуда брать. Возвращает [(путь, текст)]."""
-    covered = [set(c.cards) for c in contracts]
+    covered = [set(c.cards) for c in contracts] + list(waivers(pr))
     n = max([int(c.id[2:]) for c in contracts] + [0])
     pairs: dict[frozenset, list] = {}
     for a, b, what in seams(pr):
@@ -458,6 +483,7 @@ HINTS = {
     "CT010": "параметр пути {id} — строкой «Запроса»: | id | string | да | path | ФТ-… |",
     "CT011": "допиши места {{…}} каркаса: каждая подсказка говорит, откуда взять значение; «Цепочка» не нужна — удали раздел, «Данные» нужны — добавь по шаблону",
     "CT012": "пример ответа — значения, как их вернёт система, с типом из «Ответа»: 10, \"valid\", true, \"2026-03-01\"; пояснения и ID требований — в «Источнике», не в примере",
+    "CT013": "contracts/not-seams.md — | Откуда | Куда | Почему не обмен данными |: только стыки с карты, причина фразой; связь, по которой ходят данные, — контракт, а не строка здесь",
     "CT020": "стык на карте (экран ↔ Backstage, Backstage ↔ другая команда, внешняя система) — контракт, в cards: которого обе карточки связи; ./blueprint.py contracts skeleton заведёт его",
     "CT021": "за вызываемой системой есть ещё участники — «## Цепочка»: шаг, кто, вход, что делает, выход",
     "CT022": "добавь в «Ошибки» хотя бы отказ: что получает вызывающая сторона",

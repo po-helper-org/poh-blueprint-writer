@@ -92,7 +92,8 @@ class Skeleton:
         self.teams: list[tuple[str, str, str]] = []
         taken: set[str] = set()
         for row in deps:
-            if row and row[0].strip():
+            # PO, СА, аналитик строят сервис, а не работают в нём (BL034): в «Команды» не идут
+            if row and row[0].strip() and not BUILDER.match(re.sub(r"\s*\(.*\)\s*$", "", row[0].strip())):
                 # внешняя система — `ext` (автопилот 4.1); вторая внешняя — ext2
                 tid = team_id("ext", taken) if re.search(r"внешн", " ".join(row), re.I) else team_id(row[0], taken)
                 self.teams.append((tid, row[0].strip(), " ".join(row[1:])))
@@ -364,6 +365,30 @@ class Skeleton:
         return "\n".join(out).rstrip("\n") + "\n", index
 
 
+BUILDER = re.compile(r"^(?:PO|СА|PM|CPO|BA|SA|владелец продукта|продакт[\w-]*(?: менеджер)?|(?:системный |бизнес-)?аналитик\w*)(?:\s.*)?$", re.I)
+
+
+def screen_stubs(d: Path, story, root: Path) -> list[str]:
+    """Требования к экрану на каждый экран «Истории», которого ещё нет в plan/screens/: шаблон с ID, названием и источником."""
+    tpl = next((p for p in (root / ".blueprint" / "templates" / "screen.md", HERE.parent / "templates" / "screen.md") if p.is_file()), None)
+    if not story or not tpl:
+        return []
+    made = []
+    for sc in story.screens:
+        f = d / f"{sc.id}.md"
+        if f.is_file():
+            continue
+        name = next((str(e[1]).lstrip("✓ ") for e in sc.elements if isinstance(e, (list, tuple)) and e and e[0] == "hdr"), "")
+        src = ", ".join(bb.REQ_RE.findall(sc.source))
+        text = tpl.read_text(encoding="utf-8").replace("{{ID}}", sc.id)
+        text = text.replace("{{Название экрана — как в «Истории»}}", name or f"{{{{название экрана {sc.id} — {sc.contour}}}}}")
+        if src:
+            text = text.replace("{{ИТ-1}}", src).replace("{{ФТ-1}}", src)
+        f.write_text(text, encoding="utf-8")
+        made.append(sc.id)
+    return made
+
+
 def deps_rows(text: str) -> tuple[list[list[str]], bool]:
     """«Зависимости» БФТ: таблица «Команда / система | …» (команды надёжны) или список «- Кто: что» (только подсказка)."""
     for header, rows in bb.tables(text.splitlines()):
@@ -410,12 +435,15 @@ def main() -> int:
     title = pr.story.title if pr.story and pr.story.title else src.stem
     plan, index = sk.render(re.sub(r"^\[История\]\s*", "", title))
     (pf.parent / "screens").mkdir(parents=True, exist_ok=True)
+    made = screen_stubs(pf.parent / "screens", pr.story, root)
     pf.write_text(plan, encoding="utf-8")
     (pf.parent / "skeleton.md").write_text("\n".join(index) + "\n", encoding="utf-8")
     stubs = len(bp.STUB.findall(plan))
     cards = sum(len(t["cards"]) for t in sk.tasks)
     print(f"skeleton: {len(sk.tasks)} задач, {cards} карточек, атомов БФТ {len(g.atoms)}, ID семейств {len(g.members)} — {pf}")
     print(f"skeleton: мест {{{{…}}}} для текста — {stubs}; где лежит каждый атом — {pf.parent / 'skeleton.md'}")
+    if made:
+        print(f"skeleton: требования к экранам — {', '.join(made)} в {pf.parent / 'screens'}: заполни места {{{{…}}}} сам по шаблону (resources/screen_notes.md)")
     print("дальше: ./blueprint.py groom fill — пакет на каждый блок; агенты заполняют; ./blueprint.py groom merge fill; затем ./blueprint.py apply")
     return 0
 

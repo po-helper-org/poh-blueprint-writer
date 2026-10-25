@@ -437,12 +437,14 @@ python3 "$DIR/scripts/bft-skeleton.py" "$SK/p" >/dev/null 2>&1; M="$SK/p/plan/ma
   && grep -q "^- Когда месяц закончился, хочу сформировать акты всем партнёрам одной операцией, чтобы не сводить таблицы. (ПТ-B1)" "$M" \
   && grep -q "P3 цена закупки: не применяется: агентская, комиссионная; обязателен: перепродажа" "$M" \
   && grep -qF "Управление:** Список партнёров периода, статус акта, расхождения сверки (ИТ-3)" "$M" \
+  && [ -f "$SK/p/plan/screens/A1.md" ] && grep -q "^Источник: ИТ-" "$SK/p/plan/screens/A1.md" \
   && [ -z "$(python3 "$DIR/scripts/bft-plan.py" apply "$SK/p" 2>&1 | grep ERROR | grep -v PL007 | grep -v 'вид «{{')" ] \
   && ok "каркас · каждый атом и ID семейства на месте; критерии, JobStory, матрица — дословно; ошибки только {{…}}" || fail "каркас · раскладка"
-cp -r "$SK/p" "$SK/f" && python3 - "$SK/f/plan/map.md" <<'PY'
+cp -r "$SK/p" "$SK/f" && rm -f "$SK/f/plan/screens/"*.md && python3 - "$SK/f/plan/map.md" <<'PY'
 import re, sys
 p = sys.argv[1]; t = open(p, encoding="utf-8").read()
 t = re.sub(r"^вид: \{\{.*\}\}$", "вид: создать", t, flags=re.M)
+t = re.sub(r"^этап: \{\{.*\}\}$", "этап: D", t, flags=re.M)
 t = re.sub(r"^- \{\{4–10 шагов.*\}\}$", "- Менеджер партнёров: Открывает профиль\n- ? Данные полные\n  - да → Система продаж: Сохраняет профиль\n  - нет → конец\n- Менеджер партнёров: Видит результат", t, flags=re.M)
 t = re.sub(r"^- \{\{исключение.*\}\}\n", "", t, flags=re.M)
 t = re.sub(r"\{\{[^}]*\}\}", "работа сервиса", t)
@@ -512,6 +514,12 @@ out1="$(python3 "$CTL" lint "$CS" 2>&1)"; python3 "$CTL" skeleton "$CS" >/dev/nu
 grep -q "WARN CT020 BP-1.1 → BP-2.1" <<<"$out1" && grep -q "^cards: BP-1.1, BP-2.1" "$CS/contracts/C-8.md" && grep -q "ERROR CT011 C-8" <<<"$out2" \
   && [ "$(grep -c " ERROR " <<<"$out2")" -eq 1 ] && ! grep -q CT020 <<<"$out2" && [ "$(ls "$CS/contracts" | wc -l)" -eq 7 ] \
   && ok "контракты · skeleton: стык без контракта → каркас C-8 с картой в шапке, незаполненный — только CT011" || fail "контракты · skeleton"
+# not-seams.md: связь с причиной — не стык (CT020 молчит), строка без причины или не про стык — CT013
+CW="$tmp/ctw" && cp -r "$BGOLD" "$CW" && rm "$CW/contracts/C-6.md"
+printf '| Откуда | Куда | Почему не обмен данными |\n| --- | --- | --- |\n| BP-1.1 | BP-2.1 | список ресторанов DineClub передаёт UnitB вручную раз в неделю |\n| BP-4.1 | BP-7.1 | — |\n' > "$CW/contracts/not-seams.md"
+out="$(python3 "$CTL" lint "$CW" 2>&1)"
+! grep -q "CT020 BP-1.1 → BP-2.1" <<<"$out" && grep -q "ERROR CT013 BP-4.1 → BP-7.1" <<<"$out" \
+  && ok "контракты · not-seams.md: связь с причиной — не стык, строка не про стык — CT013" || fail "контракты · not-seams.md"
 
 # встроенный CLI и настоящий Backlog.md читают файлы друг друга — если npm-пакет установлен
 if command -v backlog >/dev/null 2>&1; then
