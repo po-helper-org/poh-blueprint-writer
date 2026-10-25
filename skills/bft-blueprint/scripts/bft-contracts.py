@@ -16,6 +16,7 @@
   CT008  цепочка: вход шага не пришёл ни из запроса, ни из прошлого шага; поле ответа не собрано
   CT009  в «Данных» и «Цепочке» — устройство хранилища (таблицы, ключи, SQL)
   CT010  параметр пути op не описан в «Запросе»
+  CT011  в контракте остались места {{…}} каркаса — остальные проверки после заполнения
 
   ПРЕДУПРЕЖДЕНИЯ (код выхода 1 только с --strict)
   CT020  стык двух команд на карте (связь карточек) без контракта
@@ -24,6 +25,7 @@
 
 Использование:
     python3 bft-contracts.py lint <проект> [--source БФТ.md | --no-source] [--strict] [--hints]
+    python3 bft-contracts.py skeleton <проект>   — каркас contracts/C-N.md на каждый стык карты без контракта
 Формат вывода: <путь>:<строка>: <УРОВЕНЬ> <КОД> <сообщение>
 Коды выхода: 0 — ошибок нет; 1 — ошибки (или предупреждения с --strict); 2 — проект не прочитан.
 """
@@ -68,7 +70,8 @@ def report(pr: bl.Project, contracts: list, strict: bool) -> int:
     warns = len(pr.issues) - errors
     by = {}
     for c in contracts:
-        by[c.boundary] = by.get(c.boundary, 0) + 1
+        k = "не заполнено" if "{{" in c.boundary else c.boundary
+        by[k] = by.get(k, 0) + 1
     kinds = ", ".join(f"{k} {v}" for k, v in sorted(by.items())) or "—"
     print(f"contracts-lint: {len(contracts)} контрактов ({kinds}), стыков на карте {len(pr.links())} — ошибок {errors}, предупреждений {warns}")
     return 1 if errors or (strict and warns) else 0
@@ -76,7 +79,7 @@ def report(pr: bl.Project, contracts: list, strict: bool) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("cmd", choices=["lint"], help="lint — проверить контракты")
+    ap.add_argument("cmd", choices=["lint", "skeleton"], help="lint — проверить контракты; skeleton — каркас на стыки без контракта")
     ap.add_argument("project", type=Path, help="папка проекта Backlog.md (<epic>-blueprint)")
     ap.add_argument("--source", help="путь к БФТ (по умолчанию — `source_doc` паспорта рядом с проектом)")
     ap.add_argument("--no-source", action="store_true", help="не сверять источники полей с БФТ")
@@ -86,6 +89,22 @@ def main() -> int:
     if not args.project.is_dir():
         print(f"{args.project}: не папка проекта", file=sys.stderr)
         return 2
+    if args.cmd == "skeleton":
+        pr = bl.parse(args.project)
+        if pr.errors:
+            _bl_lint.report(pr, False)
+            print("contracts skeleton: сначала карта без ошибок — ./blueprint.py apply", file=sys.stderr)
+            return 2
+        pr.issues = []
+        files = bc.skeleton(pr, bc.parse(pr))
+        for rel, text in files:
+            f = args.project / rel
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text(text, encoding="utf-8")
+            print(f"contracts skeleton: {f}")
+        print(f"contracts skeleton: стыков без контракта — {len(files)}; шаблон и правила — .blueprint/templates/contract.md, .blueprint/rules/contracts.md")
+        print("дальше: заполни места {{…}} в каждом файле, затем ./blueprint.py contracts — до 0 ошибок")
+        return 0
     try:
         pr, contracts = run(args.project, args.source, args.no_source)
     except OSError as e:

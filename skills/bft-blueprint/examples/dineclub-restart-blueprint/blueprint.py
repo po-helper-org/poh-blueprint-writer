@@ -19,7 +19,8 @@ elif cmd == "skeleton":
 elif cmd == "groom":
     run = ["bft-groom.py", rest.pop(0) if rest else "help", here]
 elif cmd == "contracts":
-    run = ["bft-contracts.py", "lint", here, "--hints"]
+    run = ["bft-contracts.py", "skeleton", here] if rest[:1] == ["skeleton"] else ["bft-contracts.py", "lint", here, "--hints"]
+    rest = rest[1:] if rest[:1] == ["skeleton"] else rest
 else:
     print("./blueprint.py reqs   — инвентарь БФТ: требования, акторы, сценарий, зависимости и куда они ложатся на карте")
     print("./blueprint.py skeleton — каркас plan/map.md из БФТ: каждое требование, параметр и критерий уже на месте, текст — {{…}}")
@@ -28,6 +29,7 @@ else:
     print("./blueprint.py export — план из бэклога (правки одним файлом)")
     print("./blueprint.py groom fill|audit|refine — пакеты роя; groom merge fill|refine — ответы в план (.blueprint/rules/grooming.md)")
     print("./blueprint.py lint   — проверить карту (коды BL, SN; правила — .blueprint/rules/backlog_rules.md)")
+    print("./blueprint.py contracts skeleton — каркас contracts/C-N.md на каждый стык карты без контракта")
     print("./blueprint.py contracts — проверить контракты стыков contracts/C-N.md (коды CT; правила — .blueprint/rules/contracts.md)")
     print("./blueprint.py build  — схемы BPMN из «Процесса», страница <epic>-map.html и архив <epic>-blueprint.zip")
     print("./blueprint.py check  — проверка без записи: схемы и скрипты проекта актуальны")

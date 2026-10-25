@@ -21,6 +21,7 @@ BOUNDARIES = ("external", "frontend-backend", "service-service", "service-db")
 METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 ID_RE = re.compile(r"^C-\d+$")
 OP_RE = re.compile(rf"^({'|'.join(METHODS)})\s+(/\S*)$")
+STUB_RE = re.compile(r"\{\{(.+?)\}\}")
 FIELD_RE = re.compile(r"^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*$")
 TOKEN_RE = re.compile(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*")
 GROUP_RE = re.compile(r"([A-Za-z_]\w*)\s*\{([^}]*)\}")       # ticket{event, used}
@@ -115,6 +116,8 @@ def read(pr: bl.Project, f: Path) -> Contract | None:
         pr.err(rel, 1, "CT001", "контракт начинается с frontmatter --- id, title, boundary, caller, callee, op, cards ---")
         return None
     c = Contract(str(fm.get("id", "")).strip(), f, rel, fm, off)
+    if STUB_RE.search(text):   # каркас не дописан — разбирать разделы рано, check скажет CT011
+        return c
     lines = text.split("\n")
     cur, start, buf = None, 0, []
     for n, ln in enumerate(lines[off:] + ["## "], start=off + 1):
@@ -224,6 +227,10 @@ def check(pr: bl.Project, contracts: list[Contract], reqs: dict | None = None) -
         systems |= {r.cells.get("Кто", "") for r in c.rows("Цепочка")}
     systems.discard("")
     for c in contracts:
+        stubs = STUB_RE.findall(c.path.read_text(encoding="utf-8"))
+        if stubs:   # каркас не дописан: остальные проверки — после того, как места {{…}} заполнены
+            pr.err(c.rel, 1, "CT011", f"{c.id}: мест {{{{…}}}} не заполнено — {len(stubs)}; первое: {stubs[0][:80]}")
+            continue
         b = c.boundary
         for key in ("title", "boundary", "caller", "callee", "cards"):
             if not c.get(key):
@@ -315,19 +322,100 @@ def check(pr: bl.Project, contracts: list[Contract], reqs: dict | None = None) -
                     if hit:
                         pr.err(c.rel, n, "CT009", f"{c.id}: «{hit.group(0)}» — устройство хранилища; в контракте — только какие данные нужны")
 
-    # стыки команд на карте без контракта: данные идут через Backstage между разными командами
-    # (Support — макеты, правила, каналы — передаёт договорённости, а не данные: не стык)
-    by_id = {x.id: x for x in pr.cards}
     covered = [set(c.cards) for c in contracts]
-    if contracts:
-        for a, b, what in pr.links():
-            ca, cb = by_id[a], by_id[b]
-            layers = (ca.layer, cb.layer)
-            ta, tb = ca.team, cb.team
-            if "support" in layers or "backstage" not in layers or (ta == tb and ta != "?") or any({a, b} <= s for s in covered):
-                continue
+    for a, b, what in seams(pr):
+        if not any({a, b} <= x for x in covered):
             card = pr.task(b)
-            pr.warn(card.rel if card else "", 1, "CT020", f"{a} → {b} «{what}»: стык команд {ta} и {tb} без контракта — добавь {a} и {b} в cards: одного контракта")
+            pr.warn(card.rel if card else "", 1, "CT020", f"{a} → {b} «{what}»: стык команд без контракта — "
+                    f"./blueprint.py contracts skeleton заведёт его, или добавь {a} и {b} в cards: одного контракта")
+
+
+def seams(pr: bl.Project) -> list[tuple[str, str, str]]:
+    """Стыки карты: связь карточек разных команд, где данные идут через Backstage.
+    Support (макеты, правила, каналы) передаёт договорённости, а не данные — не стык."""
+    by_id = {x.id: x for x in pr.cards}
+    out = []
+    for a, b, what in pr.links():
+        ca, cb = by_id[a], by_id[b]
+        layers = (ca.layer, cb.layer)
+        if "support" in layers or "backstage" not in layers or (ca.team == cb.team and ca.team != "?"):
+            continue
+        out.append((a, b, what))
+    return out
+
+
+def _team_name(pr: bl.Project, tid: str) -> str:
+    return next((t.name for t in pr.teams if t.id == tid), "")
+
+
+def skeleton(pr: bl.Project, contracts: list[Contract]) -> list[tuple[str, str]]:
+    """Каркас контрактов: по файлу на стык карты без контракта. Шапка, карточки и требования — из карты;
+    поля, пример, ошибки, цепочка — места {{…}} с подсказкой, откуда брать. Возвращает [(путь, текст)]."""
+    covered = [set(c.cards) for c in contracts]
+    n = max([int(c.id[2:]) for c in contracts] + [0])
+    pairs: dict[frozenset, list] = {}
+    for a, b, what in seams(pr):
+        if not any({a, b} <= x for x in covered):
+            pairs.setdefault(frozenset((a, b)), []).append((a, b, what))
+    out = []
+    for links in pairs.values():
+        a, b, _ = links[0]
+        ca, cb = pr.task(a), pr.task(b)
+        n += 1
+        cid = f"C-{n}"
+        caller, callee = _team_name(pr, ca.team), _team_name(pr, cb.team)
+        ext = any(re.search(r"внешн|ext", x, re.I) for x in (caller, callee, ca.team, cb.team))
+        reqs = sorted({r for c in (ca, cb) for r in bb.REQ_RE.findall(c.desc)}, key=lambda r: (r.split("-")[0], r))
+        what = "; ".join(f"{x} → {y}: {w}" for x, y, w in links)
+        lanes = sorted({ln for c in (ca, cb) for ln in bl.lanes_of(c.proc)})
+        src = f"ID требования из {', '.join(reqs)} или [УТОЧНИТЬ у …]" if reqs else "ID требования или [УТОЧНИТЬ у …]"
+        text = f"""---
+id: {cid}
+title: {{{{что происходит на стыке фразой для человека — по связи {what}}}}}
+boundary: {'external' if ext else '{{frontend-backend — экран получает данные · service-service — две наши системы · external — внешняя сторона}}'}
+caller: {{{{кто вызывает — {caller or ca.team} или система из «Процесса»: {', '.join(lanes)}}}}}
+callee: {{{{кто отвечает — {callee or cb.team} или система из «Процесса»: {', '.join(lanes)}}}}}
+op: {{{{МЕТОД /v1/<сущность>[/{{id}}][/<действие>] — GET прочитать, POST создать или выполнить, PATCH изменить}}}}
+cards: {a}, {b}
+---
+
+## Запрос
+
+| Поле | Тип | Обяз. | Где | Источник |
+| --- | --- | --- | --- | --- |
+| {{{{поле латиницей: что уходит от caller — из «Выхода» {a} и «Входа» {b}}}}} | {{{{string · integer · number · boolean · array · object}}}} | {{{{да или нет}}}} | {{{{path · query · body}}}} | {{{{{src}}}}} |
+
+## Ответ
+
+| Поле | Тип | Источник |
+| --- | --- | --- |
+| {{{{поле латиницей: что caller получает обратно и показывает или передаёт дальше}}}} | {{{{тип}}}} | {{{{{src}}}}} |
+
+## Пример ответа
+
+```json
+{{{{JSON с каждым полем «Ответа» и значениями из БФТ}}}}
+```
+
+## Ошибки
+
+| Статус | Код | Когда |
+| --- | --- | --- |
+| {{{{4xx}}}} | {{{{КОД_ЗАГЛАВНЫМИ}}}} | {{{{когда — по развилке «нет →» в «Процессе» {a} или {b}; нет развилки — [УТОЧНИТЬ у …]}}}} |
+
+## Sequence
+
+- {{{{caller}}}} -> {{{{callee}}}}: {{{{вызов(поля запроса)}}}}
+- {{{{callee}}}} --> {{{{caller}}}}: {{{{поля ответа}}}}
+
+## Цепочка
+
+| Шаг | Кто | Вход | Что делает | Выход |
+| --- | --- | --- | --- | --- |
+| 1 | {{{{callee или система за ним}}}} | {{{{поля запроса}}}} | {{{{шаг «Процесса» {b}}}}} | {{{{поля, которые дальше идут в работу}}}} |
+"""
+        out.append((f"{DIR}/{cid}.md", text))
+    return out
 
 
 HINTS = {
@@ -341,6 +429,7 @@ HINTS = {
     "CT008": "Цепочка: вход шага — поля «Запроса» или выхода прошлого шага; поля «Ответа» собираются из выходов",
     "CT009": "в «Данных» — хранилище и список нужных полей; таблицы, ключи, индексы, SQL — работа СА",
     "CT010": "параметр пути {id} — строкой «Запроса»: | id | string | да | path | ФТ-… |",
+    "CT011": "допиши места {{…}} каркаса: каждая подсказка говорит, откуда взять значение; «Цепочка» не нужна — удали раздел, «Данные» нужны — добавь по шаблону",
     "CT020": "стык двух команд на карте — контракт, в cards: которого обе карточки связи",
     "CT021": "за вызываемой системой есть ещё участники — «## Цепочка»: шаг, кто, вход, что делает, выход",
     "CT022": "добавь в «Ошибки» хотя бы отказ: что получает вызывающая сторона",

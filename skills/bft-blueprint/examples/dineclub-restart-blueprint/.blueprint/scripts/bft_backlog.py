@@ -732,6 +732,13 @@ def _check_task(pr: Project, t: BTask, stages: set, team_ids: set) -> None:
         pr.err(rel, 1, "BL007", f"{t.id}: нет критериев приемки (Acceptance Criteria) — `backlog task edit {t.id} --ac …`")
 
 
+VAGUE_LANE = re.compile(r"^(система|сервис|приложение|бэкенд|backend|фронтенд|frontend|платформа|модуль)$", re.I)
+
+
+def _norm_title(t: str) -> str:
+    return re.sub(r"[^\w]+", " ", t.lower().replace("ё", "е")).strip()
+
+
 def _check_card(pr: Project, c: BTask, stages: set, team_ids: set, task_ids: set, card_ids: set) -> None:
     rel = c.rel
     if pr.story and c.stage not in stages:
@@ -787,6 +794,11 @@ def _check_card(pr: Project, c: BTask, stages: set, team_ids: set, task_ids: set
         if builders:
             pr.warn(rel, secs["Процесс"][0], "BL034", f"{c.id}: в процессе участвует {', '.join(builders)} — это работа над проектом, а карточка "
                     "показывает, как сервис работает после запуска: участники — пользователь, сотрудник, система")
+        vague = [ln for ln in lanes_of(c.proc) if VAGUE_LANE.match(ln.strip())]
+        if vague:
+            pr.warn(rel, secs["Процесс"][0], "BL040", f"{c.id}: участник «{vague[0]}» без имени — назови систему, как её зовут в БФТ или в «Механизме»: «Реестр продаж», «Каталог UnitB»")
+    if par and _norm_title(c.title) == _norm_title(par.title):
+        pr.warn(rel, 1, "BL039", f"{c.id}: карточка названа как задача {par.id} — карточка говорит, что происходит в работающем сервисе: «Официант сканирует билет — сразу видит ответ»")
     if "HowToDemo" in secs and sum(bool(STEP_RE.match(x.strip())) for x in secs["HowToDemo"][1].split("\n")) < 2:
         pr.err(rel, secs["HowToDemo"][0], "BL009", f"{c.id}: HowToDemo — хотя бы два шага «1. …»")
     if "BPMN" in secs:

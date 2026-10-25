@@ -65,7 +65,8 @@ HTML без `npm` и CDN.
 5. `./blueprint.py apply` — до нуля ошибок, с адресом строки плана и подсказкой к каждому коду;
 6. рубрика качества и сводка `./blueprint.py next`; для глубины — груминг роем агентов
    `./blueprint.py groom audit|refine|merge` ([`resources/grooming.md`](skills/bft-blueprint/resources/grooming.md));
-7. сборка.
+7. контракты стыков: `./blueprint.py contracts skeleton` раскладывает стыки карты по файлам, `./blueprint.py contracts` проверяет;
+8. сборка.
 
 Решения сведены в таблицы, форма — в шаблоны, проверки — в скрипты: маршрут рассчитан на модели
 уровня Haiku и Sonnet.

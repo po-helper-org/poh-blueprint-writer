@@ -168,7 +168,8 @@ def inventory(path: Path) -> str:
 
     # 7. уточнить
     asks = []
-    for ln in text.splitlines():
+    # <details> — служебный блок БФТ (промпт агенту и т. п.), не требования: его [УТОЧНИТЬ] на карту не идут
+    for ln in re.sub(r"<details>.*?</details>", "", text, flags=re.S).splitlines():
         for m in UNSURE.finditer(ln):
             ctx = re.sub(r"\s+", " ", ln.strip().strip("|"))[:140]
             asks.append(f"- {m.group(0)} — {ctx}")

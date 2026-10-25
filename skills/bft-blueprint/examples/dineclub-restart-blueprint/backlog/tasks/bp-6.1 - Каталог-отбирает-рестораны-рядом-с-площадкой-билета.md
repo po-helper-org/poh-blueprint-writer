@@ -1,10 +1,10 @@
 ---
 id: BP-6.1
-title: Подбор ресторанов у площадки билета
+title: Каталог отбирает рестораны рядом с площадкой билета
 status: To Do
 assignee: []
 created_date: '2026-10-19 19:07'
-updated_date: '2026-10-19 20:40'
+updated_date: '2026-10-25 08:20'
 labels:
   - stage:B
   - layer:backstage

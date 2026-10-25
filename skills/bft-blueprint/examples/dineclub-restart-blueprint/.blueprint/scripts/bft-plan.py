@@ -58,7 +58,13 @@ def review(root: Path, source: str | None = None) -> int:
     if errors:
         print("дальше: исправь план и снова ./blueprint.py apply")
     else:
-        print("дальше: ./blueprint.py build — схемы BPMN, картинки экранов, страница и архив")
+        page = root / f"{pr.meta.get('epic_slug', '')}-map.html"
+        built = page.is_file() and page.stat().st_mtime >= max(
+            [f.stat().st_mtime for d in (bp.PLAN_DIR, "backlog") for f in (root / d).rglob("*.md")] + [0])
+        if built:
+            print(f"дальше: карта собрана — {page.name}; контракты стыков: ./blueprint.py contracts skeleton, затем ./blueprint.py contracts")
+        else:
+            print("дальше: ./blueprint.py build — схемы BPMN, картинки экранов, страница и архив")
     return 1 if errors else 0
 
 

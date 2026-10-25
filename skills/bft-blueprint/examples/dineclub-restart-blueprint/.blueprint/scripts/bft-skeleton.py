@@ -70,6 +70,16 @@ def jobstory(story: str) -> str:
     return f"Когда {when}, хочу {m.group(2).strip()}, чтобы {m.group(3).strip()}."
 
 
+def matrix_words(m, g) -> str:
+    """Отметки матрицы словами из её легенды: «●» → «обязателен: агентская, комиссионная; не применяется: перепродажа»."""
+    mx = next((x for x in g.matrices if any(m.id in r[1] for r in x.rows)), None)
+    legend = dict(re.findall(r"([●○◐–\-✓✗×+])\s*—\s*([^,;:.()]+?)(?=\s*[,;:.)]|$)", (mx.caption if mx else "") + " " + m.caption))
+    groups: dict[str, list[str]] = {}
+    for k, v in m.values.items():
+        groups.setdefault(legend.get(v.strip(), v.strip()).strip(), []).append(k.lower())
+    return "; ".join(f"{mean}: {', '.join(ks)}" for mean, ks in groups.items())
+
+
 def stub(hint: str) -> str:
     return "{{" + hint.replace("{", "(").replace("}", ")") + "}}"
 
@@ -113,9 +123,9 @@ class Skeleton:
         return out
 
     def first_stage(self) -> str:
-        if self.story and self.story.stages:
-            return self.story.stages[0].id
-        return stub("этап истории: A, B…")
+        """Этап не нашёлся ни в истории, ни у соседей по графу: решает агент — первый этап по умолчанию ставил результат не туда."""
+        ids = ", ".join(s.id for s in self.story.stages) if self.story and self.story.stages else "A, B…"
+        return stub(f"этап истории, на котором результат виден человеку: {ids}")
 
     def stage(self, ids: list[str]) -> str:
         """Этап первого атома, у которого он известен: ids — по старшинству (якорь задачи первым)."""
@@ -232,11 +242,10 @@ class Skeleton:
         if rid in g.atoms:
             a = g.atoms[rid]
             body = a.cols.get("Описание") or a.cols.get("Функциональные требования") or a.name
-            return f"{a.name}: {body} ({rid})"
+            return f"{body} ({rid})"   # название требования — уже в «Требованиях БФТ» задачи; правило — его текст
         m = g.members[rid]
         if m.source == "матрица":
-            vals = ", ".join(f"{k} {v}" for k, v in m.values.items())
-            return f"{rid} {m.label}: {vals}"
+            return f"{rid} {m.label}: {matrix_words(m, g)}"
         extra = "; ".join(f"{k}: {v}" for k, v in m.values.items())
         return f"{rid} {m.label}" + (f" — {extra}" if extra else "")
 
@@ -244,7 +253,9 @@ class Skeleton:
         g = self.g
         atoms = [g.atoms[x] for x in c["atoms"]]
         main = atoms[0] if atoms else None
-        title = (main.name if main else "Общие ограничения") or stub("что происходит, до 90 знаков")
+        # название карточки — что происходит в работающем сервисе; копия названия задачи ничего не говорит (BL039)
+        title = stub(f"что происходит, когда сервис работает: кто → что → результат, до 90 знаков; не повторяй задачу"
+                     + (f"; из БФТ: {main.name}" if main else ""))
         pts = [a for a in atoms if a.kind == "ПТ"]
         role = next((a.role for a in pts if a.role), "")
         lines = [f"## {cid} · {title}", f"этап: {self.stage([a.id for a in atoms] + [t['anchor']] + t['atoms'])}", f"слой: {c['layer']}"]
@@ -262,7 +273,7 @@ class Skeleton:
         if jobs:
             lines.append(f"- {stub('исключение или отказ из БФТ, если есть: Когда …, хочу …, чтобы …; нет — удали строку')}")
         rules = [self.rule_line(a.id) for a in atoms if a.kind in ("ФТ",)]
-        rules += [f"{a.name}: {a.cols['Требование к пользовательскому интерфейсу']} ({a.id})" for a in atoms
+        rules += [f"{a.cols['Требование к пользовательскому интерфейсу']} ({a.id})" for a in atoms
                   if a.kind == "ИТ" and a.cols.get("Требование к пользовательскому интерфейсу")]
         rules += [f"{a.cols['Параметры, ограничения']}" for a in atoms if a.kind == "ФТ" and a.cols.get("Параметры, ограничения")]
         rules += [self.rule_line(x) for x in c["rules"]]
@@ -324,11 +335,17 @@ class Skeleton:
             for ln in lines:
                 ln = bp.STUB.sub("", ln)
                 for m in UNSURE.finditer(ln):
-                    ctx = re.sub(r"\s+", " ", UNSURE.sub("…", ln).strip("-* "))[:110]
+                    # контекст — та часть строки, где стоит [УТОЧНИТЬ], без разметки и ключа параметра
+                    part = next((x for x in ln.split(";") if m.group(0) in x), ln)
+                    part = re.sub(r"^\s*[-*]?\s*(\*\*)?[А-Яа-яЁё]+:\s*(\*\*)?\s*", "", part.replace("**", "") if part.lstrip("-* ").startswith("**") else part)
+                    ctx = re.sub(r"\s+", " ", UNSURE.sub("…", part.replace("**", "")).strip("-* "))[:110]
                     qs.append(((m.group(1) or "PO").strip(), stub(f"вопрос одной фразой — по «{ctx}»"), bid))
         for mid, m in self.g.members.items():
             st = " ".join(m.values.values())
             if re.search(r"открыт", st, re.I) and mid in self.home:
+                # [УТОЧНИТЬ] разрыва уже дал вопрос из текста блока — второй строкой тот же вопрос не нужен
+                if any(where == self.home[mid] and re.search(rf"\b{re.escape(mid)}\b", q) for _, q, where in qs):
+                    continue
                 who = (UNSURE.search(st).group(1) if UNSURE.search(st) and UNSURE.search(st).group(1) else "PO").strip()
                 qs.append((who, stub(f"вопрос по разрыву {mid}: «{m.label} — {st}»"), self.home[mid]))
         for fam, ids in self.g.external.items():
@@ -390,7 +407,7 @@ def main() -> int:
     sk.layout()
     title = pr.story.title if pr.story and pr.story.title else src.stem
     plan, index = sk.render(re.sub(r"^\[История\]\s*", "", title))
-    pf.parent.mkdir(parents=True, exist_ok=True)
+    (pf.parent / "screens").mkdir(parents=True, exist_ok=True)
     pf.write_text(plan, encoding="utf-8")
     (pf.parent / "skeleton.md").write_text("\n".join(index) + "\n", encoding="utf-8")
     stubs = len(bp.STUB.findall(plan))

@@ -467,9 +467,24 @@ def merge(root: Path, wave: str = REFINE) -> int:
     _, _, q1 = findings(root, AUDIT) if wave == REFINE else ({}, [], [])
     _, _, q2 = findings(root, wave)
     spans = block_spans(lines)
+    kept_q: list[str] = []
     if wave == FILL:
+        # заготовку каркаса заменяет вопрос ответа о том же блоке; ответ без вопросов её не стирает —
+        # вопрос из БФТ остаётся строкой с текстом подсказки, а отчёт просит переписать его фразой
         answered = {f.stem[2:].upper() for f in outs}
-        lines = [ln for ln in lines if not (ln.startswith("| В") and bp.STUB.search(ln) and any(f"| {x} |" in ln for x in answered))]
+        asked = {where.upper().strip() for _, _, where, _ in q2}
+        out_lines = []
+        for ln in lines:
+            hit = next((x for x in answered if f"| {x} |" in ln), None) if ln.startswith("| В") and bp.STUB.search(ln) else None
+            if hit and hit in asked:
+                continue
+            if hit:
+                hint = bp.STUB.search(ln).group(0)
+                quote = re.search(r"«(.+)»", hint)
+                ln = ln.replace(hint, "Уточнить: " + (quote.group(1) if quote else hint.strip("{} ")).rstrip(" .…") + "?")
+                kept_q.append(ln)
+            out_lines.append(ln)
+        lines = out_lines
     text = "\n".join(lines)
     qsec = section(lines, "Вопросы")
     have = {re.sub(r"\W+", " ", r.split("|")[3]).strip().lower() for r in qsec.split("\n") if r.startswith("| В")}
@@ -510,9 +525,12 @@ def merge(root: Path, wave: str = REFINE) -> int:
     report += ["## Критичные находки — проверь, что закрыты", ""] + ([f"- {x}" for x in crit] or ["- нет"]) + [""]
     if added:
         report += ["## Новые вопросы", ""] + added + [""]
+    if kept_q:
+        report += ["## Вопросы-заготовки без ответа — сохранены как есть, перепиши каждый одной фразой", ""] + kept_q + [""]
     (root / GROOM / "report.md").write_text("\n".join(report), encoding="utf-8")
-    print(f"groom merge: применено {len(applied)}, отклонено {len(rejected)}, пропущено {len(skipped)}, вопросов +{len(added)} — "
-          f"{root / GROOM / 'report.md'}")
+    print(f"groom merge: применено {len(applied)}, отклонено {len(rejected)}, пропущено {len(skipped)}, вопросов +{len(added)}"
+          + (f", заготовок вопросов сохранено {len(kept_q)} — перепиши их фразой" if kept_q else "") + f" — {root / GROOM / 'report.md'}")
+    print("groom merge: план слит; ниже — проверка всей карты после слияния (ошибки чинятся в плане, затем ./blueprint.py apply)")
     if pl.issues:
         for i in pl.issues:
             print(f"{i.path}:{i.line}: {i.level} {i.code} {i.msg}")

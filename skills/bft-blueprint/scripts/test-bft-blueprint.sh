@@ -435,8 +435,8 @@ python3 "$DIR/scripts/bft-skeleton.py" "$SK/p" >/dev/null 2>&1; M="$SK/p/plan/ma
 ( for x in БТ-1 ПТ-А1 ПТ-А3 ПТ-B1 ПТ-B2 ПТ-C2 ИТ-3 ФТ-1 ФТ-6 НФТ-1 НФТ-3 P1 P3 P8 I1 I4 G1 G3; do grep -q "$x" "$M" || exit 1; done ) \
   && grep -q "^- Повторная передача чека не создаёт вторую продажу (ФТ-3)" "$M" \
   && grep -q "^- Когда месяц закончился, хочу сформировать акты всем партнёрам одной операцией, чтобы не сводить таблицы. (ПТ-B1)" "$M" \
-  && grep -q "P3 цена закупки: Агентская –, Комиссионная –, Перепродажа ●" "$M" \
-  && grep -qF "Экран «Закрытие месяца»: Список партнёров периода, статус акта, расхождения сверки (ИТ-3)" "$M" \
+  && grep -q "P3 цена закупки: не применяется: агентская, комиссионная; обязателен: перепродажа" "$M" \
+  && grep -qF "Управление:** Список партнёров периода, статус акта, расхождения сверки (ИТ-3)" "$M" \
   && [ -z "$(python3 "$DIR/scripts/bft-plan.py" apply "$SK/p" 2>&1 | grep ERROR | grep -v PL007 | grep -v 'вид «{{')" ] \
   && ok "каркас · каждый атом и ID семейства на месте; критерии, JobStory, матрица — дословно; ошибки только {{…}}" || fail "каркас · раскладка"
 cp -r "$SK/p" "$SK/f" && python3 - "$SK/f/plan/map.md" <<'PY'
@@ -462,11 +462,13 @@ fblk() { awk -v h="^## $1 " '$0 ~ h {f=1; print; next} f && /^## / {exit} f' "$S
 { printf '## Замены\n'; fblk BP-1.1; } > "$FO/f-BP-1.1.md"
 { printf '## Вопросы\n| Кому | Вопрос | Где | Тип |\n| --- | --- | --- | --- |\n| PO | Кто подтверждает договор партнёра перед активацией? | BP-1.2 | вопрос |\n| PO | Кто подтверждает договор партнёра до активации профиля? | BP-1.2 | вопрос |\n\n## Замены\n'; fblk BP-1.2; } > "$FO/f-BP-1.2.md"
 { printf '## Замены\n'; fblk BP-2.1 | sed 's/P3 цена закупки[^;]*;//'; } > "$FO/f-BP-2.1.md"
+{ printf '## Замены\n'; fblk BP-3.1; } > "$FO/f-BP-3.1.md"   # ответ без «Вопросов»: заготовка вопроса G2 не теряется
 python3 "$DIR/scripts/bft-groom.py" merge "$SK/p" fill >/dev/null 2>&1
 [ "$n_pk" -eq "$n_bl" ] && grep -q "^- BP-1.1 ← f-BP-1.1.md" "$SK/p/groom/report.md" && grep -q "^- BP-1.2 ← f-BP-1.2.md" "$SK/p/groom/report.md" && grep -q "BP-2.1 из f-BP-2.1.md: теряет P3" "$SK/p/groom/report.md" \
   && grep -q "Осталось незаполненным" "$SK/p/groom/report.md" && ! awk '/^## BP-1.1 /{f=1;next} f&&/^## /{exit} f' "$M" | grep -q "{{" \
   && [ "$(grep -c 'Кто подтверждает договор партнёра' "$M")" -eq 1 ] \
-  && ok "каркас · groom fill: пакет на блок; merge fill берёт заполненный блок, потерю P3 отклоняет, повтор вопроса — одной строкой" || fail "каркас · groom fill/merge fill"
+  && grep -q "^| В[0-9]* | PO | Уточнить: Партнёры-банки передают продажи раз в сутки пакетом.*| BP-3.1 |" "$M" && grep -q "Вопросы-заготовки без ответа" "$SK/p/groom/report.md" \
+  && ok "каркас · groom fill: пакет на блок; merge fill берёт заполненный блок, потерю P3 отклоняет, повтор вопроса — одной строкой, вопрос без ответа сохраняет" || fail "каркас · groom fill/merge fill"
 cp -r "$SK/f" "$SK/cand" && sed -i '0,/^команда: prodazh$/s//команда: кандидаты: prodazh, kataloga/' "$SK/cand/plan/map.md"
 out="$(python3 "$DIR/scripts/bft-plan.py" apply "$SK/cand" 2>&1)"
 ! grep -qE "PL003|BL006" <<<"$out" && grep -rq "кандидат:kataloga" "$SK/cand/backlog/tasks" \
@@ -504,6 +506,12 @@ cp "$C/C-1.md" "$C/C-7.md"
 out="$(python3 "$CTL" lint "$CB" --source "$FIX/golden_deep_document.md" 2>&1)"; rc=$?
 miss=""; for c in CT001 CT002 CT003 CT004 CT005 CT006 CT007 CT008 CT009 CT010 CT020 CT021 CT022; do grep -q " $c " <<<"$out" || miss="$miss $c"; done
 [ "$rc" -eq 1 ] && [ -z "$miss" ] && ok "контракты · сломанная копия: CT001–CT010, CT020–CT022" || fail "контракты · нет в выводе:$miss (rc=$rc)"
+# каркас: стык без контракта (C-6 убран) → CT020; skeleton заводит C-6 заново на ту же пару карточек, незаполненный — только CT011
+CS="$tmp/cts" && cp -r "$BGOLD" "$CS" && rm "$CS/contracts/C-6.md"
+out1="$(python3 "$CTL" lint "$CS" 2>&1)"; python3 "$CTL" skeleton "$CS" >/dev/null 2>&1; out2="$(python3 "$CTL" lint "$CS" 2>&1)"
+grep -q "WARN CT020 BP-1.1 → BP-2.1" <<<"$out1" && grep -q "^cards: BP-1.1, BP-2.1" "$CS/contracts/C-6.md" && grep -q "ERROR CT011 C-6" <<<"$out2" \
+  && [ "$(grep -c " ERROR " <<<"$out2")" -eq 1 ] && ! grep -q CT020 <<<"$out2" && [ "$(ls "$CS/contracts" | wc -l)" -eq 6 ] \
+  && ok "контракты · skeleton: стык без контракта → каркас C-6 с картой в шапке, незаполненный — только CT011" || fail "контракты · skeleton"
 
 # встроенный CLI и настоящий Backlog.md читают файлы друг друга — если npm-пакет установлен
 if command -v backlog >/dev/null 2>&1; then
