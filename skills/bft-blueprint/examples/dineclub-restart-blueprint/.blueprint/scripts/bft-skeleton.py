@@ -202,6 +202,22 @@ class Skeleton:
             else:
                 t["cards"].append({"layer": "technology", "atoms": [a.id], "rules": []})
         self._employee()
+        # этап истории без задачи: шаги ссылаются на требование (НФТ-1 «изменения на сайте за сутки») — задача по нему,
+        # иначе BL020 и агент дописывает её руками
+        if self.story:
+            busy = {self.stage([t["anchor"]] + t["atoms"]) for t in self.tasks}
+            anchors = {t["anchor"] for t in self.tasks}
+            for st in self.story.stages:
+                if st.id in busy:
+                    continue
+                cand = [r for r, sid in self.stage_of.items() if sid == st.id and r in g.atoms and g.atoms[r].kind in ("ФТ", "НФТ", "ИТ")]
+                cand.sort(key=lambda r: ("ФТ", "ИТ", "НФТ").index(g.atoms[r].kind))
+                rid = next((r for r in cand if r not in anchors), None)
+                if rid:
+                    layer = "technology" if g.atoms[rid].kind == "ИТ" else "backstage"
+                    self.tasks.append({"anchor": rid, "atoms": [rid], "cards": [{"layer": layer, "atoms": [rid], "rules": []}]})
+                    task_of[rid] = self.tasks[-1]
+                    anchors.add(rid)
         # НФТ: «Управление» карточек связанных требований; без связи — карточка support первой задачи
         for a in g.by_kind("НФТ"):
             cards = [c for t in self.tasks for c in t["cards"] if set(c["atoms"]) & set(g.neighbours(a.id) + a.related)]

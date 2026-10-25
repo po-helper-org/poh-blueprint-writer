@@ -521,7 +521,8 @@ FM="$LY/faq/direct-faq-p/plan/map.md"; CM="$LY/car/car-service-booking-p/plan/ma
 ! grep "^Требования БФТ:" "$FM" | grep -q "ИТ-1.*ИТ-2\|ИТ-2.*ИТ-1" \
   && [ "$(grep -c '^слой: employee' "$CM")" -eq 1 ] && grep -A1 "^слой: employee" "$CM" | grep -q "^экраны: D1" \
   && ! grep -B3 "^слой: employee" "$FM" | grep -q employee \
-  && ok "каркас · экраны разных этапов — в разных задачах; мастер-приёмщик при клиенте — employee, экран клиента — technology" || fail "каркас · раскладка по этапам и employee"
+  && grep -A1 "^## BP-[0-9]* · Задержка публикации изменений" "$FM" | grep -q "^этап: B" \
+  && ok "каркас · экраны разных этапов — в разных задачах; этап без задачи получает задачу своего требования; мастер-приёмщик при клиенте — employee, экран клиента — technology" || fail "каркас · раскладка по этапам и employee"
 tm() { awk -v h="^## $1 " '$0 ~ h {f=1; next} f && /^команда: / {print $2; exit} f && /^## / {exit}' "$CM"; }
 [ "$(tm BP-2)" = int ] && [ "$(tm BP-3)" = int ] && [ "$(tm BP-10)" = pay ] && [ "$(tm BP-13)" = loy ] && [ "$(tm BP-1)" = loy ] \
   && [ "$(grep -c '^кандидаты:' "$SK/p/plan/map.md")" -eq 0 ] \
