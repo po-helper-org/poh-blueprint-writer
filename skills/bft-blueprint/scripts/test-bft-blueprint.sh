@@ -588,6 +588,14 @@ printf '\n## Ш99 · Лишний шаг\nприложение: client\nприл
 out="$(python3 "$PTL" lint "$PB" 2>&1)"; miss=""
 for c in PT001 PT002 PT003 PT004 PT005 PT006 PT007 PT008 PT009 PT020; do grep -q " $c " <<<"$out" || miss="$miss $c"; done
 [ -z "$miss" ] && ok "прототип · сломанный план показа: PT001–PT009, PT020" || fail "прототип · нет в выводе:$miss"
+python3 - "$DIR/scripts" <<'PY' && ok "прототип · глагол шага ↔ вид операции: «Добавляю» — POST, «Переношу» — cancel, «Оплачиваю» — платёж, «запись» — не глагол" || fail "прототип · глагол шага ↔ операция"
+import sys; sys.path.insert(0, sys.argv[1])
+import bft_proto as b
+assert b.op_kind("POST /v1/questions") == "create" and b.op_kind("PATCH /v1/questions/{id}") == "update"
+assert b.op_kind("POST /v1/bookings/{ref}/cancel") == "cancel" and b.op_kind("POST /v1/invoices/{id}/payments") == "pay"
+assert b.step_kinds("Добавляю вопрос на карточку") == {"create"} and "cancel" in b.step_kinds("Передумал — переношу запись")
+assert "create" not in b.step_kinds("Передумал — переношу запись") and b.step_kinds("Оплачиваю счёт") == {"pay"}
+PY
 PR="$tmp/proto-review" && cp -r "$BGOLD" "$PR" && python3 "$DIR/scripts/bft-plan.py" export "$PR" >/dev/null 2>&1
 printf '{"pins": [{"step": "Ш13", "screen": "F2", "block": "Сканировать", "text": "Кнопка мелкая для официанта", "x": 50, "y": 80}]}' > "$tmp/review.json"
 python3 "$PTL" review "$PR" "$tmp/review.json" >/dev/null 2>&1 \
