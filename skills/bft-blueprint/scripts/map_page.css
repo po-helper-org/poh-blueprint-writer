@@ -249,6 +249,11 @@ body.open .tr{right:calc(min(500px,100%) + 12px)}body.open.wide .tr{right:calc(m
 .side h4.cmh{margin:18px 0 6px;font-size:13px;font-weight:600;letter-spacing:0;text-transform:none;color:#8a857c}
 .cmout{width:100%;min-height:200px;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;border:1px solid #ddd8ce;border-radius:10px;padding:10px;background:#faf9f6;margin-bottom:10px}
 .cmempty{color:var(--muted);font-size:13.5px}.cmpast{margin-top:12px}.cmpast summary{cursor:pointer;font-size:12.5px;color:#8a857c}
+/* стыки: таблицы панели «Контроль стыковочных работ» */
+.tbl{overflow-x:auto;margin:8px 0 4px}
+.tbl table{border-collapse:collapse;font-size:12px;width:100%}
+.tbl th{text-align:left;font-weight:650;color:#8a857c;padding:4px 8px 4px 0;border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl td{padding:4px 8px 4px 0;border-bottom:1px solid #ece8df;vertical-align:top;min-width:8ch}
 /* постановка: вкладки «Требования» / «Исполнение» */
 .tktabs{margin:10px 0 4px}
 .exec{display:flex;flex-direction:column;gap:6px;padding-top:10px}

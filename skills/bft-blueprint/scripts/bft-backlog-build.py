@@ -70,6 +70,7 @@ PAGE = """<!doctype html>
 <button class="mi" data-guide="help"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h4.5A1.5 1.5 0 0 1 8 4.5V14a1.5 1.5 0 0 0-1.5-1.5H2zM14 3H9.5A1.5 1.5 0 0 0 8 4.5V14a1.5 1.5 0 0 1 1.5-1.5H14z"/></svg>Инструкции</button>
 <button class="mi" data-guide="legend"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2.5" width="4" height="4" rx="1"/><path d="M8.5 4.5H14"/><circle cx="4" cy="11.5" r="2"/><path d="M8.5 11.5H14"/></svg>Легенда</button>{adr_menu}
 <button class="mi" data-qpanel><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M6.2 6.1a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.6"/></svg>Уточнить</button>
+<button class="mi" data-seamspanel hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h5v8H2zM9 4h5v8H9z" fill="none"/><path d="M7 8h2"/></svg>Стыки<b class="cnt" id="seamcnt" hidden></b></button>
 <button class="mi" data-cmpanel><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7.5H7l-3 2.5V11H2.5z"/></svg>Замечания<b class="cnt cmn" id="cmn" hidden></b></button></div>
 <div class="mlab">Команды — показать работу одной</div><div class="teams" id="teams"></div></nav>
 <section class="hero" id="hero" aria-label="Что видят люди — путь слева направо"></section>
@@ -173,6 +174,18 @@ def model(pr: bl.Project, base: str = "") -> dict:
                        "questions": [{"id": q.id, "to": q.to, "text": q.text, "open": q.open, "answer": q.answer} for q in pr.sysreq.questions],
                        "file": pr.sysreq_doc.rel}}
            if pr.sysreq is not None and pr.sysreq_doc is not None else {}),
+        **({"seams": {"status": pr.seams.meta.get("status", ""), "version": pr.seams.meta.get("version", ""),
+                      "items": [{"id": s.id, "kind": s.kind, "supplier": s.supplier, "consumer": s.consumer,
+                                 "owner": s.owner} for s in pr.seams.seams],
+                      "deliveries": [{"id": d.id, "who": d.who, "what": d.what, "to": d.to, "when": d.when,
+                                      "where": d.where, "seam": d.seam} for d in pr.seams.deliveries],
+                      "contracts": [{"seam": c.seam, "aspect": c.aspect, "req": c.req} for c in pr.seams.contracts],
+                      "checkpoints": [{"id": k.id, "name": k.name, "when": k.when, "what": k.what,
+                                       "who": k.who} for k in pr.seams.checkpoints],
+                      "risks": [{"id": r.id, "text": r.text, "effect": r.effect, "owner": r.owner,
+                                 "mitigation": r.mitigation} for r in pr.seams.risks],
+                      "file": pr.seams_doc.rel}}
+           if pr.seams is not None and pr.seams_doc is not None else {}),
         "files": {"map": pr.map_doc.rel, "story": pr.story_doc.rel, "source": pr.meta.get("source_doc", ""),
                   "project": f"{pr.meta.get('epic_slug', 'epic')}-blueprint"},
         "base": base, "mermaid": ".blueprint/vendor/mermaid.min.js",

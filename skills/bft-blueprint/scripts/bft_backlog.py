@@ -12,6 +12,8 @@ markdown-файлы, которыми ИИ-агент управляет чер�
                                              контекст, AS-IS, варианты, решение TO-BE, узкие места, компромиссы
   backlog/docs/doc-… - Системные требования.md  та же ступень, системная аналитика <!-- bft-sysreq … -->:
                                              контракты → параметры → источники → преобразования → AS-IS → изменения
+  backlog/docs/doc-… - Стыки.md               этап «Контроль стыковочных работ» <!-- bft-seams … -->:
+                                             участники стыков, обязательства, контракты, точки, риски
   backlog/docs/screens/doc-… - F3 · ….md      требования к экрану для дизайнера
   backlog/tasks/bp-12 - ….md                  «Что делаем»: задача команды — постановка для техлида
   backlog/tasks/bp-12.1 - ….md                «Как это работает»: подзадача — техническая карточка
@@ -97,6 +99,22 @@ SYSROW_ID = re.compile(r"^(?:A|I)-?(?P<num>\d+)$", re.I)
 SYSQ_ID = re.compile(r"^Q-?(?P<num>\d+)$", re.I)
 # ADR-контракт в «Системных требованиях» — имя латиницей-слагом или [УТОЧНИТЬ …]
 SYS_CONTRACT_NAME = re.compile(r"^(?:[a-z][a-z0-9-]*|[А-Яа-яЁё][А-Яа-яЁё0-9 .,()-]*|\[УТОЧНИТЬ[^\]]*\])$")
+# Этап «Контроль стыковочных работ»: участники стыков, обязательства «кто → что → кому → срок»,
+# контракты по слоям (FE↔BE, BE↔BE, Infra), контрольные точки и риски. Документ проекта —
+# «Стыки» (<!-- bft-seams … -->); включается, когда задача режется между командами/сервисами.
+SEAMS_META = ("epic_slug", "version", "revised", "status")
+SEAM_HEADER = ("ID", "Стык", "Поставщик", "Потребитель", "Ответственный за контракт")
+SEAM_KINDS = ("fe-be", "be-be", "be-infra", "внешний")
+DELIVERY_HEADER = ("ID", "Кто", "Что", "Кому", "Срок", "Формат/место")
+SEAM_CONTRACT_HEADER = ("Стык", "Аспект", "Требование к фиксации")
+CHECKPOINT_HEADER = ("ID", "Точка", "Когда", "Что проверяется", "Кто проводит")
+RISK_HEADER = ("ID", "Риск", "Следствие", "Владелец", "Митигация")
+SEAM_ID = re.compile(r"^S-?(?P<num>\d+)$", re.I)
+DELIVERY_ID = re.compile(r"^D-?(?P<num>\d+)$", re.I)
+CHECKPOINT_ID = re.compile(r"^K-?(?P<num>\d+)$", re.I)
+RISK_ID = re.compile(r"^R-?(?P<num>\d+)$", re.I)
+# «Кто»/«Кому» в матрице обязательств и «Поставщик»/«Потребитель» — ID команд из «Команд» или [УТОЧНИТЬ …]
+TEAM_OR_STUB = re.compile(r"^(?:[a-z][a-z0-9-]*|\[УТОЧНИТЬ[^\]]*\])$")
 
 TEAM_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 SCREEN_TITLE = re.compile(r"^([A-H]\d{1,2})\s*·\s*(.+)$")
@@ -105,7 +123,7 @@ LIST_RE = {k: re.compile(rf"<!-- {k}:BEGIN -->\n?(.*?)\n?<!-- {k}:END -->", re.S
 CHECK_ITEM = re.compile(r"^- \[([ xX])\] (?:#\d+ )?(.*)$")
 REQS_LINE = re.compile(r"^Требования(?: БФТ)?\s*:\s*(.*)$")
 STEP_RE = re.compile(r"^\d+\.\s+\S")
-META_OPEN = re.compile(r"^<!--\s*(bft-map|bft-story|bft-adr|bft-sysreq)\s*$")
+META_OPEN = re.compile(r"^<!--\s*(bft-map|bft-story|bft-adr|bft-sysreq|bft-seams)\s*$")
 MERMAID = re.compile(r"```mermaid\n(.*?)\n```", re.S)
 
 
@@ -215,6 +233,61 @@ class Decision:
     contract: str
     text: str
     why: str
+    line: int
+
+
+@dataclass
+class Seam:
+    """Стык: кто поставщик, кто потребитель и кто отвечает за контракт."""
+    id: str
+    kind: str                      # fe-be | be-be | be-infra | внешний
+    supplier: str                  # ID команды из «Команд» или [УТОЧНИТЬ …]
+    consumer: str
+    owner: str                     # ответственный за контракт (роль/техлид; может быть [УТОЧНИТЬ …])
+    line: int
+
+
+@dataclass
+class Delivery:
+    """Обязательство стыка: кто, что и к какому сроку предоставляет кому."""
+    id: str
+    who: str                       # поставщик — ID команды или [УТОЧНИТЬ …]
+    what: str                      # артефакт: API-спека, мок, окружение, доступы…
+    to: str                        # потребитель — ID команды или [УТОЧНИТЬ …]
+    when: str                      # срок: рабочие дни от старта / привязка к спринту / [УТОЧНИТЬ …]
+    where: str                     # формат/место хранения
+    seam: str = ""                 # ID стыка S1… (заполняет проверка смысла)
+    line: int = 0
+
+
+@dataclass
+class ContractRow:
+    """Строка контракта по слою стыка: аспект и требование к фиксации."""
+    seam: str                      # ID стыка S1…
+    aspect: str
+    req: str
+    line: int
+
+
+@dataclass
+class Checkpoint:
+    """Контрольная точка стыка: что и когда проверяется, кто проводит."""
+    id: str
+    name: str
+    when: str
+    what: str
+    who: str
+    line: int
+
+
+@dataclass
+class Risk:
+    """Риск стыка и его владелец."""
+    id: str
+    text: str
+    effect: str
+    owner: str
+    mitigation: str
     line: int
 
 
@@ -329,6 +402,23 @@ class SysReq:
 
 
 @dataclass
+class Seams:
+    """Этап «Контроль стыковочных работ»: документ проекта со стыками, обязательствами,
+    контрактами по слоям, контрольными точками и рисками. Открытые вопросы и блокеры —
+    в таблице «Вопросы» «Карты» («Где» — ID стыка S1…), параллельной структуры нет."""
+    meta: dict = field(default_factory=dict)
+    seams: list = field(default_factory=list)          # [Seam]
+    deliveries: list = field(default_factory=list)     # [Delivery]
+    contracts: list = field(default_factory=list)      # [ContractRow]
+    checkpoints: list = field(default_factory=list)    # [Checkpoint]
+    risks: list = field(default_factory=list)          # [Risk]
+    doc: Doc | None = None
+
+    def by_id(self, sid: str) -> Seam | None:
+        return next((s for s in self.seams if s.id == sid), None)
+
+
+@dataclass
 class Project:
     root: Path
     bdir: Path | None = None
@@ -341,6 +431,8 @@ class Project:
     adr: ADR | None = None
     sysreq_doc: Doc | None = None
     sysreq: SysReq | None = None
+    seams_doc: Doc | None = None
+    seams: Seams | None = None
     story: bs.Story | None = None
     teams: list[Team] = field(default_factory=list)
     questions: list[Question] = field(default_factory=list)
@@ -677,6 +769,118 @@ def parse_sysreq(pr: Project, d: Doc) -> SysReq:
             s.questions.append(SysQ(qid, c[1].strip(), c[2].strip(), c[3].strip(), ln))
     s.meta["_issues"] = issues
     return s
+def parse_seams(pr: Project, d: Doc) -> Seams:
+    """Документ «Стыки» (<!-- bft-seams … -->): этап «Контроль стыковочных работ».
+
+    Разделы: «## Участники» | ID | Стык | Поставщик | Потребитель | Ответственный за контракт |
+    «## Обязательства» | ID | Кто | Что | Кому | Срок | Формат/место |, «## Контракты стыков»
+    | Стык | Аспект | Требование к фиксации |, «## Контрольные точки»
+    | ID | Точка | Когда | Что проверяется | Кто проводит |, «## Риски»
+    | ID | Риск | Следствие | Владелец | Митигация |. Открытые вопросы — в «Вопросах» «Карты»
+    («Где» — ID стыка S1…). Форма проверяется здесь; смысл (команды, ссылки на стыки) — кодами SM
+    в `bft-backlog-lint.py`.
+    """
+    sm = Seams(meta={k: v for k, v in d.meta.items() if not k.startswith("_")})
+    sm.doc = d
+    issues: list[bb.Issue] = []
+    err = lambda ln, code, msg: issues.append(bb.Issue(ln, "ERROR", code, msg, d.rel))  # noqa: E731
+    for key in SEAMS_META:
+        if not sm.meta.get(key):
+            err(d.off + 1, "SM001", f"паспорт <!-- bft-seams -->: нет ключа `{key}`")
+    body = d.body
+    lines = body.split("\n")
+    h1 = next((ln for ln in lines if ln.startswith("# ")), "")
+    if not h1:
+        err(d.off + 1, "SM001", "нет заголовка `# Стыки: <инициатива>`")
+    secs = bb._sections(lines)
+    ids: dict[str, set[str]] = {"S": set(), "D": set(), "K": set(), "R": set()}
+    for name, header, tag in (("Участники", SEAM_HEADER, "S"), ("Обязательства", DELIVERY_HEADER, "D"),
+                              ("Контрольные точки", CHECKPOINT_HEADER, "K"), ("Риски", RISK_HEADER, "R")):
+        if name not in secs:
+            err(d.off + 1, "SM001", f"нет раздела «## {name}» с таблицей")
+            continue
+        ln0, tbody = secs[name]
+        found = bb.tables(tbody, first_lineno=d.off + ln0 + 1)
+        if not found:
+            err(d.off + ln0, "SM001", f"«{name}»: нет таблицы")
+            continue
+        hdr, rows = found[0]
+        if tuple(hdr) != header:
+            err(d.off + ln0, "SM001", f"«{name}»: заголовок таблицы — {' | '.join(header)}")
+            continue
+        pat = {"S": SEAM_ID, "D": DELIVERY_ID, "K": CHECKPOINT_ID, "R": RISK_ID}[tag]
+        for ln, c in rows:
+            if len(c) != len(header):
+                err(ln, "SM001", f"«{name}»: в строке {len(c)} колонок, нужно {len(header)}")
+                continue
+            if tag == "S":
+                sid = _norm_id(c[0], pat, "S")
+                if not sid or sid in ids["S"]:
+                    err(ln, "SM001", f"стык: ID вида S1…, уникален — «{c[0]}»")
+                    continue
+                kind = c[1].strip().lower()
+                if kind not in SEAM_KINDS:
+                    err(ln, "SM001", f"{sid}: стык «{c[1]}» — один из: {', '.join(SEAM_KINDS)}")
+                    continue
+                if not all(x.strip() for x in c[2:]):
+                    err(ln, "SM001", f"{sid}: нужны «Поставщик», «Потребитель», «Ответственный за контракт»")
+                    continue
+                ids["S"].add(sid)
+                sm.seams.append(Seam(sid, kind, c[2].strip(), c[3].strip(), c[4].strip(), ln))
+            elif tag == "D":
+                did = _norm_id(c[0], pat, "D")
+                if not did or did in ids["D"]:
+                    err(ln, "SM001", f"обязательство: ID вида D1…, уникален — «{c[0]}»")
+                    continue
+                if not all(x.strip() for x in c[1:]):
+                    err(ln, "SM001", f"{did}: нужны «Кто», «Что», «Кому», «Срок», «Формат/место»")
+                    continue
+                ids["D"].add(did)
+                sm.deliveries.append(Delivery(did, c[1].strip(), c[2].strip(), c[3].strip(),
+                                              c[4].strip(), c[5].strip(), "", ln))
+            elif tag == "K":
+                kid = _norm_id(c[0], pat, "K")
+                if not kid or kid in ids["K"]:
+                    err(ln, "SM001", f"контрольная точка: ID вида K1…, уникален — «{c[0]}»")
+                    continue
+                if not all(x.strip() for x in c[1:]):
+                    err(ln, "SM001", f"{kid}: нужны «Точка», «Когда», «Что проверяется», «Кто проводит»")
+                    continue
+                ids["K"].add(kid)
+                sm.checkpoints.append(Checkpoint(kid, c[1].strip(), c[2].strip(), c[3].strip(), c[4].strip(), ln))
+            else:
+                rid = _norm_id(c[0], pat, "R")
+                if not rid or rid in ids["R"]:
+                    err(ln, "SM001", f"риск: ID вида R1…, уникален — «{c[0]}»")
+                    continue
+                if not all(x.strip() for x in c[1:]):
+                    err(ln, "SM001", f"{rid}: нужны «Риск», «Следствие», «Владелец», «Митигация»")
+                    continue
+                ids["R"].add(rid)
+                sm.risks.append(Risk(rid, c[1].strip(), c[2].strip(), c[3].strip(), c[4].strip(), ln))
+    # «Контракты стыков» — строки привязаны к стыку; без стыков таблица не читается
+    if "Контракты стыков" in secs:
+        ln0, tbody = secs["Контракты стыков"]
+        found = bb.tables(tbody, first_lineno=d.off + ln0 + 1)
+        if found:
+            hdr, rows = found[0]
+            if tuple(hdr) != SEAM_CONTRACT_HEADER:
+                err(d.off + ln0, "SM001", f"«Контракты стыков»: заголовок таблицы — {' | '.join(SEAM_CONTRACT_HEADER)}")
+            else:
+                for ln, c in rows:
+                    if len(c) != len(SEAM_CONTRACT_HEADER):
+                        err(ln, "SM001", f"«Контракты стыков»: в строке {len(c)} колонок, нужно {len(SEAM_CONTRACT_HEADER)}")
+                        continue
+                    if not all(x.strip() for x in c):
+                        err(ln, "SM001", "контракту нужны «Стык», «Аспект», «Требование к фиксации»")
+                        continue
+                    sm.contracts.append(ContractRow(c[0].strip().upper(), c[1].strip(), c[2].strip(), ln))
+    elif sm.seams:
+        err(d.off + 1, "SM001", "нет раздела «## Контракты стыков» с таблицей")
+    if not sm.seams:
+        err(d.off + 1, "SM001", "в «Участниках» нет ни одного стыка — для задач без стыков документ не создаётся")
+    sm.meta["_issues"] = issues
+    return sm
 
 
 def _subsections(text: str, first: int) -> tuple[list[str], dict, list[tuple[int, str]]]:
@@ -915,7 +1119,7 @@ def parse(root: Path) -> Project:
             pr.err(d.rel, 1, "BL005", f"второй документ с ID {d.id} — `backlog doctor`")
             continue
         pr.docs[d.id] = d
-        for kind in ("bft-map", "bft-story", "bft-adr", "bft-sysreq"):
+        for kind in ("bft-map", "bft-story", "bft-adr", "bft-sysreq", "bft-seams"):
             mc = _meta_comment(d.body, kind)
             if mc:
                 d.meta = {**d.meta, "_kind": kind}
@@ -937,6 +1141,13 @@ def parse(root: Path) -> Project:
                     pr.sysreq_doc = d
                     pr.sysreq = parse_sysreq(pr, d)
                     pr.issues.extend(pr.sysreq.meta.pop("_issues"))
+                elif kind == "bft-seams":
+                    if pr.seams_doc:
+                        pr.err(d.rel, 1, "SM002", f"вторые «Стыки» — уже есть {pr.seams_doc.rel}")
+                    d.meta = {**d.meta, **mc[0]}   # паспорт комментария — в мету документа
+                    pr.seams_doc = d
+                    pr.seams = parse_seams(pr, d)
+                    pr.issues.extend(pr.seams.meta.pop("_issues"))
                 else:
                     if pr.story_doc:
                         pr.err(d.rel, 1, "BL003", f"вторая история — уже есть {pr.story_doc.rel}")
@@ -1041,13 +1252,14 @@ def parse(root: Path) -> Project:
         _check_task(pr, t, stages, team_ids)
     for c in pr.cards:
         _check_card(pr, c, stages, team_ids, task_ids, card_ids)
+    seam_ids = {s.id for s in pr.seams.seams} if pr.seams else set()
     for q in pr.questions:
         adr_ids = set()
         if pr.adr:
             adr_ids = {o.id for o in pr.adr.options} | {c.id for c in pr.adr.compromises}
         if pr.sysreq:
             adr_ids |= {c.id for c in pr.sysreq.contracts}
-        if q.where not in task_ids | card_ids | adr_ids:
+        if q.where not in task_ids | card_ids | adr_ids | seam_ids:
             pr.err(pr.map_doc.rel, q.line, "BL010", f"{q.id}: «Где» — ID задачи, карточки карты ({pr.prefix}-12, {pr.prefix}-12.1), стыка (S1) или этапа ADR (K1, V1, C1), а не «{q.where}»")
         if q.kind not in Q_TYPES:
             pr.err(pr.map_doc.rel, q.line, "BL010", f"{q.id}: тип «{q.kind}» — вопрос или блокер")
