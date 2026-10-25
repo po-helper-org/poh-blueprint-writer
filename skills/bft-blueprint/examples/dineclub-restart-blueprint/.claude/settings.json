@@ -9,7 +9,9 @@
       "Bash(python3 .blueprint/scripts/bft-backlog-lint.py:*)",
       "Bash(python3 .blueprint/scripts/bft-backlog-build.py:*)",
       "Read(.blueprint/**)",
-      "Read(backlog/**)"
+      "Read(backlog/**)",
+      "Bash(python3 .blueprint/scripts/bft-contracts.py:*)",
+      "Read(contracts/**)"
     ]
   }
 }

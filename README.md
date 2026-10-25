@@ -41,6 +41,14 @@ HTML без `npm` и CDN.
 эталон — [`examples/dineclub-restart-blueprint/`](skills/bft-blueprint/examples/dineclub-restart-blueprint)
 и его страница [`examples/dineclub-restart-map.html`](skills/bft-blueprint/examples/dineclub-restart-map.html).
 
+**Контракты стыков (Design First)** — `contracts/C-N.md` в проекте карты: кто кого вызывает, поля
+запроса и ответа с источником в БФТ, пример ответа, ошибки, Sequence, цепочка преобразований за
+кадром и какие данные нужны из хранилища. Проверка `./blueprint.py contracts` (коды CT) ловит стык
+команд без контракта, поле без требования, вызов без ответа, вход цепочки ниоткуда, SQL в «Данных».
+Стандарт — [`resources/contracts.md`](skills/bft-blueprint/resources/contracts.md), эталон — шесть
+контрактов DineClub в [`contracts/`](skills/bft-blueprint/examples/dineclub-restart-blueprint/contracts).
+Это первый шаг к команде «Прототип» — [`docs/prototype-design.md`](docs/prototype-design.md).
+
 Пошагово, от БФТ до карты, — [`docs/step-by-step.md`](docs/step-by-step.md).
 
 ## Автопилот: один промпт

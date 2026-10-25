@@ -16,8 +16,9 @@ Service Blueprint инициативы `dineclub-restart` — проект [Back
 | `./blueprint.py` | `lint` — проверка карты, `build` — страница `dineclub-restart-map.html` и архив `dineclub-restart-blueprint.zip`, `check` — без записи |
 | `backlog/tasks/` | задачи: «Что делаем» и их подзадачи «Как это работает» |
 | `backlog/docs/` | документы: «Карта» (команды, вопросы), «История» (этапы, шаги, экраны), `screens/` — требования к экранам |
+| `contracts/` | контракты стыков `C-N.md`: кто кого вызывает, поля с источником в БФТ, пример ответа, ошибки, Sequence, цепочка, данные. Шаблон — `.blueprint/templates/contract.md`, проверка — `./blueprint.py contracts` |
 | `backlog/assets/screens/` | картинки экранов: `<ID>.svg` пишет `./blueprint.py build` из таблицы «Экраны» «Истории»; свой макет — `<ID>.png` рядом |
-| `.blueprint/rules/` | правила: `backlog_rules.md` — карта, `screen_notes.md` — экраны, `story_line.md` — история |
+| `.blueprint/rules/` | правила: `backlog_rules.md` — карта, `screen_notes.md` — экраны, `story_line.md` — история, `contracts.md` — контракты |
 | `.blueprint/vendor/` | `mermaid.min.js` — страница рисует схемы BPMN без сети |
 | `blueprint.html`, `dineclub-restart-map.html` | страница карты: текст — только из этих файлов, картинки и mermaid — из папки. Правой кнопкой — замечание, «?» — ответить на вопрос, «!» — файлы, откуда собрано; промпт агенту — кнопкой «Скопировать промпт» |
 
@@ -35,8 +36,8 @@ Service Blueprint инициативы `dineclub-restart` — проект [Back
 
 1. Задачи и документы меняй только через `./backlog.py`: файлы руками не правь.
 2. Факты — только из БФТ и ответов PO. Неизвестное — `[УТОЧНИТЬ у {кого}]` в тексте и строка в «Вопросах» документа «Карта».
-3. Названия и суть — без API, протоколов, таблиц БД: это высота БФТ.
-4. После правок: `./blueprint.py lint` → 0 ошибок, затем `./blueprint.py build`.
+3. Названия и суть — без API, протоколов, таблиц БД: это высота БФТ. Метод, поля и ошибки стыка — в `contracts/C-N.md`, не в карточке.
+4. После правок: `./blueprint.py lint` → 0 ошибок, `./blueprint.py contracts` → 0 ошибок, затем `./blueprint.py build`.
 
 ## Частые действия
 

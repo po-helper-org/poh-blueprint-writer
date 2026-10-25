@@ -15,50 +15,48 @@ LLM не пишет код и не выбирает компоненты. Она
 
 | Команда | Что делает | Кто решает |
 |---|---|---|
-| `./blueprint.py contracts` | каркас `contracts/` из карточек карты: интеграции, параметры «Вход/Выход», внешние вызовы | скрипт; LLM заполняет `{{…}}` |
-| `./blueprint.py contracts lint` | проверка стыков (см. ниже) | скрипт |
+| `./blueprint.py contracts` | проверка стыков, коды CT (см. ниже) — **готово** | скрипт |
+| `./blueprint.py contracts skeleton` | каркас `contracts/` из связей карты: стыки команд, внешние вызовы, параметры «Вход/Выход» — PR 2 | скрипт; LLM заполняет `{{…}}` |
 | `./blueprint.py spec` | каркас `prototype/spec.yml`: по шагу истории — один шаг прототипа | скрипт; LLM заполняет |
 | `./blueprint.py prototype` | сборка `prototype/` + `docker-compose.yml` | скрипт, без LLM |
 | `/bft-blueprint <epic> --prototype` | весь маршрут выше + `prototype lint` | агент |
 
 ## 1. Контракты (`contracts/`) — главный артефакт Design First
 
-Один файл на границу системы, формат фиксированный (OpenAPI-lite, YAML), шаблон `templates/contract.yml`:
+Один файл `contracts/C-N.md` на границу системы, формат — Markdown с frontmatter и таблицами по
+шаблону `templates/contract.md` (YAML отпал: ему нужна внешняя библиотека, а проект живёт на одном
+python3; таблицы к тому же читаются человеком и правятся так же, как карточки карты). Стандарт —
+`resources/contracts.md`, эталон — шесть контрактов DineClub, реализовано в PR 1.
 
-```yaml
-id: C-3                         # ссылка из карточек карты: (C-3)
-title: Партнёр проверяет билет
+```markdown
+---
+id: C-3
+title: Официант сканирует билет — сервис отвечает «валиден» или «отказ»
 boundary: external              # external | frontend-backend | service-service | service-db
-caller: Партнёрское приложение  # кто вызывает
-callee: Ticket Service          # кто отвечает
-op: POST /v1/tickets/{id}/verify
-request:                        # поле | тип | обяз. | откуда (источник в БФТ/ФТ)
-  - {name: id,      type: string, req: true, in: path,  src: ФТ-4}
-  - {name: partner, type: string, req: true, in: body,  src: ФТ-4}
-response:
-  ok:    {status: 200, example: {valid: true, discount: 10}}
-  error: [{status: 404, code: TICKET_NOT_FOUND}, {status: 409, code: ALREADY_USED}]
-sequence: [                     # обязательный вход для Sequence-диаграммы
-  "Партнёр -> Ticket Service: verify(id, partner)",
-  "Ticket Service -> Catalog: getPromo(ticket.event)",
-  "Catalog --> Ticket Service: promo",
-  "Ticket Service --> Партнёр: valid, discount"
-]
-chain:                          # трансформации для backend-вызовов, шаг за шагом
-  - {step: 1, in: "id, partner", do: "найти билет", out: "ticket{event,used}"}
-  - {step: 2, in: "ticket.event", do: "запросить акцию у Catalog", out: "promo{discount}"}
-data: [{store: tickets, need: "id, event, used"}]   # БД: только «какие данные нужны»
+caller: Приложение-сканер
+callee: TeamA
+op: POST /v1/tickets/{barcode}/verify
+cards: BP-15.1, BP-16.1
+---
+## Запрос        | Поле | Тип | Обяз. | Где | Источник |
+## Ответ         | Поле | Тип | Источник |
+## Пример ответа ```json {"status": "valid", "discount": 10, "reason": null} ```
+## Ошибки        | Статус | Код | Когда |
+## Sequence      - Приложение-сканер -> TeamA: verify(barcode, restaurant_id) …
+## Цепочка       | Шаг | Кто | Вход | Что делает | Выход |
+## Данные        | Хранилище | Какие данные нужны | Источник |
 ```
 
 Правила, которые проверяет `contracts lint`:
 
-- **CT01** у каждой карточки карты с обращением к другой системе есть `(C-N)`; у каждого контракта есть карточка.
-- **CT02** `external`-контракт обязан иметь `request`, `response.ok`, минимум одну ошибку, `example`.
-- **CT03** каждое поле `request` и `response` имеет `src` — ссылку на ФТ/ИТ или `[УТОЧНИТЬ у …]`; полей «от фонаря» нет.
-- **CT04** `sequence` ссылается только на системы, названные в карте; каждая стрелка вызова имеет ответную стрелку.
-- **CT05** `chain`: `in` шага N ⊆ `out` шага N−1 или `request`; последний `out` покрывает `response.ok`. Так проверяется цепочка трансформаций данных.
-- **CT06** `service-db`: только `store` и `need` (список полей). Таблицы, индексы, DDL — запрещены (высота БФТ, `BL018`).
-- **CT07** каждое поле на экране прототипа привязано к полю ответа контракта (проверка в `prototype lint`).
+- **CT003, CT020** контракт ссылается на существующие карточки (`cards:`); связь карточек разных команд через Backstage без контракта с обеими карточками — предупреждение.
+- **CT004** у `external` — запрос, ответ, пример со всеми полями ответа и минимум одна ошибка.
+- **CT005, CT006** у каждого поля запроса, ответа и данных — источник: ID требования из БФТ или `[УТОЧНИТЬ у …]`; с БФТ рядом ID сверяются.
+- **CT007** Sequence начинается вызовом `caller -> callee`, на каждый вызов есть ответ, участники известны карте.
+- **CT008** цепочка: вход шага — поля запроса или выходы прошлых шагов; поля ответа собираются из выходов. Так проверяется цепочка трансформаций данных.
+- **CT009** в «Данных» — только какие данные нужны; таблицы, ключи, индексы, SQL запрещены (высота БФТ, `BL018`).
+- **CT010** параметр пути `{id}` описан в запросе.
+- Привязка полей экрана прототипа к полям ответа — в `prototype lint` (PR 3).
 
 ## 2. Спецификация прототипа (`prototype/spec.yml`)
 
@@ -69,7 +67,7 @@ data: [{store: tickets, need: "id, event, used"}]   # БД: только «ка�
 | `ui` | экран на готовых блоках | `screen:` |
 | `api` | экран + панель: Sequence, метод, поля запроса/ответа | `contract: C-N` |
 | `backend` | для фронта только вход/выход; в панели — `chain` по шагам, вход/выход каждого сервиса | `contract: C-N` |
-| `data` | упрощённая схема «какие данные нужны из хранилища» | `data:` контракта |
+| `data` | упрощённая схема «какие данные нужны из хранилища» | «Данные» контракта |
 
 ```yaml
 steps:
@@ -130,7 +128,7 @@ prototype/
 
 ## План реализации (по PR)
 
-1. `templates/contract.yml`, `resources/contracts.md`, `contracts lint` (CT01–CT07) + фикстуры и пример в DineClub.
+1. ✅ `templates/contract.md`, `resources/contracts.md`, `./blueprint.py contracts` (CT001–CT022), самотест и шесть контрактов DineClub.
 2. `skeleton` для контрактов и spec из карточек карты; `groom fill` для них.
 3. `catalog.md`, `spec` lint, `runtime.js` + `components.css`, генерация статики.
 4. Генерация `api/main.py` + `docker-compose.yml`; smoke-тест «compose up → все шаги отдают 200».
@@ -140,6 +138,6 @@ prototype/
 
 ## Открытые вопросы к PO
 
-1. Источник схем: хватит ли OpenAPI-lite из нашего YAML, или нужен экспорт в настоящий `openapi.yaml` для передачи разработке (проще всего — генерировать его из `contracts/`)?
+1. Источник схем: хватит ли контрактов `contracts/C-N.md`, или нужен экспорт в настоящий `openapi.yaml` для передачи разработке (проще всего — генерировать его из `contracts/`)?
 2. Админка: один общий набор блоков с клиентом или отдельная тема оформления?
 3. Docker обязателен для показа заказчику, или нужен ещё вариант «один HTML без сервера» (MockAPI в браузере) как запасной?

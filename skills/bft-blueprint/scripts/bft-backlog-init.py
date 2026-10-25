@@ -43,9 +43,10 @@ START, END = "<!-- BFT-BLUEPRINT START -->", "<!-- BFT-BLUEPRINT END -->"
 NPM_START, NPM_END = "<!-- BACKLOG.MD GUIDELINES START -->", "<!-- BACKLOG.MD GUIDELINES END -->"
 TOOLS = ("backlog_cli.py", "bft_blueprint.py", "bft_story.py", "bft_screens.py", "bft_mock.py", "bft_backlog.py", "bft-blueprint-lint.py",
          "bft-backlog-lint.py", "bft-backlog-build.py", "bft-backlog-init.py", "bft_plan.py", "bft-plan.py", "bft-reqs.py", "bft-groom.py", "bft_graph.py", "bft-skeleton.py",
+         "bft_contracts.py", "bft-contracts.py",
          "page_kit.js", "map_page.js", "map_page.css")
-RULES = ("autopilot.md", "grooming.md", "backlog_rules.md", "screen_notes.md", "story_line.md")
-TEMPLATES = ("map.md", "screen.md")   # шаблоны плана карты — .blueprint/templates/
+RULES = ("autopilot.md", "grooming.md", "backlog_rules.md", "screen_notes.md", "story_line.md", "contracts.md")
+TEMPLATES = ("map.md", "screen.md", "contract.md")   # шаблоны плана карты и контракта — .blueprint/templates/
 VENDOR = ("mermaid.min.js", "mermaid.LICENSE")   # схемы на странице рисует mermaid из этой папки, без сети
 AGENT_FILES = ("CLAUDE.md", "AGENTS.md", "GEMINI.md")
 CONFIG = """project_name: "{name}"
@@ -94,6 +95,8 @@ elif cmd == "skeleton":
     run = ["bft-skeleton.py", here]
 elif cmd == "groom":
     run = ["bft-groom.py", rest.pop(0) if rest else "help", here]
+elif cmd == "contracts":
+    run = ["bft-contracts.py", "lint", here, "--hints"]
 else:
     print("./blueprint.py reqs   — инвентарь БФТ: требования, акторы, сценарий, зависимости и куда они ложатся на карте")
     print("./blueprint.py skeleton — каркас plan/map.md из БФТ: каждое требование, параметр и критерий уже на месте, текст — {{…}}")
@@ -102,6 +105,7 @@ else:
     print("./blueprint.py export — план из бэклога (правки одним файлом)")
     print("./blueprint.py groom fill|audit|refine — пакеты роя; groom merge fill|refine — ответы в план (.blueprint/rules/grooming.md)")
     print("./blueprint.py lint   — проверить карту (коды BL, SN; правила — .blueprint/rules/backlog_rules.md)")
+    print("./blueprint.py contracts — проверить контракты стыков contracts/C-N.md (коды CT; правила — .blueprint/rules/contracts.md)")
     print("./blueprint.py build  — схемы BPMN из «Процесса», страница <epic>-map.html и архив <epic>-blueprint.zip")
     print("./blueprint.py check  — проверка без записи: схемы и скрипты проекта актуальны")
     print("доп. ключи: --source БФТ.md — сверка с БФТ, --strict — предупреждения тоже ошибки")
@@ -110,7 +114,8 @@ sys.exit(subprocess.call([sys.executable, os.path.join(scripts, run[0]), *run[1:
 '''
 ALLOW = ["Bash(./backlog.py:*)", "Bash(./blueprint.py:*)", "Bash(python3 backlog.py:*)", "Bash(python3 blueprint.py:*)",
          "Bash(python3 .blueprint/scripts/backlog_cli.py:*)", "Bash(python3 .blueprint/scripts/bft-backlog-lint.py:*)",
-         "Bash(python3 .blueprint/scripts/bft-backlog-build.py:*)", "Read(.blueprint/**)", "Read(backlog/**)"]
+         "Bash(python3 .blueprint/scripts/bft-backlog-build.py:*)", "Bash(python3 .blueprint/scripts/bft-contracts.py:*)",
+         "Read(.blueprint/**)", "Read(backlog/**)", "Read(contracts/**)"]
 
 
 def guide(title: str, epic: str, source: str) -> str:
@@ -128,8 +133,9 @@ def guide(title: str, epic: str, source: str) -> str:
 | `./blueprint.py` | `lint` — проверка карты, `build` — страница `{epic}-map.html` и архив `{epic}-blueprint.zip`, `check` — без записи |
 | `backlog/tasks/` | задачи: «Что делаем» и их подзадачи «Как это работает» |
 | `backlog/docs/` | документы: «Карта» (команды, вопросы), «История» (этапы, шаги, экраны), `screens/` — требования к экранам |
+| `contracts/` | контракты стыков `C-N.md`: кто кого вызывает, поля с источником в БФТ, пример ответа, ошибки, Sequence, цепочка, данные. Шаблон — `.blueprint/templates/contract.md`, проверка — `./blueprint.py contracts` |
 | `backlog/assets/screens/` | картинки экранов: `<ID>.svg` пишет `./blueprint.py build` из таблицы «Экраны» «Истории»; свой макет — `<ID>.png` рядом |
-| `.blueprint/rules/` | правила: `backlog_rules.md` — карта, `screen_notes.md` — экраны, `story_line.md` — история |
+| `.blueprint/rules/` | правила: `backlog_rules.md` — карта, `screen_notes.md` — экраны, `story_line.md` — история, `contracts.md` — контракты |
 | `.blueprint/vendor/` | `mermaid.min.js` — страница рисует схемы BPMN без сети |
 | `blueprint.html`, `{epic}-map.html` | страница карты: текст — только из этих файлов, картинки и mermaid — из папки. Правой кнопкой — замечание, «?» — ответить на вопрос, «!» — файлы, откуда собрано; промпт агенту — кнопкой «Скопировать промпт» |
 
@@ -147,8 +153,8 @@ def guide(title: str, epic: str, source: str) -> str:
 
 1. Задачи и документы меняй только через `./backlog.py`: файлы руками не правь.
 2. Факты — только из БФТ и ответов PO. Неизвестное — `[УТОЧНИТЬ у {{кого}}]` в тексте и строка в «Вопросах» документа «Карта».
-3. Названия и суть — без API, протоколов, таблиц БД: это высота БФТ.
-4. После правок: `./blueprint.py lint` → 0 ошибок, затем `./blueprint.py build`.
+3. Названия и суть — без API, протоколов, таблиц БД: это высота БФТ. Метод, поля и ошибки стыка — в `contracts/C-N.md`, не в карточке.
+4. После правок: `./blueprint.py lint` → 0 ошибок, `./blueprint.py contracts` → 0 ошибок, затем `./blueprint.py build`.
 
 ## Частые действия
 
