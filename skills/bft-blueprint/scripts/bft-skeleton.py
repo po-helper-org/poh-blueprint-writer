@@ -171,15 +171,12 @@ class Skeleton:
                         return task_of[m]
             return None
 
-        # экраны ИТ: карточка technology в задаче, куда ведут её ПТ и ФТ
+        # экран ИТ — своя задача: результат команды, которая его делает (автопилот 4.2); правило за кадром —
+        # задача ФТ рядом, связь между ними — «Вход»/«Выход» карточек. Экран под задачей правила агенты выносили руками
         for a in g.by_kind("ИТ"):
-            t = attach_task(a.id)
-            if t is None:
-                t = {"anchor": a.id, "atoms": [], "cards": []}
-                self.tasks.append(t)
-                task_of[a.id] = t
-            t["atoms"].append(a.id)
-            t["cards"].append({"layer": "technology", "atoms": [a.id], "rules": []})
+            t = {"anchor": a.id, "atoms": [a.id], "cards": [{"layer": "technology", "atoms": [a.id], "rules": []}]}
+            self.tasks.append(t)
+            task_of[a.id] = t
         screen_card = {c["atoms"][0]: c for t in self.tasks for c in t["cards"] if c["layer"] == "technology"}
         # ПТ: JobStory экрана, который его показывает; без экрана — своя карточка technology
         for a in g.by_kind("ПТ"):
@@ -289,13 +286,20 @@ class Skeleton:
             for w in ws:
                 df[w] = df.get(w, 0) + 1
 
-        def score(x) -> float:   # слово, которое есть в описании одной команды, говорит больше общего «банка»
-            return sum((2 if w in aw else 1) / df[w] for w in tw_of[x[0]] & (tw | aw))
+        nw = roots(self.g.atoms[t["anchor"]].name) if t["anchor"] in self.g.atoms else set()
 
-        scored = sorted(inner, key=lambda x: -score(x))
-        best = [x for x in scored if score(x) > 0]
-        if len(best) == 1 or (len(best) > 1 and score(best[0]) >= 1.5 * score(best[1])):
-            return f"команда: {best[0][0]}"
+        def score(x, pool: set) -> float:   # слово, которое есть в описании одной команды, говорит больше общего «банка»
+            return sum((2 if w in aw else 1) / df[w] for w in tw_of[x[0]] & pool)
+
+        # сначала название задачи — оно и есть результат («Акты и отчёты» — финансы), затем весь текст требований:
+        # «из реестра продаж» в тексте — вход, а не владелец
+        for pool in (nw, tw | aw):
+            scored = sorted(inner, key=lambda x: -score(x, pool))
+            best = [x for x in scored if score(x, pool) > 0]
+            if len(best) == 1 or (len(best) > 1 and score(best[0], pool) >= 1.5 * score(best[1], pool)):
+                return f"команда: {best[0][0]}"
+        scored = sorted(inner, key=lambda x: -score(x, tw | aw))
+        best = [x for x in scored if score(x, tw | aw) > 0]
         pick = (best or scored)[:2]
         return "кандидаты: " + ", ".join(x[0] for x in pick) if len(pick) > 1 else f"команда: {pick[0][0]}"
 
@@ -384,6 +388,9 @@ class Skeleton:
         out += [f"| {tid} | {name} |" for tid, name, _ in self.teams] or [f"| {stub('id латиницей')} | {stub('команда из «Зависимостей»')} |"]
         blocks: list[tuple[str, list[str]]] = []
         index = ["# Каркас: где лежит каждый атом БФТ", "", "| Атом | Блок |", "| --- | --- |"]
+        order = [x.id for x in self.story.stages] if self.story else []
+        rank = {id(t): (order.index(st) if (st := self.stage([t["anchor"]] + t["atoms"])) in order else len(order)) for t in self.tasks}
+        self.tasks.sort(key=lambda t: rank[id(t)])   # карта читается слева направо: задачи по этапам, внутри этапа — порядок БФТ
         for n, t in enumerate(self.tasks, 1):       # сначала адреса: подсказки связей ссылаются на них
             for k, c in enumerate(t["cards"], 1):
                 for x in c["atoms"] + c["rules"]:

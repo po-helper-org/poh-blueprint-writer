@@ -462,14 +462,14 @@ python3 "$DIR/scripts/bft-groom.py" fill "$SK/p" >/dev/null 2>&1; FO="$SK/p/groo
 n_pk=$(ls "$SK/p/groom/0-fill"/f-*.md | wc -l); n_bl=$(grep -c "^## BP-" "$M")
 fblk() { awk -v h="^## $1 " '$0 ~ h {f=1; print; next} f && /^## / {exit} f' "$SK/f/plan/map.md"; }
 { printf '## Замены\n'; fblk BP-1.1; } > "$FO/f-BP-1.1.md"
-{ printf '## Вопросы\n| Кому | Вопрос | Где | Тип |\n| --- | --- | --- | --- |\n| PO | Кто подтверждает договор партнёра перед активацией? | BP-1.2 | вопрос |\n| PO | Кто подтверждает договор партнёра до активации профиля? | BP-1.2 | вопрос |\n\n## Замены\n'; fblk BP-1.2; } > "$FO/f-BP-1.2.md"
-{ printf '## Замены\n'; fblk BP-2.1 | sed 's/P3 цена закупки[^;]*;//'; } > "$FO/f-BP-2.1.md"
-{ printf '## Замены\n'; fblk BP-3.1; } > "$FO/f-BP-3.1.md"   # ответ без «Вопросов»: заготовка вопроса G2 не теряется
+{ printf '## Вопросы\n| Кому | Вопрос | Где | Тип |\n| --- | --- | --- | --- |\n| PO | Кто подтверждает договор партнёра перед активацией? | BP-2.1 | вопрос |\n| PO | Кто подтверждает договор партнёра до активации профиля? | BP-2.1 | вопрос |\n\n## Замены\n'; fblk BP-2.1; } > "$FO/f-BP-2.1.md"
+{ printf '## Замены\n'; fblk BP-5.1 | sed 's/P3 цена закупки[^;]*;//'; } > "$FO/f-BP-5.1.md"
+{ printf '## Замены\n'; fblk BP-6.1; } > "$FO/f-BP-6.1.md"   # ответ без «Вопросов»: заготовка вопроса G2 не теряется
 python3 "$DIR/scripts/bft-groom.py" merge "$SK/p" fill >/dev/null 2>&1
-[ "$n_pk" -eq "$n_bl" ] && grep -q "^- BP-1.1 ← f-BP-1.1.md" "$SK/p/groom/report.md" && grep -q "^- BP-1.2 ← f-BP-1.2.md" "$SK/p/groom/report.md" && grep -q "BP-2.1 из f-BP-2.1.md: теряет P3" "$SK/p/groom/report.md" \
+[ "$n_pk" -eq "$n_bl" ] && grep -q "^- BP-1.1 ← f-BP-1.1.md" "$SK/p/groom/report.md" && grep -q "^- BP-2.1 ← f-BP-2.1.md" "$SK/p/groom/report.md" && grep -q "BP-5.1 из f-BP-5.1.md: теряет P3" "$SK/p/groom/report.md" \
   && grep -q "Осталось незаполненным" "$SK/p/groom/report.md" && ! awk '/^## BP-1.1 /{f=1;next} f&&/^## /{exit} f' "$M" | grep -q "{{" \
   && [ "$(grep -c 'Кто подтверждает договор партнёра' "$M")" -eq 1 ] \
-  && grep -q "^| В[0-9]* | PO | Уточнить: Партнёры-банки передают продажи раз в сутки пакетом.*| BP-3.1 |" "$M" && grep -q "Вопросы-заготовки без ответа" "$SK/p/groom/report.md" \
+  && grep -q "^| В[0-9]* | PO | Уточнить: Партнёры-банки передают продажи раз в сутки пакетом.*| BP-6.1 |" "$M" && grep -q "Вопросы-заготовки без ответа" "$SK/p/groom/report.md" \
   && ok "каркас · groom fill: пакет на блок; merge fill берёт заполненный блок, потерю P3 отклоняет, повтор вопроса — одной строкой, вопрос без ответа сохраняет" || fail "каркас · groom fill/merge fill"
 cp -r "$SK/f" "$SK/cand" && sed -i '0,/^команда: prodazh$/s//команда: кандидаты: prodazh, kataloga/' "$SK/cand/plan/map.md"
 out="$(python3 "$DIR/scripts/bft-plan.py" apply "$SK/cand" 2>&1)"
@@ -523,7 +523,7 @@ FM="$LY/faq/direct-faq-p/plan/map.md"; CM="$LY/car/car-service-booking-p/plan/ma
   && ! grep -B3 "^слой: employee" "$FM" | grep -q employee \
   && ok "каркас · экраны разных этапов — в разных задачах; мастер-приёмщик при клиенте — employee, экран клиента — technology" || fail "каркас · раскладка по этапам и employee"
 tm() { awk -v h="^## $1 " '$0 ~ h {f=1; next} f && /^команда: / {print $2; exit} f && /^## / {exit}' "$CM"; }
-[ "$(tm BP-1)" = integraciy ] && [ "$(tm BP-2)" = integraciy ] && [ "$(tm BP-7)" = platezhnaya ] && [ "$(tm BP-9)" = loyalnosti ] \
+[ "$(tm BP-2)" = integraciy ] && [ "$(tm BP-3)" = integraciy ] && [ "$(tm BP-10)" = platezhnaya ] && [ "$(tm BP-13)" = loyalnosti ] && [ "$(tm BP-1)" = loyalnosti ] \
   && [ "$(grep -c '^кандидаты:' "$SK/p/plan/map.md")" -eq 0 ] \
   && ok "каркас · команда по «Зависимостям»: редкое слово весит больше общего, окончания не мешают" || fail "каркас · подбор команды"
 
@@ -547,8 +547,13 @@ miss=""; for c in CT001 CT002 CT003 CT004 CT005 CT006 CT007 CT008 CT009 CT010 CT
 CS="$tmp/cts" && cp -r "$BGOLD" "$CS" && rm "$CS/contracts/C-6.md"
 out1="$(python3 "$CTL" lint "$CS" 2>&1)"; python3 "$CTL" skeleton "$CS" >/dev/null 2>&1; out2="$(python3 "$CTL" lint "$CS" 2>&1)"
 grep -q "WARN CT020 BP-1.1 → BP-2.1" <<<"$out1" && grep -q "^cards: BP-1.1, BP-2.1" "$CS/contracts/C-8.md" && grep -q "ERROR CT011 C-8" <<<"$out2" \
-  && [ "$(grep -c " ERROR " <<<"$out2")" -eq 1 ] && ! grep -q CT020 <<<"$out2" && [ "$(ls "$CS/contracts" | wc -l)" -eq 7 ] \
+  && [ "$(grep -c " ERROR " <<<"$out2")" -eq 1 ] && ! grep -q CT020 <<<"$out2" && [ "$(ls "$CS/contracts" | wc -l)" -eq 8 ] \
   && ok "контракты · skeleton: стык без контракта → каркас C-8 с картой в шапке, незаполненный — только CT011" || fail "контракты · skeleton"
+# внешний стык текстом («из внешней системы»), без карточки на той стороне: CT020 и external-каркас на эту карточку
+CX="$tmp/ctx" && cp -r "$BGOLD" "$CX" && sed -i '0,/^- \*\*Вход:\*\* /s//- **Вход:** Рейтинги из внешней системы; /' "$CX/backlog/tasks/bp-9.1 "*.md
+out1="$(python3 "$CTL" lint "$CX" 2>&1)"; python3 "$CTL" skeleton "$CX" >/dev/null 2>&1
+grep -q "WARN CT020 BP-9.1 «Рейтинги из внешней системы»: внешний стык" <<<"$out1" && grep -q "^boundary: external" "$CX/contracts/C-8.md" && grep -q "^cards: BP-9.1$" "$CX/contracts/C-8.md" \
+  && ok "контракты · внешняя система текстом во «Входе» — внешний стык и external-каркас" || fail "контракты · внешний стык текстом"
 # not-seams.md: связь с причиной — не стык (CT020 молчит), строка без причины или не про стык — CT013
 CW="$tmp/ctw" && cp -r "$BGOLD" "$CW" && rm "$CW/contracts/C-6.md"
 printf '| Откуда | Куда | Почему не обмен данными |\n| --- | --- | --- |\n| BP-1.1 | BP-2.1 | список ресторанов DineClub передаёт UnitB вручную раз в неделю |\n| BP-4.1 | BP-7.1 | — |\n' > "$CW/contracts/not-seams.md"

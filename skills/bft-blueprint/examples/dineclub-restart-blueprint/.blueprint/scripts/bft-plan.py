@@ -33,6 +33,11 @@ def review(root: Path, source: str | None = None) -> int:
     """Проверка карты, адресованная плану: строка плана, код, сообщение; ниже — как исправить."""
     lint = _lint()
     pr = lint.run(root, source, False)
+    if not pr.tasks and not (root / bp.PLAN_DIR / "map.md").is_file():
+        # карты ещё нет: «потерянные требования» пустого бэклога — не ошибки, а работа шага 4
+        print("карта: задач нет, плана plan/map.md нет — начни с каркаса")
+        print("дальше: ./blueprint.py skeleton, затем ./blueprint.py groom fill (автопилот, шаг 4)")
+        return 0
     pl = bp.parse(root) if (root / bp.PLAN_DIR / "map.md").is_file() else None
     where: dict[str, str] = {}
     if pl:

@@ -379,9 +379,14 @@ def _stems(q: str) -> set[str]:
 
 
 def _dup(q: str, seen: list[set[str]]) -> bool:
-    """Тот же вопрос другими словами: две трети основ слов общие."""
+    """Тот же вопрос другими словами: две трети основ слов общие. Вопросы о разных ID (ИТ-1 и ИТ-2, P5 и P7) — разные."""
     s = _stems(q)
-    return any(s and len(s & t) >= 0.66 * min(len(s), len(t)) for t in seen)
+    ids = {x for x in s if re.search(r"\d", x)}
+
+    def other(t: set[str]) -> bool:
+        tid = {x for x in t if re.search(r"\d", x)}
+        return bool(ids and tid and ids != tid)
+    return any(s and not other(t) and len(s & t) >= 0.66 * min(len(s), len(t)) for t in seen)
 
 
 # --- слияние -----------------------------------------------------------------------------------------

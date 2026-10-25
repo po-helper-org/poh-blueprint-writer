@@ -24,6 +24,7 @@ ID_RE = re.compile(r"^C-\d+$")
 OP_RE = re.compile(rf"^({'|'.join(METHODS)})\s+(/\S*)$")
 FAMILY_RE = re.compile(r"(?<![\w-])[A-Z]\d{1,2}(?![\w-])")   # параметр P5, инвариант I2, разрыв G1 из БФТ
 TYPES = {"string": str, "integer": int, "number": (int, float), "boolean": bool, "array": list, "object": dict}
+NAVIGATION = re.compile(r"переход|клик|открыт|нажат|ссылк|возвращ\w* на", re.I)
 STUB_RE = re.compile(r"\{\{(.+?)\}\}")
 FIELD_RE = re.compile(r"^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*$")
 TOKEN_RE = re.compile(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*")
@@ -344,6 +345,11 @@ def check(pr: bl.Project, contracts: list[Contract], reqs: dict | None = None) -
                     if hit:
                         pr.err(c.rel, n, "CT009", f"{c.id}: «{hit.group(0)}» — устройство хранилища; в контракте — только какие данные нужны")
 
+    for cid, key, what, tid in ext_seams(pr):
+        if not any(cid in c.cards and c.boundary == "external" for c in contracts):
+            card = pr.task(cid)
+            pr.warn(card.rel if card else "", 1, "CT020", f"{cid} «{what}»: внешний стык без контракта — ./blueprint.py contracts skeleton заведёт "
+                    f"external-контракт, или добавь {cid} в cards: внешнего контракта")
     covered = [set(c.cards) for c in contracts]
     waived = waivers(pr, seams(pr))
     for a, b, what in seams(pr):
@@ -373,6 +379,32 @@ def waivers(pr: bl.Project, found: list | None = None) -> dict:
             pr.err(rel, r.line, "CT013", f"{a} → {b}: причина — фразой, почему по связи не ходят данные между системами («макет передаётся дизайнером вручную»)")
         else:
             out[key] = why
+    return out
+
+
+def _ext_teams(pr: bl.Project) -> list:
+    return [t for t in pr.teams if re.search(r"внешн|^ext\d*$", f"{t.id} {t.name}", re.I)]
+
+
+def _roots(text: str) -> set[str]:
+    return {w[:5] for w in re.findall(r"[а-яёa-z]{4,}", text.lower().replace("ё", "е"))} - {"внешн", "систе", "сервис"[:5]}
+
+
+def ext_seams(pr: bl.Project) -> list[tuple[str, str, str, str]]:
+    """Внешние стыки без карточки на той стороне: «Вход» или «Выход» текстом называет внешнюю систему
+    («продажа от партнёра (внешняя система)»). [(карточка, in|out, текст, команда ext)]."""
+    ext = _ext_teams(pr)
+    out = []
+    for c in pr.cards:
+        if c.layer == "support":
+            continue
+        for key in ("in", "out"):
+            for it in c.params.get(key, []):
+                if it.refs:
+                    continue
+                hit = next((t for t in ext if re.search(r"внешн", it.text, re.I) or _roots(t.name) & _roots(it.text)), None)
+                if hit:
+                    out.append((c.id, key, it.text, hit.id))
     return out
 
 
@@ -406,8 +438,11 @@ def seams(pr: bl.Project) -> list[tuple[str, str, str]]:
         if "support" in layers:
             continue
         screen = layers == {"technology", "backstage"}
-        cross = "backstage" in layers and (ca.team != cb.team or ca.team == "?")
-        if screen or cross or {ca.team, cb.team} & ext:
+        other = ca.team != cb.team or ca.team == "?"
+        cross = "backstage" in layers and other
+        # экран ↔ экран разных команд: данные одной системы показывает другая (Direct → сайт); переход пользователя — не стык
+        shown = layers == {"technology"} and other and not NAVIGATION.search(what)
+        if screen or cross or shown or {ca.team, cb.team} & ext:
             out.append((a, b, what))
     return out
 
@@ -416,35 +451,16 @@ def _team_name(pr: bl.Project, tid: str) -> str:
     return next((t.name for t in pr.teams if t.id == tid), "")
 
 
-def skeleton(pr: bl.Project, contracts: list[Contract]) -> list[tuple[str, str]]:
-    """Каркас контрактов: по файлу на стык карты без контракта. Шапка, карточки и требования — из карты;
-    поля, пример, ошибки, цепочка — места {{…}} с подсказкой, откуда брать. Возвращает [(путь, текст)]."""
-    covered = [set(c.cards) for c in contracts] + list(waivers(pr))
-    n = max([int(c.id[2:]) for c in contracts] + [0])
-    pairs: dict[frozenset, list] = {}
-    for a, b, what in seams(pr):
-        if not any({a, b} <= x for x in covered):
-            pairs.setdefault(frozenset((a, b)), []).append((a, b, what))
-    out = []
-    for links in pairs.values():
-        a, b, _ = links[0]
-        ca, cb = pr.task(a), pr.task(b)
-        n += 1
-        cid = f"C-{n}"
-        caller, callee = _team_name(pr, ca.team), _team_name(pr, cb.team)
-        ext = any(re.search(r"внешн|ext", x, re.I) for x in (caller, callee, ca.team, cb.team))
-        reqs = sorted({r for c in (ca, cb) for r in bb.REQ_RE.findall(c.desc)}, key=lambda r: (r.split("-")[0], r))
-        what = "; ".join(f"{x} → {y}: {w}" for x, y, w in links)
-        lanes = sorted({ln for c in (ca, cb) for ln in bl.lanes_of(c.proc)})
-        src = f"ID требования из {', '.join(reqs)} или [УТОЧНИТЬ у …]" if reqs else "ID требования или [УТОЧНИТЬ у …]"
-        text = f"""---
+def _stub_text(cid: str, what: str, boundary, caller: str, callee: str, cards: list, a: str, b: str, reqs: list, lanes: list) -> str:
+    src = f"ID требования из {', '.join(reqs)} или [УТОЧНИТЬ у …]" if reqs else "ID требования или [УТОЧНИТЬ у …]"
+    return f"""---
 id: {cid}
 title: {{{{что происходит на стыке фразой для человека — по связи {what}}}}}
-boundary: {'external' if ext else '{{frontend-backend — экран получает данные · service-service — две наши системы · external — внешняя сторона}}'}
-caller: {{{{кто вызывает — {caller or ca.team} или система из «Процесса»: {', '.join(lanes)}}}}}
-callee: {{{{кто отвечает — {callee or cb.team} или система из «Процесса»: {', '.join(lanes)}}}}}
+boundary: {boundary or '{{frontend-backend — экран получает данные · service-service — две наши системы · external — внешняя сторона}}'}
+caller: {{{{кто вызывает — {caller} или система из «Процесса»: {', '.join(lanes)}}}}}
+callee: {{{{кто отвечает — {callee} или система из «Процесса»: {', '.join(lanes)}}}}}
 op: {{{{МЕТОД /v1/<сущность>[/{{id}}][/<действие>] — GET прочитать, POST создать или выполнить, PATCH изменить}}}}
-cards: {a}, {b}
+cards: {', '.join(cards)}
 ---
 
 ## Запрос
@@ -482,6 +498,44 @@ cards: {a}, {b}
 | --- | --- | --- | --- | --- |
 | 1 | {{{{callee или система за ним}}}} | {{{{поля запроса}}}} | {{{{шаг «Процесса» {b}}}}} | {{{{поля, которые дальше идут в работу}}}} |
 """
+
+
+def skeleton(pr: bl.Project, contracts: list[Contract]) -> list[tuple[str, str]]:
+    """Каркас контрактов: по файлу на стык карты без контракта. Шапка, карточки и требования — из карты;
+    поля, пример, ошибки, цепочка — места {{…}} с подсказкой, откуда брать. Возвращает [(путь, текст)]."""
+    covered = [set(c.cards) for c in contracts] + list(waivers(pr))
+    n = max([int(c.id[2:]) for c in contracts] + [0])
+    pairs: dict[frozenset, list] = {}
+    for a, b, what in seams(pr):
+        if not any({a, b} <= x for x in covered):
+            pairs.setdefault(frozenset((a, b)), []).append((a, b, what))
+    out = []
+    ext_names = {t.id: t.name for t in pr.teams}
+    done_ext = {cid for c in contracts if c.boundary == "external" for cid in c.cards}
+    ext_by: dict[str, list] = {}
+    for cid, key, what, tid in ext_seams(pr):
+        if cid not in done_ext:
+            ext_by.setdefault(cid, []).append((key, what, tid))
+    for cid, items in ext_by.items():
+        c = pr.task(cid)
+        n += 1
+        key, what, tid = items[0]
+        them, us = ext_names.get(tid, tid), _team_name(pr, c.team) or c.team
+        caller, callee = (them, us) if key == "in" else (us, them)
+        reqs = sorted(set(bb.REQ_RE.findall(c.desc)), key=lambda r: (r.split("-")[0], r))
+        out.append((f"{DIR}/C-{n}.md", _stub_text(f"C-{n}", f"внешняя сторона: {'; '.join(w for _, w, _ in items)}", "external",
+                                                    caller, callee, [cid], cid, cid, reqs, sorted(bl.lanes_of(c.proc)))))
+    for links in pairs.values():
+        a, b, _ = links[0]
+        ca, cb = pr.task(a), pr.task(b)
+        n += 1
+        cid = f"C-{n}"
+        caller, callee = _team_name(pr, ca.team), _team_name(pr, cb.team)
+        ext = any(re.search(r"внешн|ext", x, re.I) for x in (caller, callee, ca.team, cb.team))
+        reqs = sorted({r for c in (ca, cb) for r in bb.REQ_RE.findall(c.desc)}, key=lambda r: (r.split("-")[0], r))
+        what = "; ".join(f"{x} → {y}: {w}" for x, y, w in links)
+        lanes = sorted({ln for c in (ca, cb) for ln in bl.lanes_of(c.proc)})
+        text = _stub_text(cid, what, 'external' if ext else None, caller or ca.team, callee or cb.team, [a, b], a, b, reqs, lanes)
         out.append((f"{DIR}/{cid}.md", text))
     return out
 
