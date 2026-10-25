@@ -432,9 +432,16 @@ def merge(root: Path, wave: str = REFINE) -> int:
     members = set(bg.build(src).members) if src and src.is_file() else None
     applied, rejected, skipped = [], [], []
     outs = sorted((root / GROOM / wave / "out").glob("*.md"))
-    for f in outs:
-        owner = f.stem[2:].upper() if f.stem[:2] in ("r-", "f-") else ""
-        for bid, text in replacements(f.read_text(encoding="utf-8")):
+    queue = [(f, f.stem[2:].upper() if f.stem[:2] in ("r-", "f-") else "", bid, text)
+             for f in outs for bid, text in replacements(f.read_text(encoding="utf-8"))]
+    # ID может переехать в блок, который сливается позже: замена, «теряющая» ID, ждёт второго круга
+    deferred: list = []
+    for rnd in (1, 2):
+        if rnd == 2:
+            queue = [x[:4] for x in deferred]
+            if not queue:
+                break
+        for f, owner, bid, text in queue:
             spans = block_spans(lines)
             own_task = owner and "." not in owner
             ok_target = bid == owner or (own_task and bid not in spans and bid.rsplit(".", 1)[0] == owner)
@@ -464,9 +471,14 @@ def merge(root: Path, wave: str = REFINE) -> int:
                 why = (f"теряет {', '.join(sorted(lost))}" if lost else
                        "; ".join(f"{i.code} {i.msg}" for i in pl_errs[len(base_pl):][:3]) if len(pl_errs) > len(base_pl) else
                        "; ".join(sorted(new)[:3]))
-                rejected.append(f"{bid} из {f.name}: {why}")
+                if lost and rnd == 1:
+                    deferred.append((f, owner, bid, text, why))
+                else:
+                    rejected.append(f"{bid} из {f.name}: {why}")
                 continue
             lines, base_map = trial, map_errs
+            if rnd == 2:
+                deferred = [d for d in deferred if (d[0], d[2]) != (f, bid)]
             applied.append(f"{bid} ← {f.name}" + ("" if bid in spans else " (новая карточка)"))
     # вопросы волн: без повторов, «Где» — существующий ID; заготовки каркаса заменяют ответы заполнения
     _, _, q1 = findings(root, AUDIT) if wave == REFINE else ({}, [], [])

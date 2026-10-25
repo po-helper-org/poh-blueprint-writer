@@ -332,6 +332,15 @@ def as_json(t: Task, root: Path) -> dict:
             "finalSummary": t.sections["FINAL_SUMMARY"]}
 
 
+def cmd_task_archive(a, root: Path, bdir: Path, *_):
+    """Как `backlog task archive`: файл задачи уходит в backlog/archive/tasks/ — с карты и из списков пропадает, история остаётся."""
+    t = find_task(bdir, a.id)
+    dst = bdir / "archive" / "tasks" / t.path.name
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    t.path.rename(dst)
+    print(f"Archived task {t.id}: {dst.relative_to(root)}")
+
+
 def cmd_task_view(a, root: Path, bdir: Path, *_):
     t = find_task(bdir, a.id)
     if a.json:
@@ -605,6 +614,10 @@ def build_parser() -> argparse.ArgumentParser:
     v.add_argument("--plain", action="store_true")
     v.add_argument("--json", action="store_true")
     v.set_defaults(fn=cmd_task_view)
+
+    ar = tsub.add_parser("archive", help="убрать задачу в архив")
+    ar.add_argument("id")
+    ar.set_defaults(fn=cmd_task_archive)
 
     lst = tsub.add_parser("list", help="список задач")
     lst.add_argument("-s", "--status")

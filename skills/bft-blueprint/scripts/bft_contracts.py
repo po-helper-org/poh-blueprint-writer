@@ -376,6 +376,22 @@ def waivers(pr: bl.Project, found: list | None = None) -> dict:
     return out
 
 
+def _data_links(pr: bl.Project) -> list[tuple[str, str, str]]:
+    """Связи по «Входу» и «Выходу»: по ним идут данные. Ссылка в «Управлении» — правило из другой карточки, не поток."""
+    ids = {c.id for c in pr.cards}
+    out, seen = [], set()
+    for c in pr.cards:
+        for key in ("in", "out"):
+            for it in c.params.get(key, []):
+                for r in it.refs:
+                    if r in ids and r != c.id:
+                        a, b = (c.id, r) if key == "out" else (r, c.id)
+                        if (a, b) not in seen:
+                            seen.add((a, b))
+                            out.append((a, b, it.text))
+    return out
+
+
 def seams(pr: bl.Project) -> list[tuple[str, str, str]]:
     """Стыки карты — связи карточек, по которым ходят данные между системами:
     экран (Technology) ↔ то, что за кадром (Backstage), даже если обе у одной команды;
@@ -384,7 +400,7 @@ def seams(pr: bl.Project) -> list[tuple[str, str, str]]:
     by_id = {x.id: x for x in pr.cards}
     ext = {t.id for t in pr.teams if re.search(r"внешн|^ext$", f"{t.id} {t.name}", re.I)}
     out = []
-    for a, b, what in pr.links():
+    for a, b, what in _data_links(pr):
         ca, cb = by_id[a], by_id[b]
         layers = {ca.layer, cb.layer}
         if "support" in layers:

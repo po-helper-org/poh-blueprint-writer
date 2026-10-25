@@ -491,6 +491,18 @@ R="$GR/groom/report.md"
   && grep -q "^## BP-1.1 · Ресторан подаёт заявку и попадает в каталог" "$GR/plan/map.md" && grep -q "Кто проверяет заявку ресторана?" "$GR/plan/map.md" \
   && grep -q "BP-2 из r-BP-2.md: теряет НФТ-2$" "$R" && grep -q "BP-2.1 из r-BP-2.1.md: .*BL" "$R" \
   && ok "груминг · audit → refine → merge: годная замена и вопрос — в план, ломающие — в отчёт" || fail "груминг · audit/refine/merge"
+# ID переезжает в блок, который сливается позже (r-BP-3 после r-BP-2): второй круг слияния принимает обе замены
+GD="$tmp/groom2" && cp -r "$BGOLD" "$GD" && rm -rf "$GD/plan"
+python3 "$DIR/scripts/bft-groom.py" audit "$GD" >/dev/null 2>&1 && python3 "$DIR/scripts/bft-groom.py" refine "$GD" >/dev/null 2>&1
+OD="$GD/groom/2-refine/out" && mkdir -p "$OD"
+blk2() { awk -v h="^## $1 " '$0 ~ h {f=1; print; next} f && /^## / {exit} f' "$GD/plan/map.md"; }
+{ printf '## Замены\n'; blk2 BP-2 | sed 's/^Требования БФТ: ФТ-3, ФТ-4, НФТ-2/Требования БФТ: ФТ-3, ФТ-4/'; } > "$OD/r-BP-2.md"
+{ printf '## Замены\n'; blk2 BP-3 | sed 's/^\(Требования БФТ: .*\)$/\1, НФТ-2/'; } > "$OD/r-BP-3.md"
+python3 "$DIR/scripts/bft-groom.py" merge "$GD" >/dev/null 2>&1
+grep -q "^- BP-2 ← r-BP-2.md" "$GD/groom/report.md" && grep -q "^- BP-3 ← r-BP-3.md" "$GD/groom/report.md" \
+  && ok "груминг · ID переехал в блок, слитый позже, — второй круг принимает замену" || fail "груминг · отложенная замена"
+( cd "$GD" && ./backlog.py task archive BP-19.1 >/dev/null && [ -f backlog/archive/tasks/bp-19.1*.md ] && ! ./backlog.py task list --plain | grep -q "BP-19.1" ) \
+  && ok "CLI · task archive убирает карточку в backlog/archive/tasks" || fail "CLI · task archive"
 
 # контракты стыков (Design First): эталон строго чист, на сломанной копии — каждый код CT
 CTL="$DIR/scripts/bft-contracts.py"
