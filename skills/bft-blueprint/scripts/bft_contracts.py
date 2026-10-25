@@ -386,8 +386,9 @@ def _ext_teams(pr: bl.Project) -> list:
     return [t for t in pr.teams if re.search(r"внешн|^ext\d*$", f"{t.id} {t.name}", re.I)]
 
 
-def _roots(text: str) -> set[str]:
-    return {w[:5] for w in re.findall(r"[а-яёa-z]{4,}", text.lower().replace("ё", "е"))} - {"внешн", "систе", "сервис"[:5]}
+def _names(text: str) -> set[str]:
+    """Имена систем: слово с латиницей или цифрой (1С, Google, CRM, SAP)."""
+    return {w.lower() for w in re.findall(r"\b[\w.]*[A-Za-z0-9][\w.]*\b", text) if not w.isdigit() and len(w) > 1}
 
 
 def ext_seams(pr: bl.Project) -> list[tuple[str, str, str, str]]:
@@ -402,7 +403,9 @@ def ext_seams(pr: bl.Project) -> list[tuple[str, str, str, str]]:
             for it in c.params.get(key, []):
                 if it.refs:
                     continue
-                hit = next((t for t in ext if re.search(r"внешн", it.text, re.I) or _roots(t.name) & _roots(it.text)), None)
+                # «внешн…» или имя системы, которое не спутать с сущностью: 1С, Google, CRM. Корень «партнёр» — нет:
+                # «тариф партнёра» — сущность, а не вызов внешней системы
+                hit = next((t for t in ext if re.search(r"внешн", it.text, re.I) or _names(t.name) & _names(it.text)), None)
                 if hit:
                     out.append((c.id, key, it.text, hit.id))
     return out
