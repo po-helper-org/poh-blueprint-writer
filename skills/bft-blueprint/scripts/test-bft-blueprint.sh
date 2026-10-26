@@ -350,6 +350,8 @@ page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf
 d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
 assert d["triggers"] == [{"persona": "rest", "text": "Ресторан подаёт заявку на участие", "stage": "A"}, {"persona": "guest", "text": "Гость купил билет на оффлайн-мероприятие", "stage": "B"}]
 assert "l-user" in page and "l-ev" in page and "const GROUPS" in page and "trgHTML" in page and "stepHTML" in page
+# длинная группа касания — первые три, остальное под «ещё N» (#26)
+assert "const MORE = 3" in page and "data-more" in page and ".sc:not(.open) .xtra{display:none}" in page
 PY
 # Evidence: группы касания — путь экранов в контуре; альтернативный экран — в группе основного; шаг CJM — в группе первого экрана
 node - "$tmp/bout/dineclub-restart-map.html" <<'JS' && ok "карта · Evidence: D2 — в группе «Витрина → Все рестораны», F4 — рядом с F3, шаг Ш4 — в группе своего первого экрана" || fail "карта · Evidence и CJM не те"

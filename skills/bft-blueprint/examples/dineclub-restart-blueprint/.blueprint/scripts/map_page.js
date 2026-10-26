@@ -151,9 +151,12 @@
   const pName = id => (D.personas.find(x => x.id === id) || { name: id }).name;
   const sub = (c, cell) => `<div class="sub" style="grid-template-columns:repeat(${Math.max(1, GROUPS[c].length)},minmax(0,1fr))">${GROUPS[c].map(cell).join("")}</div>`;
   /* Evidence — точки касания: что клиент видит (экран, письмо, уведомление); клик — требования к экрану */
+  /* длинная группа — первые MORE, остальное под «ещё N»: высоту ряда задаёт не самая длинная группа */
+  const MORE = 3, fold = (items, html) => items.map((x, i) => html(x).replace(/^<(\w+) class="/, m => i < MORE ? m : m + "xtra ")).join("")
+    + (items.length > MORE ? `<button class="fold" data-more>ещё ${items.length - MORE}</button>` : "");
   const evHTML = sid => `<button class="ev" data-ev="${esc(sid)}" title="${esc(scrTitle(sid))}"><b>${esc(sid)}</b><span>${esc(scrTitle(sid))}</span></button>`;
   h += `<div class="ml hrow how l-ev">Evidence<small>точки касания: что видит клиент</small></div>` + COLS.map((_, c) =>
-    `<div class="mc how l-ev">${sub(c, g => `<div class="sc">${g.path ? `<div class="evh">${esc(g.path)}</div>` : ""}${g.screens.map(evHTML).join("")}</div>`)}</div>`).join("");
+    `<div class="mc how l-ev">${sub(c, g => `<div class="sc">${g.path ? `<div class="evh">${esc(g.path)}</div>` : ""}${fold(g.screens, evHTML)}</div>`)}</div>`).join("");
   /* User Actions — CJM: старт пути персонажа и его шаги из истории по порядку */
   const trgHTML = tg => `<div class="uat" data-persona="${esc(tg.persona)}" title="Старт пути: ${esc(pName(tg.persona))}"><i></i><span><em>Старт</em><b>${esc(tg.text)}</b><small>${esc(pName(tg.persona).split(/[\s-]+/)[0])}</small></span></div>`;
   const stepHTML = st => `<button class="ua" data-step="${esc(st.id)}" data-seen="${esc(st.seen)}" data-persona="${esc(st.persona)}" data-n="${STEP_NO[st.id]}" title="${esc(pName(st.persona))}: шаг ${STEP_NO[st.id]}"><i>${STEP_NO[st.id]}</i><span><b>${esc(st.title)}</b><small>${esc(pName(st.persona).split(/[\s-]+/)[0])}${st.screens.length ? " · " + st.screens.map(esc).join(", ") : ""}</small></span></button>`;
@@ -161,7 +164,7 @@
     const tgs = (D.triggers || []).filter(tg => tg.stage === col.id);
     return `<div class="mc how l-user">${sub(c, (g, gi) => {
       const mine = tgs.filter(tg => (GROUPS[c].findIndex(x => x.steps.some(st => st.persona === tg.persona)) + 1 || 1) - 1 === gi);
-      return `<div class="sc">${mine.map(trgHTML).join("")}${g.steps.map(stepHTML).join("")}</div>`;
+      return `<div class="sc">${mine.map(trgHTML).join("")}${fold(g.steps, stepHTML)}</div>`;
     })}${GROUPS[c].length ? "" : tgs.map(trgHTML).join("")}</div>`;
   }).join("");
   Object.keys(LAYER).forEach(l => {
@@ -206,8 +209,9 @@
     });
     const cellOf = el => [...grid.children].indexOf(el.closest(".mc")) % (COLS.length + 1);
     /* старт → первый шаг персонажа на этапе */
+    const shown = el => el.offsetParent !== null;   // шаг под «ещё N» стрелок не получает
     grid.querySelectorAll(".uat").forEach(tg => {
-      const dot = [...grid.children][[...grid.children].indexOf(tg.closest(".mc"))].querySelector(`.ua[data-persona="${tg.dataset.persona}"]`); if (!dot) return;
+      const dot = [...tg.closest(".mc").querySelectorAll(`.ua[data-persona="${tg.dataset.persona}"]`)].find(shown); if (!dot) return;
       const A = R(tg.querySelector("i")), B = R(dot.querySelector("i"));
       s += Math.abs(A.cx - B.cx) < 4 ? path([[A.cx, A.b], [B.cx, B.t]], "tg:" + tg.dataset.persona, "st:" + dot.dataset.step)
         : path([[A.cx, A.b], [A.cx, B.cy], [B.l, B.cy]], "tg:" + tg.dataset.persona, "st:" + dot.dataset.step);
@@ -223,6 +227,7 @@
       return path([[A.cx, A.b], [A.cx, yb], [gx, yb], [gx, B.cy], [B.l, B.cy]], a, b);
     };
     grid.querySelectorAll(".ua[data-step]").forEach(dot => {
+      if (!shown(dot)) return;
       const st = STEPS.flat().find(x => x.id === dot.dataset.step), idx = cellOf(dot), A = R(dot.querySelector("i")), done = new Set();
       st.screens.forEach(sid => {
         edges.push(["ev:" + sid, "st:" + st.id]);
@@ -234,7 +239,7 @@
     });
     /* путь персонажа: старт → шаги по порядку слева направо — по низу ряда User Actions (своя дорожка на персонажа), в шаг — слева; виден при наведении, без него порядок держат номера */
     [...new Set([...grid.querySelectorAll(".l-user [data-persona]")].map(x => x.dataset.persona))].forEach((pid, k) => {
-      const seq = urow.flatMap(c => [...c.querySelectorAll(`.uat[data-persona="${pid}"]`), ...[...c.querySelectorAll(`.ua[data-persona="${pid}"]`)].sort((x, y) => x.dataset.n - y.dataset.n)]), Y = ub - 9 - 10 * k;
+      const seq = urow.flatMap(c => [...c.querySelectorAll(`.uat[data-persona="${pid}"]`), ...[...c.querySelectorAll(`.ua[data-persona="${pid}"]`)].filter(shown).sort((x, y) => x.dataset.n - y.dataset.n)]), Y = ub - 9 - 10 * k;
       seq.slice(1).forEach((el, i) => {
         const pa = seq[i], A = R(pa.querySelector("i")), B = R(el.querySelector("i")), ia = nodeId(pa), ib = nodeId(el);
         if (pa.closest(".sc") === el.closest(".sc")) { if (!pa.classList.contains("uat")) s += path([[A.cx, A.b], [B.cx, B.t]], ia, ib).replace('class="ln"', 'class="ln jr"'); return }
@@ -1110,6 +1115,9 @@
     const sl = t.closest("[data-sl]"); if (sl) return slide(sl.closest(".pic"), +sl.dataset.sl);
     const dd = t.closest("[data-dot]"); if (dd) return slide(dd.closest(".fr").querySelector(".pic"), 0, +dd.dataset.dot);
     const sd = t.closest("[data-screen-doc]"); if (sd) return openScreen(sd.dataset.screenDoc, 0);
+    const more = t.closest("[data-more]"); if (more) { const sc = more.closest(".sc"), open = !sc.classList.contains("open");
+      sc.classList.toggle("open", open);
+      more.textContent = open ? "свернуть" : `ещё ${sc.querySelectorAll(".xtra").length}`; return drawLinks() }
     const ev = t.closest("[data-ev]"); if (ev) { const sid = ev.dataset.ev; if (NOTE_OF[sid]) return openScreen(sid, 0); const s = D.seen.find(x => x.steps.some(st => st.screens.includes(sid))); if (s) return openSeen(s.key) }
     const ua = t.closest(".ua[data-seen]"); if (ua) return openSeen(ua.dataset.seen);
     const tf = t.closest("[data-tf]");
