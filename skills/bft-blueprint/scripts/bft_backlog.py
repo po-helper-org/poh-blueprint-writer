@@ -143,9 +143,17 @@ BRIEF = ("ASIS", "GAP", "TOBE", "HowToDemo", "Дополнительно")
 
 BRIEF_OPTIONAL = {"Дополнительно"}
 
-CARD = ("UserStory", "JobStory", "Параметры", "Процесс", "BPMN", "HowToDemo")
+CARD = ("UserStory", "JobStory", "Параметры", "Процесс", "Данные", "BPMN", "HowToDemo")
 
 CARD_REQUIRED = ("UserStory", "JobStory", "Параметры", "Процесс", "HowToDemo")
+
+# Backstage — работа систем и людей за кадром: читатель смотрит процесс и данные, которые ему нужны.
+# Истории пользователя и показа у неё нет — их несёт карточка, которую видит гость или сотрудник
+BACKSTAGE_REQUIRED = ("Параметры", "Процесс")
+BACKSTAGE_SKIP = ("UserStory", "JobStory", "HowToDemo")
+
+# «### Данные»: «- что — откуда», источник — система, документ или карточка (BP-8.1)
+DATA_ITEM = re.compile(r"^[-*]\s+(?P<what>.+?)\s+[—–]\s+(?P<src>.+)$")
 
 # участники процесса, которые строят сервис, а не работают в нём: такая карточка — о проекте, а не о сервисе
 PROJECT_ROLE = re.compile(r"^(?:PO|СА|PM|PO .+|СА .+|продакт.*|владелец продукта|(?:системный |бизнес-)?аналитик|разработ\w*|команда.*|архитектор)$", re.I)
@@ -332,6 +340,7 @@ class BTask:
     mermaid: str = ""                             # блок BPMN в файле
     user_story: str = ""
     job_stories: list = field(default_factory=list)
+    data: list = field(default_factory=list)      # Backstage: [(что, откуда)]
     proc: list = field(default_factory=list)      # шаги процесса: {t: task|xor, …}
 
     @property
@@ -1949,9 +1958,22 @@ def _check_card(pr: Project, c: BTask, stages: set, team_ids: set, task_ids: set
             pr.err(rel, n, "BL009", f"{c.id}: раздел «{name}» — один из {', '.join(CARD)}; ссылки — documentation и references задачи")
     if names != [x for x in CARD if x in names] or len(set(names)) != len(names):
         pr.err(rel, c.off, "BL009", f"{c.id}: разделы по порядку, без повторов: " + " → ".join(CARD))
-    for name in CARD_REQUIRED:
+    for name in (BACKSTAGE_REQUIRED if c.layer == "backstage" else CARD_REQUIRED):
         if name not in secs or not secs[name][1].strip():
             pr.err(rel, secs.get(name, (c.off,))[0], "BL009", f"{c.id}: нет раздела `### {name}`")
+    if c.layer == "backstage":
+        extra = [x for x in BACKSTAGE_SKIP if x in secs]
+        if extra:
+            pr.warn(rel, secs[extra[0]][0], "BL052", f"{c.id}: Backstage — процесс и данные; {', '.join(extra)} здесь не нужны — они у карточки, которую видит человек")
+    if "Данные" in secs:
+        for ln in secs["Данные"][1].split("\n"):
+            if not ln.strip():
+                continue
+            m = DATA_ITEM.match(ln.strip())
+            if m:
+                c.data.append((m["what"].strip(), m["src"].strip()))
+            else:
+                pr.warn(rel, secs["Данные"][0], "BL052", f"{c.id}: Данные — строка «- что — откуда», а не «{ln.strip()[:40]}»")
     if "UserStory" in secs:
         c.user_story = secs["UserStory"][1].strip()
         if c.user_story and not re.match(r"^Как .+,\s*я хочу .+,\s*чтобы .+", c.user_story.replace("**", ""), re.S):

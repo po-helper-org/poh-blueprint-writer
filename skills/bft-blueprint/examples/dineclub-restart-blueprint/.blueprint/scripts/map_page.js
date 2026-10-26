@@ -145,15 +145,30 @@
   });
   grid.innerHTML = h;
 
-  /* стрелки между карточками — из ссылок в «Параметрах»: вход от карточки, выход к карточке */
+  /* стрелки между карточками — из ссылок в «Параметрах»: вход от карточки, выход к карточке.
+     Читаются всегда: тёмная линия с белой подложкой, крупный наконечник, между карточками ряда — место
+     под стрелку; линия не проходит под чужой карточкой — обходит её по краю колонки. Наведение на
+     старт, точку входа или карточку подсвечивает всю цепочку, остальное гаснет. */
   function drawLinks() {
     grid.querySelector("svg.hwl")?.remove();
     if (body.dataset.view !== "how") return;
     const g = grid.getBoundingClientRect();
     const R = el => { const r = el.getBoundingClientRect(); return { l: r.left - g.left, r: r.right - g.left, t: r.top - g.top, b: r.bottom - g.top, cx: (r.left + r.right) / 2 - g.left, cy: (r.top + r.bottom) / 2 - g.top } };
-    let s = `<svg class="hwl" width="${grid.scrollWidth}" height="${grid.scrollHeight}"><defs><marker id="mh" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0L10,5L0,10z" fill="#8c877d"/></marker></defs>`;
-    const path = pts => `<path d="M${pts.map(p => p.map(Math.round).join(",")).join(" L")}" fill="none" stroke="#8c877d" stroke-width="1.5" marker-end="url(#mh)"/>`;
-    const seen = new Set();
+    const boxes = [...grid.querySelectorAll(".hw[data-proc]")].map(el => ({ id: el.dataset.proc, ...R(el) }));
+    /* вертикаль x от y1 до y2 задевает карточку, кроме своих концов */
+    const hits = (x, y1, y2, skip) => boxes.some(q => !skip.includes(q.id) && x > q.l - 2 && x < q.r + 2 && Math.max(y1, y2) > q.t && Math.min(y1, y2) < q.b);
+    const edges = [];
+    let s = `<svg class="hwl" width="${grid.scrollWidth}" height="${grid.scrollHeight}"><defs><marker id="mh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#4d4a44"/></marker><marker id="mho" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="11" markerHeight="11" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#1f6fd1"/></marker><marker id="mhj" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#2f6b2a"/></marker></defs>`;
+    const path = (pts, a, b) => { edges.push([a, b]); const d = `M${pts.map(p => p.map(Math.round).join(",")).join(" L")}`;
+      return `<g class="ln" data-a="${esc(a)}" data-b="${esc(b)}"><path class="halo" d="${d}"/><path class="ar" d="${d}" marker-end="url(#mh)"/></g>` };
+    /* вниз или вверх по колонке: прямо, а если на пути чужая карточка — по левому краю колонки */
+    const vert = (x, A, B, a, b, skip) => {
+      const down = B.t > A.b, y1 = down ? A.b : A.t, y2 = down ? B.t : B.b;
+      if (!hits(x, y1, y2, skip)) return path([[x, y1], [x, y2]], a, b);
+      const x0 = Math.min(A.l, B.l), gx = x0 - 4 - 4 * Math.min(2, lane[x0] = (lane[x0] ?? -1) + 1);
+      return path([[A.l, A.cy], [gx, A.cy], [gx, B.cy], [B.l, B.cy]], a, b);
+    };
+    const seen = new Set(), lane = {};
     D.links.forEach(l => {
       if (!PROC[l.src] || !PROC[l.dst]) return;
       // на карте — только соседние шаги; полная цепочка живёт в карточке процесса
@@ -161,14 +176,14 @@
       const key = [l.src, l.dst].sort().join(); if (seen.has(key)) return; seen.add(key);
       const ea = grid.querySelector(`[data-proc="${l.src}"]`), eb = grid.querySelector(`[data-proc="${l.dst}"]`); if (!ea || !eb) return;
       const A = R(ea), B = R(eb);
-      if (Math.abs(A.cx - B.cx) < 40) s += B.t > A.b ? path([[A.cx, A.b], [A.cx, B.t]]) : path([[A.cx, A.t], [A.cx, B.b]]);
-      else if (B.l > A.r) s += Math.abs(A.cy - B.cy) < 3 ? path([[A.r, A.cy], [B.l, B.cy]]) : path([[A.r, A.cy], [B.l - 12, A.cy], [B.l - 12, B.cy], [B.l, B.cy]]);
-      else if (A.l > B.r) s += path([[A.l, A.cy], [B.r + 12, A.cy], [B.r + 12, B.cy], [B.r, B.cy]]);
+      if (Math.abs(A.cx - B.cx) < 40) s += vert(A.cx, A, B, l.src, l.dst, [l.src, l.dst]);
+      else if (B.l > A.r) s += Math.abs(A.cy - B.cy) < 3 ? path([[A.r, A.cy], [B.l, B.cy]], l.src, l.dst) : path([[A.r, A.cy], [B.l - 8, A.cy], [B.l - 8, B.cy], [B.l, B.cy]], l.src, l.dst);
+      else if (A.l > B.r) s += path([[A.l, A.cy], [B.r + 8, A.cy], [B.r + 8, B.cy], [B.r, B.cy]], l.src, l.dst);
     });
     grid.querySelectorAll(".uat").forEach(tg => {
       const dot = tg.parentElement.querySelector(`.ua[data-persona="${tg.dataset.persona}"]`); if (!dot) return;
       const A = R(tg.querySelector("i")), B = R(dot.querySelector("i"));
-      s += Math.abs(A.cy - B.cy) < 4 ? path([[A.r, A.cy], [B.l, B.cy]]) : path([[A.cx, A.b], [A.cx, B.cy], [B.l, B.cy]]);
+      s += Math.abs(A.cy - B.cy) < 4 ? path([[A.r, A.cy], [B.l, B.cy]], "tg:" + tg.dataset.persona, "ua:" + dot.dataset.entry) : path([[A.cx, A.b], [A.cx, B.t]], "tg:" + tg.dataset.persona, "ua:" + dot.dataset.entry);
     });
     grid.querySelectorAll(".ua[data-entry]").forEach(dot => {
       const sid = dot.dataset.entry, key = Object.keys(D.docs).find(k => D.docs[k].screen === sid);
@@ -177,10 +192,36 @@
         && PROC[el.dataset.proc].docs.some(d => String(d).toLowerCase().split(" ")[0] === key));
       if (!card) return;
       const A = R(dot.querySelector("i")), B = R(card);
-      s += path([[A.cx, A.b], [A.cx, B.t]]);
+      s += vert(A.cx, A, B, "ua:" + sid, card.dataset.proc, [card.dataset.proc]);
+    });
+    /* путь персонажа: старт → точки входа по этапам слева направо — по низу ряда User Actions (своя дорожка на персонажа), в точку — слева */
+    const urow = [...grid.querySelectorAll(".mc.l-user")], ub = Math.max(...urow.map(c => R(c).b));
+    [...new Set([...grid.querySelectorAll(".l-user [data-persona]")].map(x => x.dataset.persona))].forEach((pid, k) => {
+      const seq = urow.flatMap(c => [...c.querySelectorAll(`[data-persona="${pid}"]`)]), Y = ub - 9 - 10 * k;
+      seq.slice(1).forEach((el, i) => {
+        const pa = seq[i], A = R(pa.querySelector("i")), B = R(el.querySelector("i")), ia = nodeId(pa), ib = nodeId(el);
+        if (pa.closest(".mc") === el.closest(".mc")) { if (!pa.classList.contains("uat")) s += path([[A.cx, A.b], [B.cx, B.t]], ia, ib).replace('class="ln"', 'class="ln jr"'); return }
+        s += path([[A.cx, A.b], [A.cx, Y], [B.l - 12, Y], [B.l - 12, B.cy], [B.l, B.cy]], ia, ib).replace('class="ln"', 'class="ln jr"');
+      });
     });
     grid.insertAdjacentHTML("beforeend", s + "</svg>");
+    grid.dataset.edges = JSON.stringify(edges);
   }
+  /* цепочка узла: всё, что до него и после него по стрелкам */
+  const nodeId = el => el.dataset.proc || (el.dataset.entry ? "ua:" + el.dataset.entry : el.classList.contains("uat") ? "tg:" + el.dataset.persona : "");
+  function chain(id) {
+    const E = JSON.parse(grid.dataset.edges || "[]"), on = new Set([id]);
+    [[0, 1], [1, 0]].forEach(([f, t]) => { const q = [id]; while (q.length) { const x = q.shift(); E.forEach(e => { if (e[f] === x && !on.has(e[t])) { on.add(e[t]); q.push(e[t]) } }) } });
+    return on;
+  }
+  grid.addEventListener("mouseover", e => {
+    const el = body.dataset.view === "how" && e.target.closest(".hw[data-proc],.ua[data-entry],.uat"); if (!el || grid.dataset.hot === nodeId(el)) return;
+    const on = chain(nodeId(el)); grid.dataset.hot = nodeId(el); grid.classList.add("hot");
+    grid.querySelectorAll(".hw[data-proc],.ua[data-entry],.uat").forEach(x => x.classList.toggle("on", on.has(nodeId(x))));
+    grid.querySelectorAll("svg.hwl .ln").forEach(x => x.classList.toggle("on", on.has(x.dataset.a) && on.has(x.dataset.b)));
+  });
+  grid.addEventListener("mouseleave", () => { grid.dataset.hot = ""; grid.classList.remove("hot") });
+  grid.addEventListener("mouseout", e => { if (!e.relatedTarget || !e.relatedTarget.closest(".hw[data-proc],.ua[data-entry],.uat")) { grid.dataset.hot = ""; grid.classList.remove("hot") } });
   window.addEventListener("load", drawLinks); window.addEventListener("resize", drawLinks);
 
   /* ---------- требования к экранам: документы «F3 · …» в backlog/docs/screens — вкладки и стек заметок ---------- */
@@ -909,6 +950,20 @@
     const row = k => (P[k] || []).length ? `<div class="pp"><span>${PNAME[k]}</span><ul>${P[k].map(it => `<li>${mdInline(it.t)}${it.r.length ? " " + it.r.map(idChip).join(" ") : ""}</li>`).join("")}</ul></div>` : "";
     const lnk = refList([t ? `<span class="lk">Задача</span> ${idChip(t.id)} ${esc(t.text)}` : "", ...c.docs.map(refItem), ...c.refs.map(refItem)].filter(Boolean));
     const proc = (c.lead ? `<p class="tklead">${mdInline(c.lead)}</p>` : "") + (c.bpmn ? `<div class="bpmnw"><pre>${esc(c.bpmn)}</pre></div><details class="mmcode"><summary>Текст схемы</summary><pre>${esc(c.bpmn)}</pre></details>` : "");
+    /* Backstage — работа за кадром: процесс со схемой и данные, которые ему нужны, — без историй и показа.
+       «Данные» — из раздела карточки; нет раздела — из «Входа»: что приходит и от какой карточки */
+    const REF = /\s*\(((?:[A-ZА-Я]+-\d+(?:\.\d+)?(?:,\s*)?)+)\)\s*$/;
+    const dataRows = (c.data || []).length ? c.data.map(([what, src]) => { const m = src.match(REF); return [what, m ? src.replace(REF, "") : src, m ? m[1].split(/,\s*/) : []] })
+      : (P.in || []).map(it => [it.t, it.r.map(r => PROC[r] ? teamN(PROC[r]) : "").filter(Boolean).join(", ") || "—", it.r]);
+    const dataHTML = dataRows.length ? `<table class="dtab"><thead><tr><th>Что</th><th>Откуда</th></tr></thead><tbody>${dataRows.map(([w, s, r]) => `<tr><td>${mdInline(w)}</td><td>${mdInline(s)}${r.length ? " " + r.map(idChip).join(" ") : ""}</td></tr>`).join("")}</tbody></table>` : "";
+    if (c.layer === "backstage") {
+      side.innerHTML = head(c.text, `<span class="lay" style="--c:${L[2]}">${L[0]}</span> · <span class="pteam" style="--c:${teamC(c)}"><i></i>${esc(teamN(c))}</span> · ${esc(COLS[colOf(c.stage)].name)} · ${esc(id)} · ${esc(c.status)}`, !!t) + `<div class="snbody">
+      ${sec("Процесс", proc)}${sec("Данные", dataHTML)}${sec("Вопросы", qList(qsOf([id, c.task])))}${sec("Ссылки", lnk)}</div>`;
+      body.classList.add("wide", "open"); side.scrollTop = 0;
+      side.dataset.ctx = "proc:" + id; side.dataset.note = "";
+      const box = side.querySelector(".bpmnw"); if (box) drawMermaid(box);
+      return;
+    }
     side.innerHTML = head(c.text, `<span class="lay" style="--c:${L[2]}">${L[0]}</span> · <span class="pteam" style="--c:${teamC(c)}"><i></i>${esc(teamN(c))}</span> · ${esc(COLS[colOf(c.stage)].name)} · ${esc(id)} · ${esc(c.status)}`, !!t) + `<div class="snbody">
       ${sec("UserStory", c.us ? `<p>${mdInline(c.us)}</p>` : "")}
       ${sec("JobStory", (c.js || []).length ? `<ul class="js">${c.js.map(x => `<li>${mdInline(x)}</li>`).join("")}</ul>` : "")}

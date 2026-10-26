@@ -240,7 +240,10 @@ from pathlib import Path
 d = json.loads(re.search(r'id="map-data">(.*?)</script>', (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf-8"), re.S).group(1))
 assert len(d["tasks"]) == 18 and len(d["cards"]) == 20, (len(d["tasks"]), len(d["cards"]))
 assert {c["layer"] for c in d["cards"]} == {"employee", "technology", "backstage", "support"}
-assert all(c["params"].get("out") and c["demo"] and c["us"] and c["js"] and c["bpmn"].startswith("flowchart LR") for c in d["cards"])
+assert all(c["params"].get("out") and c["bpmn"].startswith("flowchart LR") for c in d["cards"])
+# Backstage — процесс и данные, без историй и показа; остальные слои — с UserStory, JobStory, HowToDemo
+assert all(not (c["demo"] or c["us"] or c["js"]) and c["data"] for c in d["cards"] if c["layer"] == "backstage")
+assert all(c["demo"] and c["us"] and c["js"] for c in d["cards"] if c["layer"] != "backstage")
 assert all(t["brief"].get("ASIS") and t["ac"] for t in d["tasks"])
 assert len(d["links"]) >= 20 and len(d["notes"]) == 12
 PY
@@ -360,6 +363,12 @@ out="$(python3 "$BLINT" "$SB" --no-source 2>&1)"
 grep -q "BL051 BP-15.2: в Support — проектная работа («Дизайнер»)" <<<"$out" && grep -q "BL051 BP-15.3: Support — поддержка в нештатной ситуации" <<<"$out" \
   && ! grep -q BL051 <<<"$(python3 "$BLINT" "$BGOLD" --no-source --strict 2>&1)" \
   && ok "карта · Support: макет дизайнера и канал рассылки — BL051, разбор обращения — норма" || fail "карта · BL051 не ловит не-Support — $out"
+# BL052: Backstage — процесс и данные; UserStory у неё лишняя, «Данные» — строки «- что — откуда»
+BS="$tmp/bad/backstage" && cp -r "$BGOLD" "$BS" && f="$(ls "$BS/backlog/tasks/"bp-16.1*.md)" \
+  && sed -i 's/^### Параметры$/### UserStory\nКак официант, я хочу ответ сразу, чтобы не спорить.\n\n### Параметры/; s/^- Статус билета и дата мероприятия — Acme Tickets$/- Статус билета из Acme Tickets/' "$f"
+out="$(python3 "$BLINT" "$BS" --no-source 2>&1)"
+grep -q "BL052 BP-16.1: Backstage — процесс и данные; UserStory здесь не нужны" <<<"$out" && grep -q "BL052 BP-16.1: Данные — строка «- что — откуда»" <<<"$out" \
+  && ok "карта · Backstage: UserStory лишняя, «Данные» без источника — BL052" || fail "карта · BL052 — $out"
 # BL043: подзадача — зона из списка, родитель — история
 ZB="$tmp/bad/zone" && cp -r "$BGOLD" "$ZB" && python3 - "$ZB" <<'PY'
 import sys
@@ -537,8 +546,8 @@ cp -r "$PL/g" "$PL/mid" && sed -i 's/^- \*\*Выход:\*\* Частота и к
   && python3 "$BBUILD" "$PL/mid" --no-source --no-zip --out-dir "$PL/mid-out" >/dev/null 2>&1 \
   && ok "автопилот · ссылка (BP-x.y) посреди значения — сборка проходит" || fail "автопилот · ссылка посреди значения валит сборку (BL032)"
 # BL033: история от лица команды-исполнителя
-cp -r "$PL/g" "$PL/role" && sed -i '0,/^Как официант, я хочу получать ответ/s//Как команда TeamA, я хочу получать ответ/' "$PL/role/plan/map.md" \
-  && python3 "$DIR/scripts/bft-plan.py" apply "$PL/role" 2>&1 | grep -q " BL033 BP-16.1" \
+cp -r "$PL/g" "$PL/role" && sed -i '0,/^Как официант, я хочу отсканировать/s//Как команда TeamA, я хочу отсканировать/' "$PL/role/plan/map.md" \
+  && python3 "$DIR/scripts/bft-plan.py" apply "$PL/role" 2>&1 | grep -q " BL033 BP-15.1" \
   && ok "автопилот · BL033: UserStory от лица исполнителя, адрес — строка плана" || fail "автопилот · BL033"
 
 # стыки: документ «Стыки» в эталоне проходит строго; поломанные копии дают SM001/SM003/SM005; без стыков этап не включается
@@ -672,11 +681,11 @@ import sys
 p = sys.argv[1]; t = open(p, encoding="utf-8").read()
 t = t.replace("- TeamA: Проверяет: активен, не использован, ≤7 дней", "- СА: Проверяет: активен, не использован, ≤7 дней", 1)
 t = t.replace("команда: vit", "кандидаты: vit", 1)
-t = t.replace("- Когда приходит штрихкод", "- Когда Приходит штрихкод", 1)
+t = t.replace("- Когда гость показывает билет", "- Когда Гость показывает билет", 1)
 open(p, "w", encoding="utf-8").write(t)
 PY
 out="$(python3 "$DIR/scripts/bft-plan.py" apply "$PL/qual" 2>&1)"
-( for c in "BL034 BP-16.1" "BL035" "BL030 BP-16.1"; do grep -q " $c" <<<"$out" || exit 1; done ) \
+( for c in "BL034 BP-16.1" "BL035" "BL030 BP-15.1"; do grep -q " $c" <<<"$out" || exit 1; done ) \
   && ok "автопилот · BL034 СА в процессе, BL035 один кандидат, BL030 «Когда» с заглавной" || fail "автопилот · проверки качества карты"
 sed 's/^| guest | Гость Acme Tickets |/| guest | Гость, кассир и администратор |/' "$DIR/examples/golden_story.md" > "$tmp/merged-story.md"
 python3 "$DIR/scripts/bft-story-lint.py" "$tmp/merged-story.md" --no-source 2>&1 | grep -q " ST025 " \

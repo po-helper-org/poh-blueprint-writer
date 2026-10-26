@@ -703,6 +703,8 @@ def apply(pl: Plan, root: Path) -> list[str]:
             old_bpmn = re.search(r"^### BPMN\n.*?(?=^### |\Z)", t.sections.get("DESCRIPTION", ""), re.S | re.M)
             if old_bpmn and "### HowToDemo" in body:
                 body = body.replace("### HowToDemo", old_bpmn.group(0).rstrip("\n") + "\n\n### HowToDemo", 1)
+            elif old_bpmn:  # Backstage: показа нет — BPMN последним разделом
+                body = body.rstrip("\n") + "\n\n" + old_bpmn.group(0).rstrip("\n")
         t.sections["DESCRIPTION"] = body
         if not b.card or b.zone:
             done = {x: d for d, x in t.ac}
