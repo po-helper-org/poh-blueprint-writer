@@ -465,17 +465,17 @@
   function execList(cur) {
     const groups = [...D.teams.map(t => t.id), "?"].map(tm => [tm, exIds.filter(id => (TASK[id].team in TEAM ? TASK[id].team : "?") === tm)]).filter(g => g[1].length);
     const item = id => { const t = TASK[id], b = blocks(id).length;
-      return `<li data-extask="${esc(id)}" tabindex="0"${id === cur ? ' class="on"' : ""}><b>${esc(t.text)}</b><span>${esc(id)} · ${esc(COLS[colOf(t.stage)].name)} · ${esc(t.status)}</span>${b ? '<i class="q" title="Блокер"></i>' : ""}</li>` };
-    const empty = `<p class="exno">Ни одна задача не ссылается на ${exScr.length > 1 ? "эти экраны" : "этот экран"}. Связь — в проекте: строка «экраны: ${esc(exScr.join(", "))}» задачи в plan/map.md${SCR_DOC[exScr[0]] ? ` или <code>./backlog.py task edit BP-N --doc ${esc(SCR_DOC[exScr[0]])}</code>` : ""}.</p>`;
+      return `<li data-extask="${esc(id)}" tabindex="0"${id === cur ? ' class="on"' : ""}><b>${esc(t.text)}</b><span>${esc(id)} · ${esc(t.status)}</span>${b ? '<i class="q" title="Блокер"></i>' : ""}</li>` };
+    const empty = `<p class="exno">Задач для экрана нет. Свяжите задачу с ним строкой «экраны: ${esc(exScr.join(", "))}» в плане.</p>`;
     return groups.length ? groups.map(([tm, ids]) => { const t = TASK[ids[0]];
-      return `<section class="exg"><h4 style="--c:${teamC(t)}"><i></i>${esc(tm === "?" ? "Команда не определена" : teamN(t))}<b>${ids.length}</b></h4><ul class="snstack exl">${ids.map(item).join("")}</ul></section>` }).join("") : empty;
+      return `<section class="exg"><h4 style="--c:${teamC(t)}"><i></i>${esc(tm === "?" ? "Команда не определена" : teamN(t))}</h4><ul class="snstack exl">${ids.map(item).join("")}</ul></section>` }).join("") : empty;
   }
   const execInline = () => exScr.length ? `<div class="exin"><h4 class="exh">Исполнение · ${exIds.length}</h4>${execList("")}</div>` : "";
   function execShow(sids, from, cur) {
     if (from) { execPrep(sids); exFrom = from }
     if (!exScr.length) return execHide();
     body.classList.remove("how"); ex.dataset.task = "";
-    ex.innerHTML = `<div class="snbar"><h3>Исполнение</h3><span class="excnt">${nTasks(exIds.length)}</span></div><div class="tkmeta">Экран ${esc(exScr.join(", "))} · задачи «Что делаем» по командам</div><div class="snbody">${execList(cur || "")}</div>`;
+    ex.innerHTML = `<div class="snbar"><h3>Исполнение</h3><span class="excnt">${nTasks(exIds.length)}</span></div><div class="snbody">${execList(cur || "")}</div>`;
     body.classList.add("side2");
   }
   function execHide() { body.classList.remove("side2", "how"); exFrom = ""; ex.dataset.task = "" }
@@ -510,7 +510,7 @@
     gallery = steps.map((st, i) => ({ alt: `Шаг ${i + 1} · ${st.sid} · ${scrName(st.sid)}`, src: screenImg(st.sid) }));
     return `<ol>${steps.map(st => `<li>${mdInline(st.text)}</li>`).join("")}</ol><details class="dmd"><summary>Раскадровка · ${steps.length} ${plural(steps.length, "шаг", "шага", "шагов")}</summary><ol class="demo">${steps.map((st, i) => `<li class="dm">
       <span class="dmpic"><img src="${esc(screenImg(st.sid))}" alt="${esc(scrName(st.sid))}" data-zoom="${i}" loading="lazy" draggable="false"></span>
-      <span class="dmx"><b><span class="dmn">${i + 1}</span>${mdInline(st.act)}</b>${st.see ? `<span class="dmt">${mdInline(st.see)}</span>` : ""}<small>${esc(st.sid)} · ${esc(scrName(st.sid))}</small></span></li>`).join("")}</ol></details>`;
+      <span class="dmx"><b><span class="dmn">${i + 1}</span>${mdInline(st.act)}</b><small>${esc(st.sid)} · ${esc(scrName(st.sid))}</small></span></li>`).join("")}</ol></details>`;
   }
   /* ---------- «Как это работает» задачи: вторая панель слева от постановки ----------
      Карточка-превью: JobStory заголовком (нет — название карточки), под ней схема процесса (mermaid),
@@ -520,9 +520,9 @@
     if (!cards.length) return execHide();
     if (ex.dataset.task === id && body.classList.contains("how")) return;
     ex.dataset.task = id;
-    ex.innerHTML = `<div class="snbar"><h3>Как это работает</h3><span class="excnt">${cards.length} ${plural(cards.length, "карточка", "карточки", "карточек")}</span></div><div class="tkmeta">Задача ${esc(id)} · процессы её карточек</div><div class="snbody">${cards.map(c => { const L = LAYER[c.layer];
-      return `<section class="hwc" data-proc="${esc(c.id)}" tabindex="0"><span class="hwm"><span class="lay" style="--c:${L[2]}">${L[0]}</span> · ${esc(c.id)} · ${esc(c.text)}</span>
-        <b>${mdInline((c.js || [])[0] || c.us || c.text)}</b>${(c.js || []).length > 1 ? `<span class="hwmore">ещё ${c.js.length - 1} ${plural(c.js.length - 1, "ситуация", "ситуации", "ситуаций")}</span>` : ""}
+    ex.innerHTML = `<div class="snbar"><h3>Как это работает</h3><span class="excnt">${cards.length} ${plural(cards.length, "карточка", "карточки", "карточек")}</span></div><div class="snbody">${cards.map(c => { const L = LAYER[c.layer];
+      return `<section class="hwc" data-proc="${esc(c.id)}" tabindex="0"><span class="hwm"><span class="lay" style="--c:${L[2]}">${L[0]}</span> · ${esc(c.id)}</span>
+        <b>${mdInline((c.js || [])[0] || c.us || c.text)}</b>
         ${c.bpmn ? `<div class="bpmnw"><pre>${esc(c.bpmn)}</pre></div>` : ""}</section>` }).join("")}</div>`;
     body.classList.add("side2", "how"); ex.scrollTop = 0;
     ex.querySelectorAll(".bpmnw").forEach(drawMermaid);
