@@ -1205,12 +1205,21 @@
         const what = note || (li ? `${tab ? tab.textContent : ""} · заметка «${li.querySelector("b").textContent}»` : "");
         return { key: "screen:" + id, label: `Экран ${id} «${SCR[id].title}»${what ? " · " + what : ""}`, file: (D.noteFiles || {})[id] || storyDoc } }
       if (kind === "proc") { const s = el.closest(".tk"); return { key: "proc:" + id, label: `Карточка ${id} «${PROC[id].text}»${s ? " · раздел " + s.querySelector("h4").textContent : ""}`, file: PROC[id].file } }
-      if (kind === "seen") return { key: "seen:" + id, label: `Шаги истории «${id}»`, file: storyDoc };
+      if (kind === "seen") { const s = D.seen.find(x => x.key === id) || { steps: [], col: 0 };
+        return { key: "seen:" + id, label: `Шаги истории ${s.steps.map(st => st.id).join(", ")} · этап «${s.final ? "Итог" : COLS[s.col].name}» · ${pName(s.persona)}`, file: storyDoc } }
       if (kind === "sub") return { key: "sub:" + id, label: `Подзадача ${id} «${SUB[id].text}»`, file: SUB[id].file };
       return { key: "map", label: "Карта", file: mapDoc };
     }
     const fr = el.closest(".fr"); if (fr) { const cap = fr.querySelector(".cap").textContent, ids = (fr.dataset.screens || "").split(",").filter(Boolean);
       fr.dataset.cmk = "fr:" + cap; return { key: "fr:" + cap, label: `Что видят · шаг «${cap}»`, file: storyDoc + (ids.length && (D.noteFiles || {})[NOTE_OF[ids[0]]] ? `, ${D.noteFiles[NOTE_OF[ids[0]]]}` : "") } }
+    /* «Как это работает»: шаг CJM, экран Evidence, старт пути — замечание к ним, а не ко всей карте */
+    const ua = el.closest(".ua[data-step]"); if (ua) { const st = STEPS.flat().find(x => x.id === ua.dataset.step); ua.dataset.cmk = "step:" + st.id;
+      const notes = st.screens.map(sid => (D.noteFiles || {})[NOTE_OF[sid]]).filter(Boolean);
+      return { key: "step:" + st.id, label: `Шаг истории ${st.id} «${st.title}» · ${pName(st.persona)}${st.screens.length ? " · экраны " + st.screens.join(", ") : ""}`, file: [storyDoc, ...new Set(notes)].join(", ") } }
+    const ev = el.closest(".ev[data-ev]"); if (ev) { const sid = ev.dataset.ev; ev.dataset.cmk = "screen:" + sid;
+      return { key: "screen:" + sid, label: `Экран ${sid} «${scrTitle(sid)}» · Evidence`, file: (D.noteFiles || {})[NOTE_OF[sid]] || storyDoc } }
+    const tg = el.closest(".uat"); if (tg) { const tr = (D.triggers || []).find(x => x.persona === tg.dataset.persona) || { text: "" }; tg.dataset.cmk = "trg:" + tg.dataset.persona;
+      return { key: "trg:" + tg.dataset.persona, label: `Старт пути «${tr.text}» · ${pName(tg.dataset.persona)}`, file: mapDoc } }
     const wk = el.closest("[data-task]"); if (wk) { const id = wk.dataset.task; wk.dataset.cmk = "task:" + id; return { key: "task:" + id, label: `Задача ${id} «${TASK[id].text}»`, file: TASK[id].file } }
     const hw = el.closest("[data-proc]"); if (hw) { const id = hw.dataset.proc; hw.dataset.cmk = "proc:" + id; return { key: "proc:" + id, label: `Карточка ${id} «${PROC[id].text}»`, file: PROC[id].file } }
     const hd = el.closest(".hh,.mh:not(.corner)"); if (hd) { const name = hd.querySelector("b").textContent; hd.dataset.cmk = "stage:" + name; return { key: "stage:" + name, label: `Этап «${name}»`, file: storyDoc } }
