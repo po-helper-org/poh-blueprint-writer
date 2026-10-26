@@ -139,6 +139,8 @@ PROJECT_WORK = re.compile(r"макет|дизайнер|айдентик|вёр�
 # в Backstage участники и механизм — технологические компоненты, не команды
 ONE_OFF = re.compile(r"(?<![а-яё])(?:доработанн|переработанн|обновлённ|обновленн|переключа|переверст|перенос|переезжа|перестраива|переделыва|мигрир|настраива|настро[ий]|внедря|подготав|готовит|верста|разрабатыва|дорабатыва)\w*", re.I)
 
+FUNC_WORDS = {"и", "в", "во", "на", "от", "для", "с", "со", "к", "у", "из", "по", "через", "а", "но", "или", "где", "когда"}
+
 def regular_hint(pr: bl.Project, c) -> None:
     """BL053: карточка — регулярный процесс; в Backstage — компоненты, а не команды."""
     steps = [x.get("text", "") for x in c.proc if x.get("t") == "task"] + [b.get("text", "") for x in c.proc for b in x.get("br", [])]
@@ -152,6 +154,13 @@ def regular_hint(pr: bl.Project, c) -> None:
     teams = {x.strip().lower() for t in pr.teams for x in (t.id, t.name)} - contours
     who = [ln for ln in bl.lanes_of(c.proc) if ln.strip().lower() in teams or bl.PROJECT_ROLE.match(ln.strip())]
     who += [it.text for it in c.params.get("mech", []) if it.text.strip().lower() in teams]
+    # в названии и сути команда — подлежащее («TeamA проверяет», «от DineClub»); часть имени компонента («Каталог UnitB») — можно
+    text = f"{c.title}. {c.lead}"
+    for x in teams:
+        for m in re.finditer(rf"(?<![\w-]){re.escape(x)}(?![\w-])", text, re.I):
+            before = re.search(r"([А-Яа-яЁё]+)\s*$", text[:m.start()])
+            if not before or before.group(1).lower() in FUNC_WORDS:
+                who.append(m.group(0))
     if who:
         pr.err(c.rel, c.off, "BL053", f"{c.id}: в Backstage участвует команда «{who[0]}» — участники и механизм только технологические компоненты, "
                "которые обеспечивают регулярный процесс: «Сервис проверки билетов», «Триггеры касаний», «Каталог ресторанов»")

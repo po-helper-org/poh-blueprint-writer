@@ -562,3 +562,9 @@ svg.hwl .ar{stroke:#aca79d;stroke-width:1.1}
 svg.hwl .jr .ar{stroke:#3f7a38;stroke-width:1.3}
 .mc.how{gap:16px}
 .map.hot svg.hwl .jr.on .ar{stroke:#3f7a38;stroke-width:1.2;stroke-dasharray:4 3;marker-end:url(#mhj)}
+/* дизайн-проход #24: слои «Как это работает» не протекают в «Что делаем»; подпись ряда отделена от холста; ряды плотнее */
+body[data-view="do"] .how.l-ev,body[data-view="do"] .how.l-user{display:none}
+.ml{box-shadow:1px 0 0 #e7e3dc,10px 0 14px -10px rgba(0,0,0,.12)}
+.l-ev .sc{gap:4px}.ev{padding:4px 8px;font-size:12px}.evh{padding-bottom:4px}
+.l-user .sc{gap:8px}
+.ml.hrow{padding-left:18px!important;padding-right:8px!important}
