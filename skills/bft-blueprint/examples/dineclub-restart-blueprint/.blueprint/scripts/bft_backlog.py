@@ -165,6 +165,10 @@ TEAMS_HEADER = ("ID", "Команда")
 
 TEAMS_HEADER_LEAD = ("ID", "Команда", "Техлид")      # техлид — исполнитель историй контура
 
+# триггер — событие, с которого персонаж начинает свой путь («Гость купил билет»): старт чтения
+# диаграммы «Как это работает»; раздел «Триггеры» «Карты», этап — где событие происходит
+TRIGGERS_HEADER = ("Персонаж", "Триггер", "Этап")
+
 QUESTIONS_HEADER = ("ID", "Кому", "Вопрос", "Где", "Тип", "Ответ")
 
 Q_TYPES = ("вопрос", "блокер")
@@ -355,6 +359,13 @@ class Team:
     name: str
     line: int
     lead: str = ""            # техлид контура: исполнитель его историй
+
+@dataclass
+class Trigger:
+    persona: str
+    text: str
+    stage: str
+    line: int
 
 @dataclass
 class Question:
@@ -680,6 +691,7 @@ class Project:
     risks: ExecRisks | None = None
     story: bs.Story | None = None
     teams: list[Team] = field(default_factory=list)
+    triggers: list[Trigger] = field(default_factory=list)   # события старта персонажей
     questions: list[Question] = field(default_factory=list)
     docs: dict = field(default_factory=dict)       # {doc-id: Doc}
     screens: dict = field(default_factory=dict)    # {ID экрана: bsn.ScreenDoc}
@@ -1669,6 +1681,17 @@ def parse(root: Path) -> Project:
         if not h1:
             pr.err(md.rel, md.off + 1, "BL002", "нет заголовка `# Карта: <инициатива>`")
         secs = bb._sections(lines)
+        if "Триггеры" in secs:
+            ln0, body = secs["Триггеры"]
+            found = bb.tables(body, first_lineno=md.off + ln0 + 1)
+            if not found or tuple(found[0][0]) != TRIGGERS_HEADER:
+                pr.err(md.rel, md.off + ln0, "BL049", f"«Триггеры»: таблица | {' | '.join(TRIGGERS_HEADER)} |")
+            else:
+                for ln, c in found[0][1]:
+                    if len(c) != 3 or not all(x.strip() for x in c):
+                        pr.err(md.rel, ln, "BL049", "триггер: нужны «Персонаж» (ID из «Истории»), «Триггер» — событие, «Этап» — ID этапа")
+                        continue
+                    pr.triggers.append(Trigger(c[0].strip(), c[1].strip(), c[2].strip().upper(), ln))
         for name, header in (("Команды", TEAMS_HEADER), ("Вопросы", QUESTIONS_HEADER)):
             if name not in secs:
                 pr.err(md.rel, md.off + 1, "BL004", f"нет раздела «## {name}»")

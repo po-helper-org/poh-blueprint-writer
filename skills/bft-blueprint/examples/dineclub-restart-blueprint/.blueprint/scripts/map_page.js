@@ -118,6 +118,28 @@
   if (D.tasks.some(oos)) h += `<div class="oosl do"></div><div class="ml do oosm">Out of scope<small>Would — не коммитмент заказчику</small></div>` +
     COLS.map(col => `<div class="mc do oosc">${D.tasks.filter(t => t.stage === col.id && oos(t)).map(taskHTML).join("")}</div>`).join("");
   /* все четыре ряда — даже пустой: «сотрудника на виду у гостя нет» — тоже ответ */
+  /* User Actions — над слоями: точки входа клиента. Точка — страница, с которой персонаж начинает свой
+     процесс на этапе: первый экран его шага и каждый переход в другой контур (письмо → витрина). Шаг на
+     чужой поверхности (экран официанта, который видит гость) точкой не считается — это вход другого
+     персонажа. Всё — из согласованной истории (шаги и таблица «Экраны»), без новых данных. */
+  const ENTRY = COLS.map((_, c) => {
+    const firsts = {};
+    const per = D.seen.filter(s => s.col === c && !s.final).map(s => {
+      const pts = []; let prev = null;
+      s.steps.forEach(st => { const sid = st.screens[0]; if (!sid) return; const k = D.screens[sid].contour; if (prev === null || k !== prev) pts.push({ sid, contour: k, persona: s.persona, first: !pts.length }); prev = k });
+      if (pts[0]) firsts[pts[0].contour] = s.persona;
+      return pts;
+    }).flat();
+    const seenSid = new Set();
+    return per.filter(e => (e.first || !(e.contour in firsts) || firsts[e.contour] === e.persona) && !seenSid.has(e.sid) && seenSid.add(e.sid));
+  });
+  const scrTitle = sid => { const d = Object.values(D.docs).find(x => x.screen === sid); return d ? d.title.replace(/^[^·]*·\s*/, "") : sid };
+  const entryHTML = e => { const p = D.personas.find(x => x.id === e.persona) || { name: "" };
+    return `<button class="ua" data-entry="${esc(e.sid)}" data-persona="${esc(e.persona)}" title="${esc(p.name)}: ${esc(scrTitle(e.sid))}"><i></i><span><b>${esc(e.sid)} · ${esc(scrTitle(e.sid))}</b><small>${esc(e.contour)} · ${esc(p.name.split(/[\s-]+/)[0])}</small></span></button>` };
+  /* триггер — событие старта пути персонажа («Гость купил билет»): с него начинается чтение диаграммы */
+  const trgHTML = tg => { const p = D.personas.find(x => x.id === tg.persona) || { name: tg.persona };
+    return `<div class="uat" data-persona="${esc(tg.persona)}" title="Старт пути: ${esc(p.name)}"><i></i><span><em>Старт</em><b>${esc(tg.text)}</b><small>${esc(p.name.split(/[\s-]+/)[0])}</small></span></div>` };
+  h += `<div class="ml hrow how l-user">User Actions<small>старт и точки входа клиента</small></div>` + COLS.map((col, c) => `<div class="mc how l-user">${(D.triggers || []).filter(tg => tg.stage === col.id).map(trgHTML).join("")}${ENTRY[c].map(entryHTML).join("")}</div>`).join("");
   Object.keys(LAYER).forEach(l => {
     h += `<div class="ml hrow how l-${l}">${LAYER[l][0]}<small>${LAYER[l][1]}</small></div>` + COLS.map(col => `<div class="mc how l-${l}">${D.cards.filter(p => p.layer === l && p.stage === col.id).map(procHTML).join("")}</div>`).join("");
   });
@@ -142,6 +164,20 @@
       if (Math.abs(A.cx - B.cx) < 40) s += B.t > A.b ? path([[A.cx, A.b], [A.cx, B.t]]) : path([[A.cx, A.t], [A.cx, B.b]]);
       else if (B.l > A.r) s += Math.abs(A.cy - B.cy) < 3 ? path([[A.r, A.cy], [B.l, B.cy]]) : path([[A.r, A.cy], [B.l - 12, A.cy], [B.l - 12, B.cy], [B.l, B.cy]]);
       else if (A.l > B.r) s += path([[A.l, A.cy], [B.r + 12, A.cy], [B.r + 12, B.cy], [B.r, B.cy]]);
+    });
+    grid.querySelectorAll(".uat").forEach(tg => {
+      const dot = tg.parentElement.querySelector(`.ua[data-persona="${tg.dataset.persona}"]`); if (!dot) return;
+      const A = R(tg.querySelector("i")), B = R(dot.querySelector("i"));
+      s += Math.abs(A.cy - B.cy) < 4 ? path([[A.r, A.cy], [B.l, B.cy]]) : path([[A.cx, A.b], [A.cx, B.cy], [B.l, B.cy]]);
+    });
+    grid.querySelectorAll(".ua[data-entry]").forEach(dot => {
+      const sid = dot.dataset.entry, key = Object.keys(D.docs).find(k => D.docs[k].screen === sid);
+      const col = dot.closest(".mc"), idx = [...grid.children].indexOf(col) % (COLS.length + 1);
+      const card = key && [...grid.querySelectorAll(".hw[data-proc]")].find(el => [...grid.children].indexOf(el.closest(".mc")) % (COLS.length + 1) === idx
+        && PROC[el.dataset.proc].docs.some(d => String(d).toLowerCase().split(" ")[0] === key));
+      if (!card) return;
+      const A = R(dot.querySelector("i")), B = R(card);
+      s += path([[A.cx, A.b], [A.cx, B.t]]);
     });
     grid.insertAdjacentHTML("beforeend", s + "</svg>");
   }
@@ -981,6 +1017,7 @@
     const sl = t.closest("[data-sl]"); if (sl) return slide(sl.closest(".pic"), +sl.dataset.sl);
     const dd = t.closest("[data-dot]"); if (dd) return slide(dd.closest(".fr").querySelector(".pic"), 0, +dd.dataset.dot);
     const sd = t.closest("[data-screen-doc]"); if (sd) return openScreen(sd.dataset.screenDoc, 0);
+    const ua = t.closest("[data-entry]"); if (ua) { const sid = ua.dataset.entry; if (NOTE_OF[sid]) return openScreen(sid, 0); const s = D.seen.find(x => x.steps.some(st => st.screens.includes(sid))); if (s) return openSeen(s.key) }
     const tf = t.closest("[data-tf]");
     if (tf) { teamFilter(tf.classList.contains("on") ? "" : tf.dataset.tf); return menu(false) }
     const g = t.closest("[data-guide]"); if (g) return openGuide(g.dataset.guide);

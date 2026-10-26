@@ -172,6 +172,7 @@ def model(pr: bl.Project, base: str = "") -> dict:
         "docs": docs,
         "storyQuestions": [{"id": q.id, "to": q.to, "text": q.text, "where": q.where, "open": q.open, "answer": q.answer} for q in st.questions],
         "teams": [{"id": t.id, "name": t.name, **({"lead": t.lead} if t.lead else {})} for t in pr.teams],
+        "triggers": [{"persona": t.persona, "text": t.text, "stage": t.stage} for t in pr.triggers],
         "tasks": tasks, "cards": cards, "subs": subs,
         "links": [{"src": a, "dst": b, "what": w} for a, b, w in pr.links()],
         "questions": [{"id": q.id, "to": q.to, "text": q.text, "where": q.where, "kind": q.kind,

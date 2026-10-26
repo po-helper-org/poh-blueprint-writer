@@ -111,6 +111,7 @@ class Plan:
     root: Path
     teams: str = ""          # таблица как текст
     questions: str = ""
+    triggers: str = ""       # «## Триггеры» — события старта персонажей
     adr: dict = field(default_factory=dict)      # {«Решение TO-BE»: текст, «Варианты»: …, «Узкие места»: …, «Компромиссы»: …} — этап ADR
     sysreq: dict = field(default_factory=dict)   # {«Контракты»: текст} — системные требования
     seams: dict = field(default_factory=dict)   # {«Участники»: текст, «Обязательства»: …, …} — этап стыков
@@ -165,6 +166,11 @@ def parse(root: Path) -> Plan:
         if name == "Вопросы":
             pl.questions = "\n".join(body).strip()
             continue
+        if name == "Триггеры":
+            pl.triggers = "\n".join(body).strip()
+            if f"| {' | '.join(bl.TRIGGERS_HEADER)} |" not in pl.triggers:
+                pl.err(rel, n, "PL005", f"«## Триггеры»: таблица | {' | '.join(bl.TRIGGERS_HEADER)} |")
+            continue
         if name in STAGE_SECTIONS:
             text = "\n".join(body).strip()
             (pl.sysreq if name in dict(SYSREQ_SECTIONS) else pl.adr)[name] = text
@@ -194,7 +200,7 @@ def parse(root: Path) -> Plan:
             continue
         m = HEAD.match(head)
         if not m:
-            pl.err(rel, n, "PL002", f"«{name}» — заголовок блока: «## BP-3 · Название задачи» (или «## Команды», «## Вопросы», «## Решение TO-BE», «## Варианты», «## Узкие места», «## Компромиссы», «## Компоненты», «## Потоки», «## Контракты» (системные требования), «## Участники», «## Обязательства», «## Контракты стыков», «## Контрольные точки», «## Риски», «## Риски исполнения», «## Roadmap», «## Релиз», «## Ворота релиза»)")
+            pl.err(rel, n, "PL002", f"«{name}» — заголовок блока: «## BP-3 · Название задачи» (или «## Команды», «## Вопросы», «## Триггеры», «## Решение TO-BE», «## Варианты», «## Узкие места», «## Компромиссы», «## Компоненты», «## Потоки», «## Контракты» (системные требования), «## Участники», «## Обязательства», «## Контракты стыков», «## Контрольные точки», «## Риски», «## Риски исполнения», «## Roadmap», «## Релиз», «## Ворота релиза»)")
             continue
         b = Block(m.group(1).upper(), m.group(2), n)
         if b.id in seen:
@@ -473,6 +479,8 @@ def apply(pl: Plan, root: Path) -> list[str]:
         new = _replace_section(body, "Команды", pl.teams)
         if pl.questions:
             new = _replace_section(new, "Вопросы", pl.questions)
+        if pl.triggers:
+            new = _replace_section(new, "Триггеры", pl.triggers)
         if new != body:
             f.write_text(head + new, encoding="utf-8")
             out.append(f"«Карта»: команды и вопросы — {f.relative_to(root)}")
@@ -744,6 +752,8 @@ def export(root: Path) -> dict[str, str]:
         m = re.search(rf"^## {name}\s*\n(.*?)(?=^## |\Z)", body, re.S | re.M)
         return m.group(1).strip() if m else ""
     o = [f"# План карты: {pr.title}", "", "## Команды", "", table("Команды"), "", "## Вопросы", "", table("Вопросы"), ""]
+    if table("Триггеры"):
+        o += ["## Триггеры", "", table("Триггеры"), ""]
     # этап «ADR и Системные требования»: секции документов ADR и «Системные требования»
     if pr.adr_doc is not None and pr.adr is not None:
         abody = pr.adr_doc.body

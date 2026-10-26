@@ -339,6 +339,19 @@ RW="$tmp/bad/risks" && cp -r "$BGOLD" "$RW" && sed -i '/^| X2 | BP-6 |/d; s/^| X
 out="$(python3 "$BLINT" "$RW" --no-source --strict 2>&1)"; rc=$?
 [ "$rc" -eq 1 ] && grep -q "RK005 BP-6: риск «интеграция» по данным карты не записан" <<<"$out" && grep -q "RK003 X5: истории BP-99 на карте нет" <<<"$out" \
   && ok "риски исполнения · не записан — RK005, история мимо карты — RK003" || fail "риски исполнения · RK005/RK003 не пойманы — $out"
+# User Actions: старт пути персонажа (триггер) и точки входа — из «Карты» и согласованной истории; без триггера — BL050
+python3 - "$tmp/bout" <<'PY' && ok "карта · User Actions: два триггера, точки входа из истории" || fail "карта · User Actions не дошёл до страницы"
+import json, re, sys
+from pathlib import Path
+page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf-8")
+d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
+assert d["triggers"] == [{"persona": "rest", "text": "Ресторан подаёт заявку на участие", "stage": "A"}, {"persona": "guest", "text": "Гость купил билет на оффлайн-мероприятие", "stage": "B"}]
+assert "l-user" in page and "const ENTRY" in page and "trgHTML" in page
+PY
+TG="$tmp/bad/trg" && cp -r "$BGOLD" "$TG" && sed -i '/^| guest | Гость купил билет/d; s/^| rest | Ресторан подаёт заявку на участие | A |$/| rest | Ресторан подаёт заявку на участие | Z |/' "$TG/backlog/docs/doc-1 - "*.md
+out="$(python3 "$BLINT" "$TG" --no-source --strict 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && grep -q "BL050 у персонажа guest нет триггера" <<<"$out" && grep -q "BL049 триггер «Ресторан подаёт заявку на участие»" <<<"$out" \
+  && ok "карта · триггеры: без триггера — BL050, этап мимо истории — BL049" || fail "карта · триггеры не проверяются — $out"
 # BL043: подзадача — зона из списка, родитель — история
 ZB="$tmp/bad/zone" && cp -r "$BGOLD" "$ZB" && python3 - "$ZB" <<'PY'
 import sys
@@ -368,7 +381,7 @@ d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
 root = out / d["base"]
 assert d["base"] == "dineclub-restart-blueprint/" and "data:image" not in page and "mermaid.initialize" not in page.split("map-data")[0]
 assert all((root / s["img"]).is_file() and s["img"].startswith("backlog/assets/screens/") for s in d["screens"].values())
-assert (root / d["mermaid"]).is_file() and len(page) < 300_000
+assert (root / d["mermaid"]).is_file() and len(page) < 500_000   # mermaid в странице — мегабайты; код слоёв — сотни КБ
 for sid, md in d["notes"].items():
     for src in re.findall(r"!\[.*?\]\((.+?)\)", md):
         assert (root / src).is_file(), src
