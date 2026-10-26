@@ -385,10 +385,11 @@ grep -q "BL052 BP-16.1: Backstage — процесс и данные; UserStory 
 # BL053: «Как это работает» — регулярный процесс; разовая задача команды — предупреждение, команда в Backstage — ошибка
 RB="$tmp/bad/regular" && cp -r "$BGOLD" "$RB" && f="$(ls "$RB/backlog/tasks/"bp-16.1*.md)" \
   && sed -i 's/^- Сервис проверки билетов: Проверяет: активен/- TeamA: Проверяет: активен/' "$f" \
-  && f2="$(ls "$RB/backlog/tasks/"bp-7.1*.md)" && sed -i 's/^title: .*/title: Сервис писем переключает отправку на нового рассыльщика/' "$f2"
+  && f2="$(ls "$RB/backlog/tasks/"bp-7.1*.md)" && sed -i 's/^title: .*/title: Сервис писем переключает отправку на нового рассыльщика/' "$f2" \
+  && f3="$(ls "$RB/backlog/tasks/"bp-6.1*.md)" && sed -i 's/^По площадке активного билета каталог ресторанов подбирает/UnitB по площадке активного билета подбирает/' "$f3"
 out="$(python3 "$BLINT" "$RB" --no-source 2>&1)"; rc=$?
-[ "$rc" -eq 1 ] && grep -q "ERROR BL053 BP-16.1: в Backstage участвует команда «TeamA»" <<<"$out" && grep -q "WARN BL053 BP-7.1: «переключает» — разовая задача команды" <<<"$out" \
-  && ok "карта · регулярный процесс: команда в Backstage — BL053 ошибка, «переключает» — BL053 предупреждение" || fail "карта · BL053 — $out"
+[ "$rc" -eq 1 ] && grep -q "ERROR BL053 BP-16.1: в Backstage участвует команда «TeamA»" <<<"$out" && grep -q "WARN BL053 BP-7.1: «переключает» — разовая задача команды" <<<"$out" && grep -q "ERROR BL053 BP-6.1: в Backstage участвует команда «UnitB»" <<<"$out" \
+  && ok "карта · регулярный процесс: команда в Backstage (участник и суть) — BL053 ошибка, «переключает» — BL053 предупреждение" || fail "карта · BL053 — $out"
 # BL054: «Как это работает» без команд; два описания одного экрана в одном этапе и слое — дубль
 NB="$tmp/bad/noteam" && cp -r "$BGOLD" "$NB" && f="$(ls "$NB/backlog/tasks/"bp-5.1*.md)" \
   && sed -i 's/^assignee: \[\]$/assignee:\n  - "@vit"/' "$f" && cp "$f" "$NB/backlog/tasks/bp-5.6 - x.md" \

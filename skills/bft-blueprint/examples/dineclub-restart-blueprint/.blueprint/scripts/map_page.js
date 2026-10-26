@@ -140,8 +140,8 @@
   STEPS.forEach(ss => ss.forEach(st => STEP_NO[st.id] = stepC[st.persona] = (stepC[st.persona] || 0) + 1));
   const SUBW = 210, wOf = c => Math.max(272, Math.max(1, GROUPS[c].length) * SUBW);
   grid.className = "map";
-  grid.style.gridTemplateColumns = `96px ${COLS.map((_, c) => `minmax(${wOf(c)}px, ${Math.max(1, GROUPS[c].length)}fr)`).join(" ")}`;
-  grid.style.minWidth = `${96 + COLS.reduce((s, _, c) => s + wOf(c) + 12, 0)}px`;
+  grid.style.gridTemplateColumns = `112px ${COLS.map((_, c) => `minmax(${wOf(c)}px, ${Math.max(1, GROUPS[c].length)}fr)`).join(" ")}`;
+  grid.style.minWidth = `${112 + COLS.reduce((s, _, c) => s + wOf(c) + 12, 0)}px`;
   let h = `<div class="mh corner"></div>` + COLS.map((c, i) => `<div class="mh"><span class="n">${i === COLS.length - 1 ? "✓" : i + 1}</span><span class="hx"><b>${esc(c.name)}</b>${c.when ? `<small>${esc(c.when)}</small>` : ""}</span></div>`).join("");
   h += `<div class="ml do">Что делаем</div>` + COLS.map(col => `<div class="mc do">${byPrio(D.tasks.filter(t => t.stage === col.id && !oos(t))).map(taskHTML).join("")}</div>`).join("");
   /* линия Out of scope: под ней — истории Would, они к инициативе относятся, но коммитментом заказчику не обсуждались */
