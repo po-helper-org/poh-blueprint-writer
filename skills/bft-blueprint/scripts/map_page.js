@@ -143,6 +143,7 @@
   grid.style.gridTemplateColumns = `112px ${COLS.map((_, c) => `minmax(${wOf(c)}px, ${Math.max(1, GROUPS[c].length)}fr)`).join(" ")}`;
   grid.style.minWidth = `${112 + COLS.reduce((s, _, c) => s + wOf(c) + 12, 0)}px`;
   let h = `<div class="mh corner"></div>` + COLS.map((c, i) => `<div class="mh"><span class="n">${i === COLS.length - 1 ? "✓" : i + 1}</span><span class="hx"><b>${esc(c.name)}</b>${c.when ? `<small>${esc(c.when)}</small>` : ""}</span></div>`).join("");
+  const hdrLen = h.length;   // сюда встанет ряд Evidence: он общий для «Что делаем» и «Как это работает»
   h += `<div class="ml do">Что делаем</div>` + COLS.map(col => `<div class="mc do">${byPrio(D.tasks.filter(t => t.stage === col.id && !oos(t))).map(taskHTML).join("")}</div>`).join("");
   /* линия Out of scope: под ней — истории Would, они к инициативе относятся, но коммитментом заказчику не обсуждались */
   if (D.tasks.some(oos)) h += `<div class="oosl do"></div><div class="ml do oosm">Out of scope<small>Would — не коммитмент заказчику</small></div>` +
@@ -155,8 +156,10 @@
   const MORE = 3, fold = (items, html) => items.map((x, i) => html(x).replace(/^<(\w+) class="/, m => i < MORE ? m : m + "xtra ")).join("")
     + (items.length > MORE ? `<button class="fold" data-more>ещё ${items.length - MORE}</button>` : "");
   const evHTML = sid => `<button class="ev" data-ev="${esc(sid)}" title="${esc(scrTitle(sid))}"><b>${esc(sid)}</b><span>${esc(scrTitle(sid))}</span></button>`;
-  h += `<div class="ml hrow how l-ev">Evidence<small>точки касания: что видит клиент</small></div>` + COLS.map((_, c) =>
-    `<div class="mc how l-ev">${sub(c, g => `<div class="sc">${g.path ? `<div class="evh">${esc(g.path)}</div>` : ""}${fold(g.screens, evHTML)}</div>`)}</div>`).join("");
+  /* Evidence — первым рядом и в «Что делаем»: по нему видно, к какому экрану относятся задачи этапа */
+  const evRow = `<div class="ml hrow l-ev">Evidence<small>точки касания: что видит клиент</small></div>` + COLS.map((_, c) =>
+    `<div class="mc l-ev">${sub(c, g => `<div class="sc">${g.path ? `<div class="evh">${esc(g.path)}</div>` : ""}${fold(g.screens, evHTML)}</div>`)}</div>`).join("");
+  h = h.slice(0, hdrLen) + evRow + h.slice(hdrLen);
   /* User Actions — CJM: старт пути персонажа и его шаги из истории по порядку */
   const trgHTML = tg => `<div class="uat" data-persona="${esc(tg.persona)}" title="Старт пути: ${esc(pName(tg.persona))}"><i></i><span><em>Старт</em><b>${esc(tg.text)}</b><small>${esc(pName(tg.persona).split(/[\s-]+/)[0])}</small></span></div>`;
   const stepHTML = st => `<button class="ua" data-step="${esc(st.id)}" data-seen="${esc(st.seen)}" data-persona="${esc(st.persona)}" data-n="${STEP_NO[st.id]}" title="${esc(pName(st.persona))}: шаг ${STEP_NO[st.id]}"><i>${STEP_NO[st.id]}</i><span><b>${esc(st.title)}</b><small>${esc(pName(st.persona).split(/[\s-]+/)[0])}${st.screens.length ? " · " + st.screens.map(esc).join(", ") : ""}</small></span></button>`;
