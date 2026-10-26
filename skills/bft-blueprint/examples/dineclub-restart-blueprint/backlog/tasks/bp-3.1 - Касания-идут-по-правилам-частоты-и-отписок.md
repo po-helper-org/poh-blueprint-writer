@@ -1,0 +1,67 @@
+---
+id: BP-3.1
+title: Касания идут по правилам частоты и отписок
+status: To Do
+assignee: []
+created_date: '2026-10-19 19:07'
+updated_date: '2026-10-26 18:13'
+labels:
+  - stage:A
+  - layer:backstage
+dependencies: []
+parent_task_id: BP-3
+ordinal: 22000
+---
+
+## Description
+
+<!-- SECTION:DESCRIPTION:BEGIN -->
+Перед каждым касанием акции TeamA сверяет его с правилами частоты и отписками — гость не получает лишних писем.
+
+### Параметры
+- **Вход:** Касание к отправке
+- **Управление:** Отписки соблюдаются (ФТ-6); Лимит частоты [УТОЧНИТЬ у CPO продукта]
+- **Выход:** Частота и каналы касаний (BP-12.2)
+- **Механизм:** TeamA; Правила касаний от маркетинга
+
+### Процесс
+- TeamA: Берёт касание к отправке
+- ? Гость не отписан и лимит частоты не превышен?
+  - да → TeamA: Отправляет касание выбранным каналом
+  - нет → TeamA: Пропускает касание
+- TeamA: Записывает касание в историю гостя
+
+### Данные
+- Отписки гостя — история касаний TeamA
+- Лимит частоты — правила касаний от маркетинга
+
+### BPMN
+```mermaid
+flowchart LR
+  subgraph L1["TeamA"]
+    S((" "))
+    N1["Берёт касание к отправке"]
+    G2{"Гость не отписан и лимит частоты не превышен?"}
+    N3["Отправляет касание выбранным каналом"]
+    N4["Пропускает касание"]
+    N5["Записывает касание в историю гостя"]
+    E(((" ")))
+  end
+  S --> N1
+  N1 --> G2
+  G2 -- да --> N3
+  G2 -- нет --> N4
+  N3 --> N5
+  N4 --> N5
+  N5 --> E
+  classDef start fill:#fff,stroke:#2f6b2a,stroke-width:2px
+  classDef stop fill:#fff,stroke:#1c1c1c,stroke-width:4px
+  classDef gw fill:#fff8e6,stroke:#b7791f
+  classDef ask color:#c0392b,stroke:#c0392b
+  class S start
+  class E stop
+  class G2 gw
+  style L1 fill:#faf9f6,stroke:#d8d4cb
+```
+
+<!-- SECTION:DESCRIPTION:END -->

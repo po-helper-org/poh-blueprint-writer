@@ -157,7 +157,7 @@ def model(pr: bl.Project, base: str = "") -> dict:
               "brief": {k: v[1] for k, v in t.sections.items()}, "ac": [[d, x] for d, x in t.ac]} for t in pr.tasks]
     cards = [{**common(c), "task": c.parent, "layer": c.layer, "lead": c.lead, "us": c.user_story, "js": c.job_stories, "bpmn": re.sub(r"^```mermaid\n|\n?```$", "", c.mermaid.strip()),
               "params": {k: [{"t": it.text, "r": it.refs} for it in v] for k, v in c.params.items()},
-              "demo": c.sections.get("HowToDemo", (0, ""))[1]} for c in pr.cards]
+              "demo": c.sections.get("HowToDemo", (0, ""))[1], "data": [list(x) for x in c.data]} for c in pr.cards]
     subs = [{**common(z), "task": z.parent, "zone": z.zone, "prio": z.prio, "cand": z.cand, "lead": z.lead,
              "brief": {k: v[1] for k, v in z.sections.items()},
              "ac": [[d, x] for d, x in z.ac]} for z in pr.subtasks]

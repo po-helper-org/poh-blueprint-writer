@@ -218,11 +218,11 @@ class Skeleton:
                     self.tasks.append({"anchor": rid, "atoms": [rid], "cards": [{"layer": layer, "atoms": [rid], "rules": []}]})
                     task_of[rid] = self.tasks[-1]
                     anchors.add(rid)
-        # НФТ: «Управление» карточек связанных требований; без связи — карточка support первой задачи
+        # НФТ: «Управление» карточек связанных требований; без связи — карточка backstage первой задачи (Support — только поддержка)
         for a in g.by_kind("НФТ"):
             cards = [c for t in self.tasks for c in t["cards"] if set(c["atoms"]) & set(g.neighbours(a.id) + a.related)]
             if not cards and self.tasks:
-                self.tasks[0]["cards"].append({"layer": "support", "atoms": [], "rules": []})
+                self.tasks[0]["cards"].append({"layer": "backstage", "atoms": [], "rules": []})
                 cards = [self.tasks[0]["cards"][-1]]
             for c in cards[:3]:
                 c["rules"].append(a.id)
@@ -362,13 +362,16 @@ class Skeleton:
         src = "; ".join(f"{a.id}: {a.cols.get('Требование к пользовательскому интерфейсу') or a.cols.get('Функциональные требования') or a.name}" for a in atoms[:2])
         lines += ["", stub(f"Суть одной-двумя фразами: кто → что делает → какой результат. Из БФТ: {src}" if src else "Суть: что держит эта карточка"), ""]
         story_src = next((a for a in pts if a.story), None)
-        lines += ["### UserStory",
-                  f"Как {role or stub('кто пользуется результатом — человек, не команда')}, я хочу "
-                  f"{stub('действие' + (' — из ' + story_src.id + ': ' + story_src.story if story_src else ''))}, чтобы {stub('ценность из БТ или ПТ')}.", ""]
+        back = c["layer"] == "backstage"  # за кадром: процесс и данные, без историй и показа
+        if not back:
+            lines += ["### UserStory",
+                      f"Как {role or stub('кто пользуется результатом — человек, не команда')}, я хочу "
+                      f"{stub('действие' + (' — из ' + story_src.id + ': ' + story_src.story if story_src else ''))}, чтобы {stub('ценность из БТ или ПТ')}.", ""]
         jobs = [f"- {j} ({a.id})" for a in pts if (j := jobstory(a.story))]
-        lines += ["### JobStory"] + (jobs or [f"- Когда {stub('ситуация')}, хочу {stub('действие')}, чтобы {stub('результат')}."])
-        if jobs:
-            lines.append(f"- {stub('исключение или отказ из БФТ, если есть: Когда …, хочу …, чтобы …; нет — удали строку')}")
+        if not back:
+            lines += ["### JobStory"] + (jobs or [f"- Когда {stub('ситуация')}, хочу {stub('действие')}, чтобы {stub('результат')}."])
+            if jobs:
+                lines.append(f"- {stub('исключение или отказ из БФТ, если есть: Когда …, хочу …, чтобы …; нет — удали строку')}")
         rules = [self.rule_line(a.id) for a in atoms if a.kind in ("ФТ",)]
         rules += [f"{a.cols['Требование к пользовательскому интерфейсу']} ({a.id})" for a in atoms
                   if a.kind == "ИТ" and a.cols.get("Требование к пользовательскому интерфейсу")]
@@ -382,8 +385,11 @@ class Skeleton:
                   f"- **Управление:** " + ("; ".join(rules) if rules else stub("правило с ID требования; пороги — только из БФТ")),
                   f"- **Выход:** {stub('что меняется и кому уходит: (BP-x.y)' + hint)}",
                   f"- **Механизм:** {stub('кто исполняет: команда или система')}", "",
-                  "### Процесс", f"- {stub('4–10 шагов «Участник: действие» от триггера до результата; развилка «- ? вопрос» с ветками «  - да → …» и «  - нет → …»')}", "",
-                  "### HowToDemo", f"1. {stub('делаю → вижу: основной путь')}", f"2. {stub('делаю → вижу: ветка или отказ')}", ""]
+                  "### Процесс", f"- {stub('4–10 шагов «Участник: действие» от триггера до результата; развилка «- ? вопрос» с ветками «  - да → …» и «  - нет → …»')}", ""]
+        if back:
+            lines += ["### Данные", f"- {stub('какие данные нужны процессу')} — {stub('откуда: система, документ или карточка (BP-x.y); не нужны — удали раздел')}", ""]
+        else:
+            lines += ["### HowToDemo", f"1. {stub('делаю → вижу: основной путь')}", f"2. {stub('делаю → вижу: ветка или отказ')}", ""]
         return lines
 
     def task_block(self, tid: str, t: dict) -> list[str]:
