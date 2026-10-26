@@ -168,7 +168,7 @@
   grid.innerHTML = h;
 
   /* стрелки между карточками — из ссылок в «Параметрах»: вход от карточки, выход к карточке.
-     Читаются всегда: тёмная линия с белой подложкой, крупный наконечник, между карточками ряда — место
+     Тихие, но читаются всегда: тонкая серая линия, аккуратный наконечник, между карточками ряда — место
      под стрелку; линия не проходит под чужой карточкой — обходит её по краю колонки. Наведение на
      старт, точку входа или карточку подсвечивает всю цепочку, остальное гаснет. */
   function drawLinks() {
@@ -180,7 +180,7 @@
     /* вертикаль x от y1 до y2 задевает карточку, кроме своих концов */
     const hits = (x, y1, y2, skip) => boxes.some(q => !skip.includes(q.id) && x > q.l - 2 && x < q.r + 2 && Math.max(y1, y2) > q.t && Math.min(y1, y2) < q.b);
     const edges = [];
-    let s = `<svg class="hwl" width="${grid.scrollWidth}" height="${grid.scrollHeight}"><defs><marker id="mh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#4d4a44"/></marker><marker id="mho" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="11" markerHeight="11" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#1f6fd1"/></marker><marker id="mhj" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#2f6b2a"/></marker></defs>`;
+    let s = `<svg class="hwl" width="${grid.scrollWidth}" height="${grid.scrollHeight}"><defs><marker id="mh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#9b968c"/></marker><marker id="mho" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#2f6fd0"/></marker><marker id="mhj" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="#3f7a38"/></marker></defs>`;
     const path = (pts, a, b) => { edges.push([a, b]); const d = `M${pts.map(p => p.map(Math.round).join(",")).join(" L")}`;
       return `<g class="ln" data-a="${esc(a)}" data-b="${esc(b)}"><path class="halo" d="${d}"/><path class="ar" d="${d}" marker-end="url(#mh)"/></g>` };
     /* вниз или вверх по колонке: прямо, а если на пути чужая карточка — по левому краю колонки */
