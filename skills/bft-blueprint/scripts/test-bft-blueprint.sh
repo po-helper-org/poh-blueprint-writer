@@ -1047,6 +1047,53 @@ assert next(x for x in c if x["id"] == "M8")["tasks"] == ["BP-16"]
 assert {x["contract"] for x in f} == {"—", "restaurant-shelf", "ticket-validation"}
 assert "function c4Code" in page and "function openC4" in page and "data-c4team" in page
 PY
+# Roadmap: форма (RM001), строки мимо карты (RM003), полнота и порядок (RM005), слой страницы
+python3 - "$tmp/bout" <<'PY' && ok "Roadmap · на странице: 22 работы за 6 недель, у BP-5 — подзадачи" || fail "Roadmap · не дошёл до страницы"
+import json, re, sys
+from pathlib import Path
+page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf-8")
+d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
+r = d["roadmap"]
+assert r["start"] == "2026-11-02" and r["sprintWeeks"] == 1 and r["weeks"] == 6 and len(r["items"]) == 22, r
+ids = {i["id"] for i in r["items"]}
+assert "BP-5" not in ids and {"BP-5.2", "BP-5.3", "BP-5.4", "BP-5.5"} <= ids
+assert 'data-view="road">Roadmap' in page and "function rmBoard" in page
+PY
+cp -r "$BGOLD" "$tmp/rm-bad"
+python3 - "$tmp/rm-bad" << 'PY'
+import sys
+from pathlib import Path
+f = next(Path(sys.argv[1], "backlog/docs").glob("doc-* - Roadmap.md"))
+t = f.read_text(encoding="utf-8")
+for a, b in [("start: 2026-11-02", "start: 2026-11-04"), ("| BP-18 | 5 | 6 |", "| BP-18 | 5 | 9 |")]:
+    assert a in t, a; t = t.replace(a, b)
+f.write_text(t, encoding="utf-8")
+PY
+out="$(python3 "$BLINT" "$tmp/rm-bad" --no-source 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && grep -q "RM001 start 2026-11-04 — понедельник" <<<"$out" && grep -q "RM001 BP-18: неделя 9 за горизонтом" <<<"$out" \
+  && ok "Roadmap · форма: RM001 (не понедельник, за горизонтом)" || fail "Roadmap · RM001 не пойман — $out"
+cp -r "$BGOLD" "$tmp/rm-ref" && sed -i 's/^| BP-19 | 5 | 6 |$/| BP-99 | 5 | 6 |/' "$tmp/rm-ref/backlog/docs/"*Roadmap.md
+out="$(python3 "$BLINT" "$tmp/rm-ref" --no-source 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && grep -q "RM003 BP-99: в Roadmap — история или подзадача карты" <<<"$out" \
+  && ok "Roadmap · строка мимо карты: RM003" || fail "Roadmap · RM003 не пойман — $out"
+cp -r "$BGOLD" "$tmp/rm-warn"
+python3 - "$tmp/rm-warn" << 'PY'
+import re, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+f = next(Path(root, "backlog/docs").glob("doc-* - Roadmap.md"))
+t = f.read_text(encoding="utf-8")
+t = re.sub(r"^\| BP-14 \|.*\n", "", t, flags=re.M)                     # история вне плана
+t = re.sub(r"^\| BP-5\.5 \|.*\n", "| BP-5 | 2 | 5 |\n", t, flags=re.M)  # история с подзадачами — сама в плане
+f.write_text(t, encoding="utf-8")
+g = next(Path(root, "backlog/tasks").glob("bp-17 *"))                    # BP-17 зависит от BP-16, а начинается раньше её конца
+g.write_text(g.read_text(encoding="utf-8").replace("dependencies: []", "dependencies:\n  - BP-16\n", 1).replace("  - BP-16\n\n", "  - BP-16\n", 1), encoding="utf-8")
+PY
+sed -i 's/^| BP-17 | 4 | 5 |$/| BP-17 | 3 | 5 |/' "$tmp/rm-warn/backlog/docs/"*Roadmap.md
+out="$(python3 "$BLINT" "$tmp/rm-warn" --no-source --strict 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && grep -q "RM005 BP-14 «Push — если канал есть» не в Roadmap" <<<"$out" && grep -q "RM005 BP-5: у истории подзадачи по зонам" <<<"$out" \
+  && grep -q "RM005 BP-5.5 (QA) не в Roadmap" <<<"$out" && grep -q "RM005 BP-17 начинается на неделе 3, а его зависимость BP-16 кончается на неделе 3" <<<"$out" \
+  && ok "Roadmap · полнота и порядок: RM005" || fail "Roadmap · RM005 не пойман — $out"
 # AR002: второй ADR в проекте
 cp -r "$BGOLD" "$tmp/adr-dup"
 cp "$BGOLD/backlog/docs/doc-15 - ADR.md" "$tmp/adr-dup/backlog/docs/doc-50 - второй ADR.md"

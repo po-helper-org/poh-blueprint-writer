@@ -373,6 +373,43 @@
     rlSave(); rlBoard(); openRelease(nid);
   }
   function rlGo(id) { if (body.dataset.view === "rel") { openRelease(id); const c = gridRel.querySelector(`[data-rlstep="${id}"]`); if (c) c.scrollIntoView({ block: "center", behavior: "smooth" }) } }
+  /* ---------- слой «Roadmap»: кто что делает по неделям, недели — в спринтах ----------
+     Данные — документ «Roadmap» (ключ roadmap #map-data). Строка — команда-исполнитель (техлид рядом),
+     полоса — история или подзадача по зоне, с какой недели по какую; пересекающиеся полосы команды —
+     друг под другом. Шапка — спринты и недели с датами, текущая неделя подсвечена. Клик — постановка.
+     Работы карты без строки в плане — списком «Вне плана». */
+  const RM = D.roadmap || null, gridRoad = document.getElementById("road");
+  function rmBoard() {
+    if (!RM || !gridRoad) return;
+    const W = RM.weeks, SW = RM.sprintWeeks, d0 = new Date(RM.start + "T00:00:00");
+    const day = (w, k) => { const x = new Date(d0); x.setDate(x.getDate() + 7 * (w - 1) + k); return x };
+    const dm = x => `${String(x.getDate()).padStart(2, "0")}.${String(x.getMonth() + 1).padStart(2, "0")}`;
+    const now = new Date(), nowW = Math.floor((now - d0) / 864e5 / 7) + 1;
+    const work = id => TASK[id] || SUB[id];
+    const items = RM.items.filter(i => work(i.id));
+    const teamIds = [...D.teams.map(t => t.id), "?"].filter(tm => items.some(i => work(i.id).team === tm));
+    const cols = `grid-template-columns:var(--rmw) repeat(${W}, minmax(112px, 1fr))`;
+    const wcol = (w, cls) => `<div class="rmc${w % SW === 0 && w < W ? " se" : ""}${w === nowW ? " now" : ""}${cls || ""}" style="grid-column:${w + 1}"></div>`;
+    let h = `<div class="rmhd" style="${cols}"><div class="rmc0"></div>${Array.from({ length: W / SW }, (_, k) => `<div class="rmsp" style="grid-column:${k * SW + 2} / span ${SW}">Спринт ${k + 1}</div>`).join("")}
+      ${Array.from({ length: W }, (_, k) => `<div class="rmwk${k + 1 === nowW ? " now" : ""}" style="grid-column:${k + 2}"><b>Неделя ${k + 1}</b>${dm(day(k + 1, 0))}–${dm(day(k + 1, 4))}</div>`).join("")}</div>`;
+    teamIds.forEach(tm => {
+      const mine = items.filter(i => work(i.id).team === tm).sort((a, b) => a.start - b.start || b.end - a.end);
+      const lanes = []; mine.forEach(i => { let l = lanes.findIndex(end => end < i.start); if (l < 0) { l = lanes.length; lanes.push(0) } lanes[l] = i.end; i._lane = l + 1 });
+      const t = tm === "?" ? { team: "?" } : { team: tm }, lead = tm in TEAM && (D.teams.find(x => x.id === tm) || {}).lead;
+      h += `<div class="rmrow" style="${cols};--c:${teamC(t)}"><div class="rmtm" style="grid-row:1 / ${lanes.length + 1}"><i></i><b>${esc(tm === "?" ? "Команда не определена" : teamN(t))}</b>${lead ? `<small>${esc(lead)}</small>` : ""}<small>${mine.length} ${plural(mine.length, "работа", "работы", "работ")}</small></div>
+        ${Array.from({ length: W }, (_, k) => wcol(k + 1).replace('style="', `style="grid-row:1 / ${lanes.length + 1};`)).join("")}
+        ${mine.map(i => { const w = work(i.id), z = SUB[i.id];
+          return `<button class="rmbar${blocks(i.id).length ? " blk" : ""}" ${z ? "data-sub" : "data-task"}="${esc(i.id)}" style="grid-column:${i.start + 1} / ${i.end + 2};grid-row:${i._lane}" title="${esc(i.id)} · ${esc(w.text)} · недели ${i.start}–${i.end}"><span class="rmid">${z ? `<i class="zt" style="--c:${teamC(z)}">${esc(z.zone)}</i>` : ""}${esc(i.id)}</span><span class="rmtx">${esc(w.text)}</span></button>` }).join("")}</div>`;
+    });
+    const planned = new Set(RM.items.map(i => i.id));
+    const off = [...D.tasks.filter(t => !subsOf(t.id).length && !planned.has(t.id)), ...SUBS.filter(z => !planned.has(z.id))];
+    const last = day(W, 4);
+    gridRoad.innerHTML = `<div class="rmwrap"><div class="rmhead"><button class="rmback" data-view="see">← К карте</button><span class="arst">${esc(RM.status)}</span><h2>Roadmap</h2>
+      <p>${W / SW} ${plural(W / SW, "спринт", "спринта", "спринтов")} по ${SW} ${plural(SW, "неделе", "недели", "недель")} · ${dm(day(1, 0))} — ${dm(last)}.${last.getFullYear()} · не больше ${RM.maxSprints} спринтов</p></div>
+      <div class="rmscroll"><div class="rmboard">${h}</div></div>
+      ${off.length ? `<div class="rmoff"><h4>Вне плана · ${off.length}</h4>${off.map(w => `<button class="ref" ${SUB[w.id] ? "data-sub" : "data-task"}="${esc(w.id)}" title="${esc(w.text)}">${esc(w.id)}</button>`).join(" ")}</div>` : ""}</div>`;
+  }
+
   /* первый шаг дорожки — куда ведут её ворота */
   const rlStepOfTrack = tr => { const s = RL.steps.find(x => x.track === tr); return s ? s.id : (RL.steps[0] ? RL.steps[0].id : "") };
 
@@ -389,8 +426,9 @@
     document.querySelectorAll("button[data-view]").forEach(b => b.classList.toggle("on", b.dataset.view === v));
     if (v === "rel") { if (RL) { rlBoard(); gridRel.scrollIntoView({ block: "start" }) } return }
     if (v === "adr") { if (AR || SR) { adrBoard(); adrGrid.scrollIntoView({ block: "start" }) } return }
-    if (was === "rel" || was === "adr") { window.scrollTo(0, 0) }
-    const col = was === "see" ? firstVisible(hh, hs, 132) : was === "rel" ? 0 : firstVisible(mh, work, 96);
+    if (v === "road") { if (RM) { rmBoard(); gridRoad.scrollTop = 0 } return }
+    if (was === "rel" || was === "adr" || was === "road") { window.scrollTo(0, 0) }
+    const col = was === "see" ? firstVisible(hh, hs, 132) : was === "rel" || was === "road" ? 0 : firstVisible(mh, work, 96);
     if (v === "see") hs.scrollLeft = hh[col] ? hh[col].offsetLeft - 132 : 0;
     else { work.scrollTop = 0; work.scrollLeft = mh[col] ? mh[col].offsetLeft - 96 : 0 }
     drawLinks();
@@ -891,6 +929,7 @@
     const rcn = t.closest("[data-rlcancel]"); if (rcn) return closeSide();
     const rcp = t.closest("[data-rlcopy]"); if (rcp) return copyText(rlCmd(), rcp);
     if (t.closest("[data-rlmenu]")) { menu(false); if (RL) return setView("rel") }
+    if (t.closest("[data-rmmenu]")) { menu(false); if (RM) return setView("road") }
     if (t.closest("#menu [data-guide]") || t.closest("#menu .play")) menu(false);
     const sl = t.closest("[data-sl]"); if (sl) return slide(sl.closest(".pic"), +sl.dataset.sl);
     const dd = t.closest("[data-dot]"); if (dd) return slide(dd.closest(".fr").querySelector(".pic"), 0, +dd.dataset.dot);

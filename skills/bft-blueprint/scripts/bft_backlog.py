@@ -16,6 +16,7 @@ markdown-файлы, которыми ИИ-агент управляет чер�
                                              контракты → параметры → источники → преобразования → AS-IS → изменения
   backlog/docs/doc-… - Стыки.md               этап «Контроль стыковочных работ» <!-- bft-seams … -->:
                                              участники стыков, обязательства, контракты, точки, риски
+  backlog/docs/doc-… - Roadmap.md             сроки: кто что делает по неделям и спринтам <!-- bft-roadmap … -->
   backlog/docs/doc-… - План-релиза.md         этап «План релиза / Delivery» <!-- bft-release … -->:
                                              дорожки DEV/STAGE/PROD, шаги и ворота между стендами
   backlog/docs/screens/doc-… - F3 · ….md      требования к экрану для дизайнера
@@ -75,6 +76,15 @@ ZONES = ("PO", "SA", "Design", "FE", "BE", "QA", "DevOps", "Delivery")
 
 # Этап «План релиза / Delivery»: дорожки-стенды, шаги, ворота между стендами.
 RELEASE_META = ("epic_slug", "version", "revised", "status")
+
+# Roadmap: сроки работ на карте — по неделям, сгруппированным в спринты. Строка плана — история или
+# подзадача истории (у кроссфункциональной истории в план идут её подзадачи: у них свои исполнители);
+# «кто» — исполнитель задачи, в плане его не повторяют. Горизонт — не больше 6 спринтов.
+ROADMAP_META = ("epic_slug", "version", "revised", "status", "start", "sprint_weeks")
+
+ROADMAP_HEADER = ("ID", "Неделя с", "Неделя по")
+
+ROADMAP_MAX_SPRINTS = 6
 
 RELEASE_TRACKS = ("dev", "stage", "prod")
 
@@ -237,7 +247,7 @@ REQS_LINE = re.compile(r"^Требования(?: БФТ)?\s*:\s*(.*)$")
 
 STEP_RE = re.compile(r"^\d+\.\s+\S")
 
-META_OPEN = re.compile(r"^<!--\s*(bft-map|bft-story|bft-adr|bft-sysreq|bft-seams|bft-release)\s*$")
+META_OPEN = re.compile(r"^<!--\s*(bft-map|bft-story|bft-adr|bft-sysreq|bft-seams|bft-release|bft-roadmap)\s*$")
 
 MERMAID = re.compile(r"```mermaid\n(.*?)\n```", re.S)
 
@@ -538,6 +548,28 @@ class Seams:
         return next((s for s in self.seams if s.id == sid), None)
 
 @dataclass
+class RoadmapItem:
+    """Строка Roadmap: работа на карте (история или подзадача) и её недели."""
+    id: str
+    start: int            # неделя начала, с 1
+    end: int              # неделя конца, включительно
+    line: int
+
+@dataclass
+class Roadmap:
+    meta: dict = field(default_factory=dict)
+    start: str = ""                               # понедельник первой недели, ГГГГ-ММ-ДД
+    sprint_weeks: int = 1                         # недель в спринте
+    items: list = field(default_factory=list)     # [RoadmapItem]
+    doc: "Doc | None" = None
+
+    @property
+    def weeks(self) -> int:
+        """Горизонт плана в неделях: до последней занятой недели, не меньше одного спринта."""
+        last = max([i.end for i in self.items], default=0)
+        return max(self.sprint_weeks, -(-last // self.sprint_weeks) * self.sprint_weeks)
+
+@dataclass
 class ReleaseStep:
     """Шаг дорожки «План релиза»: что сделать на стенде, чтобы задача прошла дальше."""
     id: str
@@ -590,6 +622,8 @@ class Project:
     seams: Seams | None = None
     release_doc: Doc | None = None
     release: Release | None = None
+    roadmap_doc: Doc | None = None
+    roadmap: Roadmap | None = None
     story: bs.Story | None = None
     teams: list[Team] = field(default_factory=list)
     questions: list[Question] = field(default_factory=list)
@@ -1147,6 +1181,66 @@ def parse_release(pr: Project, d: Doc) -> Release:
     rel.meta["_issues"] = issues
     return rel
 
+def parse_roadmap(pr: Project, d: Doc) -> Roadmap:
+    """Документ «Roadmap» (<!-- bft-roadmap … -->): паспорт со стартом и длиной спринта, «## План» —
+    | ID | Неделя с | Неделя по |. Форма — здесь (RM001); ссылки на карту и полнота — в линтере."""
+    rm = Roadmap(meta={k: v for k, v in d.meta.items() if not k.startswith("_")})
+    rm.doc = d
+    issues: list[bb.Issue] = []
+    err = lambda ln, code, msg: issues.append(bb.Issue(ln, "ERROR", code, msg, d.rel))  # noqa: E731
+    for key in ROADMAP_META:
+        if not str(rm.meta.get(key, "")).strip():
+            err(d.off + 1, "RM001", f"паспорт <!-- bft-roadmap -->: нет ключа `{key}`")
+    rm.start = str(rm.meta.get("start", "")).strip()
+    try:
+        import datetime as _dt
+        if _dt.date.fromisoformat(rm.start).weekday() != 0:
+            err(d.off + 1, "RM001", f"start {rm.start} — понедельник первой недели плана")
+    except ValueError:
+        if rm.start:
+            err(d.off + 1, "RM001", f"start «{rm.start}» — дата ГГГГ-ММ-ДД, понедельник первой недели")
+    sw = str(rm.meta.get("sprint_weeks", "")).strip()
+    if sw:
+        if sw in ("1", "2"):
+            rm.sprint_weeks = int(sw)
+        else:
+            err(d.off + 1, "RM001", f"sprint_weeks «{sw}» — недель в спринте: 1 или 2")
+    horizon = ROADMAP_MAX_SPRINTS * rm.sprint_weeks
+    lines = d.body.split("\n")
+    if not next((ln for ln in lines if ln.startswith("# ")), ""):
+        err(d.off + 1, "RM001", "нет заголовка `# Roadmap: <инициатива>`")
+    secs = bb._sections(lines)
+    if "План" not in secs:
+        err(d.off + 1, "RM001", "нет раздела «## План» с таблицей | ID | Неделя с | Неделя по |")
+    else:
+        ln0, tbody = secs["План"]
+        found = bb.tables(tbody, first_lineno=d.off + ln0 + 1)
+        if not found or tuple(found[0][0]) != ROADMAP_HEADER:
+            err(d.off + ln0, "RM001", f"«План»: таблица | {' | '.join(ROADMAP_HEADER)} |")
+        else:
+            for ln, c in found[0][1]:
+                if len(c) != len(ROADMAP_HEADER):
+                    err(ln, "RM001", f"«План»: в строке {len(c)} колонок, нужно {len(ROADMAP_HEADER)}")
+                    continue
+                iid = c[0].strip().upper()
+                if any(i.id == iid for i in rm.items):
+                    err(ln, "RM001", f"{iid}: в плане дважды — одна строка на работу")
+                    continue
+                try:
+                    a, b = int(c[1].strip()), int(c[2].strip())
+                except ValueError:
+                    err(ln, "RM001", f"{iid}: недели — числа с 1: «{c[1].strip()}» … «{c[2].strip()}»")
+                    continue
+                if not 1 <= a <= b:
+                    err(ln, "RM001", f"{iid}: неделя с {a} по {b} — начало с 1 и не позже конца")
+                    continue
+                if b > horizon:
+                    err(ln, "RM001", f"{iid}: неделя {b} за горизонтом — план не длиннее {ROADMAP_MAX_SPRINTS} спринтов ({horizon} недель)")
+                    continue
+                rm.items.append(RoadmapItem(iid, a, b, ln))
+    rm.meta["_issues"] = issues
+    return rm
+
 def _subsections(text: str, first: int) -> tuple[list[str], dict, list[tuple[int, str]]]:
     """Текст описания: (строки до первого ###, {раздел: (строка, текст)}, порядок [(строка, раздел)])."""
     pre, secs, order, cur, buf, start = [], {}, [], None, [], 0
@@ -1375,7 +1469,7 @@ def parse(root: Path) -> Project:
             pr.err(d.rel, 1, "BL005", f"второй документ с ID {d.id} — `backlog doctor`")
             continue
         pr.docs[d.id] = d
-        for kind in ("bft-map", "bft-story", "bft-adr", "bft-sysreq", "bft-seams", "bft-release"):
+        for kind in ("bft-map", "bft-story", "bft-adr", "bft-sysreq", "bft-seams", "bft-release", "bft-roadmap"):
             mc = _meta_comment(d.body, kind)
             if mc:
                 d.meta = {**d.meta, "_kind": kind, **mc[0]}
@@ -1404,6 +1498,13 @@ def parse(root: Path) -> Project:
                     pr.seams_doc = d
                     pr.seams = parse_seams(pr, d)
                     pr.issues.extend(pr.seams.meta.pop("_issues"))
+                elif kind == "bft-roadmap":
+                    if pr.roadmap_doc:
+                        pr.err(d.rel, 1, "RM002", f"второй Roadmap — уже есть {pr.roadmap_doc.rel}")
+                    d.meta = {**d.meta, **mc[0]}
+                    pr.roadmap_doc = d
+                    pr.roadmap = parse_roadmap(pr, d)
+                    pr.issues.extend(pr.roadmap.meta.pop("_issues"))
                 elif kind == "bft-release":
                     if pr.release_doc:
                         pr.err(d.rel, 1, "RL002", f"второй план релиза — уже есть {pr.release_doc.rel}")

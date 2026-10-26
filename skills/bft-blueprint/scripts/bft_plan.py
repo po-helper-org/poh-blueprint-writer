@@ -22,6 +22,7 @@
     ## Контракты стыков   таблица | Стык | Аспект | Требование к фиксации |
     ## Контрольные точки  стыки: таблица | ID | Точка | Когда | Что проверяется | Кто проводит |
     ## Риски              стыки: таблица | ID | Риск | Следствие | Владелец | Митигация |
+    ## Roadmap            сроки: строки «старт: ГГГГ-ММ-ДД» (понедельник) и «спринт: 1|2» (недель), таблица | ID | Неделя с | Неделя по |
     ## Релиз              таблица шагов | ID | Стенд | Что сделать | Ответственный | Тип | Зависимости | Статус | Критерий готовности |
     ## Ворота релиза      таблица | Ворота | Кто утверждает | Критерий перехода |
     ## BP-3 · Название    задача: строки «ключ: значение», пустая строка, описание, ### Критерии приемки
@@ -112,6 +113,7 @@ class Plan:
     adr: dict = field(default_factory=dict)      # {«Решение TO-BE»: текст, «Варианты»: …, «Узкие места»: …, «Компромиссы»: …} — этап ADR
     sysreq: dict = field(default_factory=dict)   # {«Контракты»: текст} — системные требования
     seams: dict = field(default_factory=dict)   # {«Участники»: текст, «Обязательства»: …, …} — этап стыков
+    roadmap: str = ""        # «## Roadmap» — старт, длина спринта и недели работ
     release: str = ""        # «## Релиз» — шаги плана релиза
     gates: str = ""          # «## Ворота релиза» — кто утверждает переход между стендами
     blocks: list[Block] = field(default_factory=list)
@@ -172,6 +174,11 @@ def parse(root: Path) -> Plan:
             if f"| {' | '.join(SEAM_SECTION_HEADERS[name])} |" not in pl.seams[name]:
                 pl.err(rel, n, "PL005", f"«## {name}»: таблица | {' | '.join(SEAM_SECTION_HEADERS[name])} |")
             continue
+        if name == "Roadmap":
+            pl.roadmap = "\n".join(body).strip()
+            if f"| {' | '.join(bl.ROADMAP_HEADER)} |" not in pl.roadmap:
+                pl.err(rel, n, "PL005", f"«## Roadmap»: строки «старт: ГГГГ-ММ-ДД», «спринт: 1» и таблица | {' | '.join(bl.ROADMAP_HEADER)} |")
+            continue
         if name == "Релиз":
             pl.release = "\n".join(body).strip()
             continue
@@ -180,7 +187,7 @@ def parse(root: Path) -> Plan:
             continue
         m = HEAD.match(head)
         if not m:
-            pl.err(rel, n, "PL002", f"«{name}» — заголовок блока: «## BP-3 · Название задачи» (или «## Команды», «## Вопросы», «## Решение TO-BE», «## Варианты», «## Узкие места», «## Компромиссы», «## Компоненты», «## Потоки», «## Контракты» (системные требования), «## Участники», «## Обязательства», «## Контракты стыков», «## Контрольные точки», «## Риски», «## Релиз», «## Ворота релиза»)")
+            pl.err(rel, n, "PL002", f"«{name}» — заголовок блока: «## BP-3 · Название задачи» (или «## Команды», «## Вопросы», «## Решение TO-BE», «## Варианты», «## Узкие места», «## Компромиссы», «## Компоненты», «## Потоки», «## Контракты» (системные требования), «## Участники», «## Обязательства», «## Контракты стыков», «## Контрольные точки», «## Риски», «## Roadmap», «## Релиз», «## Ворота релиза»)")
             continue
         b = Block(m.group(1).upper(), m.group(2), n)
         if b.id in seen:
@@ -302,6 +309,26 @@ def seams_doc_text(title: str, pl: Plan, meta: dict) -> str:
         if pl.seams.get(sec):
             parts += [f"## {sec}", "", pl.seams[sec], ""]
     return "\n".join(parts).rstrip("\n") + "\n"
+
+ROADMAP_DOC_TITLE = "Roadmap"
+
+def roadmap_doc_text(title: str, pl: Plan, meta: dict) -> str:
+    """Текст документа «Roadmap»: паспорт со стартом и длиной спринта, таблица «План»."""
+    m = "\n".join(["<!-- bft-roadmap"] + [f"{k}: {meta[k]}" for k in bl.ROADMAP_META] + ["-->", "",
+                   f"# Roadmap: {title}", "",
+                   "Сроки работ на карте: кто что делает по неделям, недели — в спринтах; горизонт — не больше",
+                   f"{bl.ROADMAP_MAX_SPRINTS} спринтов. Строка — история или подзадача истории; кто делает — исполнитель задачи.", ""])
+    table = "\n".join(ln for ln in pl.roadmap.split("\n") if ln.strip().startswith("|"))
+    return "\n".join([m, "## План", "", table, ""]).rstrip("\n") + "\n"
+
+def roadmap_keys(text: str) -> dict:
+    """Строки «старт: …» и «спринт: …» раздела «## Roadmap» плана."""
+    out = {}
+    for ln in text.split("\n"):
+        mm = META.match(ln.strip())
+        if mm and mm.group(1) in ("старт", "спринт"):
+            out[mm.group(1)] = mm.group(2).strip()
+    return out
 
 RELEASE_DOC_TITLE = "План релиза"
 
@@ -493,6 +520,34 @@ def apply(pl: Plan, root: Path) -> list[str]:
                 fm["updated_date"] = cli.now()
                 seamdoc.path.write_text(cli.dump_front(fm) + text, encoding="utf-8")
                 out.append(f"«Стыки»: обновлён {did} — {seamdoc.path.relative_to(root)}")
+    # «Roadmap»: сроки работ по неделям и спринтам
+    if pl.roadmap:
+        mdoc = next((d for d in pr.docs.values() if d.meta.get("_kind") == "bft-roadmap"), None)
+        keys = roadmap_keys(pl.roadmap)
+        meta = {"epic_slug": pr.meta.get("epic_slug", ""), "version": pr.meta.get("version", "1"),
+                "revised": cli.now()[:10], "status": "Черновик"}
+        if mdoc:
+            meta = {k: str(mdoc.meta.get(k, "")) for k in ("epic_slug", "version", "revised", "status")}
+        meta.update({"start": keys.get("старт", ""), "sprint_weeks": keys.get("спринт", "1")})
+        text = roadmap_doc_text(pr.title, pl, meta)
+        if mdoc is None:
+            nums = set(int(m.group(1)) for d in pr.docs for m in [re.fullmatch(r"doc-(\d+)", d)] if m)
+            nums |= getattr(pr, "_stage_doc_nums_taken", set())
+            did = f"doc-{_next_doc_num(nums)}"
+            pr._stage_doc_nums_taken = set(getattr(pr, "_stage_doc_nums_taken", set())) | {int(did[4:])}
+            fm = {"id": did, "title": ROADMAP_DOC_TITLE, "type": "specification", "created_date": cli.now()}
+            p = bdir / "docs" / f"{did} - {cli.slug(ROADMAP_DOC_TITLE)}.md"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(cli.dump_front(fm) + text, encoding="utf-8")
+            out.append(f"«Roadmap»: создан {did} — {p.relative_to(root)}")
+        else:
+            old = mdoc.path.read_text(encoding="utf-8")
+            fm, off = bl.yaml_front(old)
+            fm = fm or {}
+            if "\n".join(old.split("\n")[off:]).lstrip("\n") != text:
+                fm["updated_date"] = cli.now()
+                mdoc.path.write_text(cli.dump_front(fm) + text, encoding="utf-8")
+                out.append(f"«Roadmap»: обновлён {mdoc.id} — {mdoc.path.relative_to(root)}")
     # «План релиза»: дорожки DEV/STAGE/PROD, шаги и ворота
     if pl.release or pl.gates:
         rdoc = next((d for d in pr.docs.values() if d.meta.get("_kind") == "bft-release"), None)
@@ -668,6 +723,10 @@ def export(root: Path) -> dict[str, str]:
             t = stable(sec)
             if t:
                 o += [f"## {sec}", "", t, ""]
+    if pr.roadmap_doc is not None and pr.roadmap is not None:
+        mm = re.search(r"^## План\s*\n(.*?)(?=^## |\Z)", pr.roadmap_doc.body, re.S | re.M)
+        if mm:
+            o += ["## Roadmap", "", f"старт: {pr.roadmap.start}", f"спринт: {pr.roadmap.sprint_weeks}", "", mm.group(1).strip(), ""]
     if pr.release_doc is not None and pr.release is not None:
         rbody = pr.release_doc.body if pr.release_doc else ""
 

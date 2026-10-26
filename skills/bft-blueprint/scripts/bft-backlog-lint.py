@@ -38,6 +38,10 @@
   RL002  второй документ «План релиза»
   RL003  план релиза: зависимости шагов, ворота между стендами
   RL005  план релиза: предупреждения — шаг без зависимостей, дорожка без ворот
+  RM001  документ «Roadmap» (<!-- bft-roadmap -->): паспорт (start — понедельник, sprint_weeks 1|2), «## План» | ID | Неделя с | Неделя по |, не больше 6 спринтов
+  RM002  второй документ «Roadmap»
+  RM003  Roadmap: строка плана — история или подзадача карты
+  RM005  Roadmap: предупреждения — работа не в плане, у кроссфункциональной истории в плане не подзадачи, начало раньше конца зависимости
   SN0xx  требования к экранам — `bft_screens.py`, `resources/screen_notes.md`
 
   ПРЕДУПРЕЖДЕНИЯ (код выхода 1 только с --strict)
@@ -120,6 +124,8 @@ def check(pr: bl.Project, source: Path | None, no_source: bool, explicit: bool =
     check_seams(pr)
     # --- план релиза / Delivery ----------------------------------------------------------------
     check_release(pr)
+    # --- Roadmap: сроки по неделям и спринтам --------------------------------------------------
+    check_roadmap(pr)
 
     # --- полнота и связность -----------------------------------------------------------------
     if pr.story:
@@ -250,6 +256,39 @@ def employee_hint(pr: bl.Project) -> None:
 
 def _norm(s: str) -> str:
     return re.sub(r"[^\w%]+", " ", s.lower().replace("ё", "е")).strip()
+
+def check_roadmap(pr: bl.Project) -> None:
+    """Roadmap: строки — истории и подзадачи карты (RM003). Полнота и порядок — предупреждения RM005:
+    каждая работа в плане; у кроссфункциональной истории в плане подзадачи, а не она сама (у них свои
+    исполнители); работа не начинается раньше, чем кончится её зависимость (dependencies Backlog.md)."""
+    rm = pr.roadmap
+    if rm is None or rm.doc is None:
+        return
+    rel = rm.doc.rel
+    stories = {t.id: t for t in pr.tasks}
+    subs = {z.id: z for z in pr.subtasks}
+    plan = {i.id: i for i in rm.items}
+    for i in rm.items:
+        if i.id not in stories and i.id not in subs:
+            pr.err(rel, i.line, "RM003", f"{i.id}: в Roadmap — история или подзадача карты, такой нет")
+    for t in pr.tasks:
+        mine = [z for z in pr.subtasks if z.parent == t.id]
+        if mine:
+            if t.id in plan:
+                pr.warn(rel, plan[t.id].line, "RM005", f"{t.id}: у истории подзадачи по зонам — в план ставь их, у них свои исполнители и сроки")
+            for z in mine:
+                if z.id not in plan:
+                    pr.warn(rel, 1, "RM005", f"{z.id} ({z.zone}) не в Roadmap — когда её делают?")
+        elif t.id not in plan:
+            pr.warn(rel, 1, "RM005", f"{t.id} «{t.title}» не в Roadmap — когда её делают?")
+    for i in rm.items:
+        w = stories.get(i.id) or subs.get(i.id)
+        if not w:
+            continue
+        for dep in [str(x).upper() for x in (w.fm.get("dependencies") or [])]:
+            d = plan.get(dep)
+            if d and i.start <= d.end:
+                pr.warn(rel, i.line, "RM005", f"{i.id} начинается на неделе {i.start}, а его зависимость {dep} кончается на неделе {d.end}")
 
 def check_c4(pr: bl.Project, a) -> None:
     """C4 L3 ADR: компоненты и потоки. Ссылки — ошибки AR006: контур — команда из «Команд»
@@ -532,6 +571,10 @@ HINTS = {
     "BL035": "один кандидат — это исполнитель: «команда: id»; сомнение — строкой «Вопросов»",
     "BL033": "UserStory пишется от лица того, кто пользуется результатом карточки (гость, официант, контент-менеджер, PO), а не команды, которая её делает",
     "SN001": "файл экрана — plan/screens/<ID>.md, ID из таблицы «Экраны» «Истории»",
+    "RM001": "Roadmap: паспорт <!-- bft-roadmap --> (epic_slug, version, revised, status, start — понедельник ГГГГ-ММ-ДД, sprint_weeks — 1 или 2), «## План» | ID | Неделя с | Неделя по |, недели с 1, не больше 6 спринтов",
+    "RM002": "Roadmap один: документ с <!-- bft-roadmap --> в проекте один",
+    "RM003": "строка Roadmap — ID истории (BP-5) или подзадачи по зоне (BP-5.3); карточки «Как это работает» в план не ставят",
+    "RM005": "в Roadmap — каждая история; у кроссфункциональной — её подзадачи; работа начинается после конца зависимости",
     "RL001": "«План релиза»: паспорт <!-- bft-release --> (epic_slug, version, revised, status), «## Шаги» | ID | Стенд | Что сделать | Ответственный | Тип | Зависимости | Статус | Критерий готовности |, «## Ворота» | Ворота | Кто утверждает | Критерий перехода |",
     "RL002": "план релиза один: документ с <!-- bft-release --> в проекте один",
     "RL003": "шаг: зависимости — ID шагов R1… из «Шагов»; ворота — по одному на переход dev → stage и stage → prod",
