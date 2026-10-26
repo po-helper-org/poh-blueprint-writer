@@ -777,23 +777,25 @@ const BPK = (function () {
      последней колонке. Всё — из согласованной истории (шаги и таблица «Экраны»), без новых данных. */
   const scrTitle = sid => { const d = Object.values(D.docs).find(x => x.screen === sid); return d ? d.title.replace(/^[^·]*·\s*/, "") : sid };
   const STEPS = COLS.map((_, c) => D.seen.filter(s => s.col === c && !s.final).flatMap(s => s.steps.map(st => ({ ...st, persona: s.persona, seen: s.key }))));
-  const GROUPS = COLS.map((_, c) => {
+  /* touchGroups — чистая функция без DOM: самотест навыка проверяет её в node */
+  function touchGroups(steps, screens, title) {
     const gs = [], by = {}, at = k => by[k] || (gs.push(by[k] = { path: k, screens: [], steps: [] }), by[k]);
-    STEPS[c].forEach(st => {
+    steps.forEach(st => {
       let chain = [], prev = null, last = null, home = null;
       st.screens.forEach(sid => {
-        const sc = D.screens[sid] || {}, k = sc.contour || "";
+        const sc = screens[sid] || {}, k = sc.contour || "";
         if (k !== prev) { chain = [k]; last = null }
         const key = sc.view === "альтернативный" && last !== null ? last : chain.join(" → ");
         const g = at(key); if (!g.screens.includes(sid)) g.screens.push(sid);
         if (home === null) home = key;
-        if (sc.view !== "альтернативный") { last = key; chain.push(scrTitle(sid)) }
+        if (sc.view !== "альтернативный") { last = key; chain.push(title(sid)) }
         prev = k;
       });
       (home === null ? at("") : by[home]).steps.push(st);
     });
     return gs.sort((x, y) => (x.path === "") - (y.path === ""));
-  });
+  }
+  const GROUPS = COLS.map((_, c) => touchGroups(STEPS[c], D.screens, scrTitle));
   /* номер шага в пути персонажа: читать слева направо 1 → 2 → 3, старт — перед первым */
   const STEP_NO = {}, stepC = {};
   STEPS.forEach(ss => ss.forEach(st => STEP_NO[st.id] = stepC[st.persona] = (stepC[st.persona] || 0) + 1));
