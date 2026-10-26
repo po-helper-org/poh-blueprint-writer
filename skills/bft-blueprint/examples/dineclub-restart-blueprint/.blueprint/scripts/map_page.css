@@ -425,3 +425,10 @@ body.open.side2 .tr{display:none}
 .c4fl{list-style:none;margin:0;padding:0!important}.c4fl li{display:flex;gap:8px;align-items:baseline;padding:4px 0;font-size:13.5px}
 .c4fl li>b{flex:none;width:20px;height:20px;border-radius:50%;background:#f2f0ec;font-size:11px;display:inline-flex;align-items:center;justify-content:center}
 .c4fl em{display:block;font-style:normal;color:var(--ink)}.c4fl small{display:block;font-size:12px;color:#8a857c}
+/* эпик → история → подзадачи по зонам: на карте — строки зон под историей, в постановке — список, у подзадачи — своя панель */
+.wk .zs{display:flex;flex-direction:column;gap:3px;margin-top:8px;padding-top:7px;border-top:1px dashed #e2ded6}
+.wk .z{display:flex;align-items:center;gap:7px;font-size:11.5px;color:#55524c;line-height:1.3}
+.wk .z b,.zt{flex:none;min-width:46px;padding:1px 6px;border-radius:5px;background:color-mix(in srgb,var(--c) 14%,#fff);color:color-mix(in srgb,var(--c) 75%,#000);font-size:10.5px;font-weight:700;text-align:center}
+.zl{list-style:none;margin:0;padding:0!important}.zl li{display:flex;gap:10px;align-items:baseline;padding:6px 4px;margin:0!important;border-radius:6px;cursor:pointer}.zl li:hover{background:#faf8f4}
+.zl small{display:block;font-size:12px;color:#8a857c}.tkmeta .zt{display:inline-block;margin-right:2px}
+.zac{margin:0;padding-left:18px}

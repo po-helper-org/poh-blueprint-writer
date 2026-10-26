@@ -156,6 +156,8 @@ def model(pr: bl.Project, base: str = "") -> dict:
     cards = [{**common(c), "task": c.parent, "layer": c.layer, "lead": c.lead, "us": c.user_story, "js": c.job_stories, "bpmn": re.sub(r"^```mermaid\n|\n?```$", "", c.mermaid.strip()),
               "params": {k: [{"t": it.text, "r": it.refs} for it in v] for k, v in c.params.items()},
               "demo": c.sections.get("HowToDemo", (0, ""))[1]} for c in pr.cards]
+    subs = [{**common(z), "task": z.parent, "zone": z.zone, "cand": z.cand, "lead": z.lead,
+             "ac": [[d, x] for d, x in z.ac]} for z in pr.subtasks]
     return {
         "epic": pr.meta.get("epic_slug", ""), "title": pr.title, "prefix": pr.prefix,
         "stages": [{"id": s.id, "name": s.name, "when": s.when} for s in st.stages],
@@ -166,7 +168,8 @@ def model(pr: bl.Project, base: str = "") -> dict:
         "noteFiles": {sid: doc.rel for sid, doc in sorted(pr.screens.items())},
         "docs": docs,
         "storyQuestions": [{"id": q.id, "to": q.to, "text": q.text, "where": q.where, "open": q.open, "answer": q.answer} for q in st.questions],
-        "teams": [{"id": t.id, "name": t.name} for t in pr.teams], "tasks": tasks, "cards": cards,
+        "teams": [{"id": t.id, "name": t.name, **({"lead": t.lead} if t.lead else {})} for t in pr.teams],
+        "tasks": tasks, "cards": cards, "subs": subs,
         "links": [{"src": a, "dst": b, "what": w} for a, b, w in pr.links()],
         "questions": [{"id": q.id, "to": q.to, "text": q.text, "where": q.where, "kind": q.kind,
                        "open": q.open, "answer": q.answer} for q in pr.questions],
@@ -255,7 +258,7 @@ def provenance(m: dict, pr: bl.Project) -> list[str]:
                 if len(ln) >= 3 and ln not in text and ln not in bare:
                     miss.append(ln)
     walk(m, "")
-    paths = [x["file"] for x in m["tasks"] + m["cards"]] + [d["file"] for d in m["docs"].values()] + [s["img"] for s in m["screens"].values()]
+    paths = [x["file"] for x in m["tasks"] + m["cards"] + m["subs"]] + [d["file"] for d in m["docs"].values()] + [s["img"] for s in m["screens"].values()]
     miss += [f"файл {p}" for p in paths if not (pr.root / p).is_file()]
     return miss
 

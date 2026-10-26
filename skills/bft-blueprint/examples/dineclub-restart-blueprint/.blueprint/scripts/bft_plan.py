@@ -29,6 +29,8 @@
 
 Ключи задачи: этап, вид, команда | кандидаты, экраны, документы, ссылки.
 Ключи карточки: этап, слой, команда (по умолчанию — команда задачи), экраны, документы, ссылки.
+Ключи подзадачи истории: этап (этап истории), зона (PO, SA, Design, FE, BE, QA, DevOps, Delivery),
+команда | кандидаты, экраны, документы, ссылки; под описанием — «### Критерии приемки» по желанию.
 
   ОШИБКИ ПЛАНА
   PL001  нет plan/map.md или раздела
@@ -72,6 +74,8 @@ TASK_KEYS = {"этап", "вид", "команда", "кандидаты", "эк
 
 CARD_KEYS = {"этап", "слой", "команда", "экраны", "документы", "ссылки"}
 
+ZONE_KEYS = {"этап", "зона", "команда", "кандидаты", "экраны", "документы", "ссылки"}
+
 AC_HEADS = ("### Критерии приемки", "### Критерии приёмки", "### Чеклист приемки", "### Чеклист приёмки")
 
 STUB = re.compile(r"\{\{[^}]*\}\}")
@@ -90,6 +94,11 @@ class Block:
     @property
     def card(self) -> bool:
         return "." in self.id
+
+    @property
+    def zone(self) -> bool:
+        """Подзадача истории по зоне: дочерний блок со строкой «зона: FE» (иначе — карточка)."""
+        return self.card and "зона" in self.meta
 
     @property
     def parent(self) -> str:
@@ -188,14 +197,14 @@ def parse(root: Path) -> Plan:
             key, val = mm.group(1), mm.group(2).strip()
             if key == "команда" and val.startswith("кандидаты:"):   # «команда: кандидаты: a, b» — это кандидаты
                 key, val = "кандидаты", val.split(":", 1)[1].strip()
-            allowed = CARD_KEYS if b.card else TASK_KEYS
+            allowed = (CARD_KEYS | ZONE_KEYS) if b.card else TASK_KEYS
             if key not in allowed:
                 pl.err(rel, n + 1 + i, "PL003", f"{b.id}: ключ «{key}» — нужен один из: {', '.join(sorted(allowed))}")
             b.meta[key] = val
             i += 1
         text = "\n".join(body[i:]).strip("\n")
         for h in AC_HEADS:
-            if h in text and not b.card:
+            if h in text and (not b.card or b.zone):
                 text, _, tail = text.partition(h)
                 rest = re.split(r"^### ", tail, maxsplit=1, flags=re.M)
                 b.ac = [re.sub(r"^\s*(?:[-*]|\d+\.)\s+(?:\[[ xX]\]\s+)?", "", x).strip() for x in rest[0].split("\n") if x.strip()]
@@ -233,11 +242,18 @@ def parse(root: Path) -> Plan:
     return pl
 
 def _check_block(pl: Plan, b: Block, rel: str) -> None:
-    need = ("этап", "слой") if b.card else ("этап", "вид")
+    need = ("этап", "зона") if b.zone else ("этап", "слой") if b.card else ("этап", "вид")
+    if b.zone:
+        if b.meta["зона"].lower() not in {z.lower() for z in bl.ZONES}:
+            pl.err(rel, b.line, "PL003", f"{b.id}: зона «{b.meta['зона']}» — одна из {', '.join(bl.ZONES)}")
+        if not b.meta.get("команда") and not b.meta.get("кандидаты"):
+            pl.err(rel, b.line, "PL003", f"{b.id}: «команда: id» зоны или «кандидаты: id1, id2», если исполнитель не ясен")
+        if b.meta.get("слой"):
+            pl.err(rel, b.line, "PL003", f"{b.id}: «слой» — у карточки «Как это работает», «зона» — у подзадачи; одно из двух")
     for k in need:
         if not b.meta.get(k):
             pl.err(rel, b.line, "PL003", f"{b.id}: нет строки «{k}: …» сразу под заголовком")
-    if b.card and b.meta.get("слой") and b.meta["слой"] not in bl.LAYERS:
+    if b.card and not b.zone and b.meta.get("слой") and b.meta["слой"] not in bl.LAYERS:
         pl.err(rel, b.line, "PL003", f"{b.id}: слой «{b.meta['слой']}» — один из {', '.join(bl.LAYERS)}")
     if not b.card and b.meta.get("вид") and b.meta["вид"] not in bl.KINDS:
         pl.err(rel, b.line, "PL003", f"{b.id}: вид «{b.meta['вид']}» — один из {', '.join(bl.KINDS)}")
@@ -544,7 +560,14 @@ def apply(pl: Plan, root: Path) -> list[str]:
                                 "assignee": [], "created_date": cli.now(), "labels": [], "dependencies": []})
         fm = t.fm
         fm["title"] = b.title
-        if b.card:
+        if b.zone:
+            zone = {z.lower(): z for z in bl.ZONES}.get(b.meta["зона"].lower(), b.meta["зона"])
+            cands = split(b.meta.get("кандидаты", ""))
+            labels = [f"stage:{b.meta.get('этап', '')}", f"zone:{zone}"] + [f"кандидат:{c}" for c in cands]
+            team = b.meta.get("команда", "")
+            fm["assignee"] = [f"@{team.lstrip('@')}"] if team and not cands else []
+            fm["parent_task_id"] = b.parent
+        elif b.card:
             labels = [f"stage:{b.meta.get('этап', '')}", f"layer:{b.meta.get('слой', '')}"]
             team = b.meta.get("команда", "")
             fm["assignee"] = [f"@{team.lstrip('@')}"] if team else []
@@ -555,7 +578,7 @@ def apply(pl: Plan, root: Path) -> list[str]:
             team = b.meta.get("команда", "")
             fm["assignee"] = [f"@{team.lstrip('@')}"] if team and not cands else []
             fm.pop("parent_task_id", None)
-        keep = [x for x in fm.get("labels") or [] if not re.match(r"^(stage:|layer:|кандидат:)", str(x)) and x not in bl.KINDS]
+        keep = [x for x in fm.get("labels") or [] if not re.match(r"^(stage:|layer:|zone:|кандидат:)", str(x)) and x not in bl.KINDS]
         fm["labels"] = labels + keep
         docs_ids = [screen_doc.get(s, "") for s in split(b.meta.get("экраны", ""))] + split(b.meta.get("документы", ""))
         if "экраны" in b.meta or "документы" in b.meta:
@@ -566,12 +589,12 @@ def apply(pl: Plan, root: Path) -> list[str]:
             order += 1000
             fm["ordinal"] = order
         body = b.body
-        if b.card and "### BPMN" not in body:
+        if b.card and not b.zone and "### BPMN" not in body:
             old_bpmn = re.search(r"^### BPMN\n.*?(?=^### |\Z)", t.sections.get("DESCRIPTION", ""), re.S | re.M)
             if old_bpmn and "### HowToDemo" in body:
                 body = body.replace("### HowToDemo", old_bpmn.group(0).rstrip("\n") + "\n\n### HowToDemo", 1)
         t.sections["DESCRIPTION"] = body
-        if not b.card:
+        if not b.card or b.zone:
             done = {x: d for d, x in t.ac}
             t.ac = [[done.get(x, False), x] for x in b.ac]
         ordered = {k: fm[k] for k in cli.FM_ORDER if k in fm}
@@ -669,6 +692,13 @@ def export(root: Path) -> dict[str, str]:
             if rc.fm.get("assignee"):
                 cmeta.append(f"команда: {str(rc.fm['assignee'][0]).lstrip('@')}")
             o += _export_block(c, rc, cmeta, sid_of)
+        for z in sorted([z for z in pr.subtasks if z.parent == t.id], key=lambda x: x.ordinal):
+            rz = raw[z.id]
+            zc = [str(lb).split(":", 1)[1] for lb in rz.fm.get("labels") or [] if str(lb).startswith("кандидат:")]
+            zmeta = [f"этап: {z.stage}", f"зона: {z.zone}", f"кандидаты: {', '.join(zc)}" if zc else f"команда: {z.team}"]
+            o += _export_block(z, rz, zmeta, sid_of)
+            if rz.ac:
+                o += ["### Критерии приемки"] + [f"- {x}" for _, x in rz.ac] + [""]
     files[f"{PLAN_DIR}/map.md"] = "\n".join(o).rstrip("\n") + "\n"
     return files
 

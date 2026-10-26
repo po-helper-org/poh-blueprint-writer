@@ -23,6 +23,11 @@
   const teamN = t => t.team === "?" || !TEAM[t.team] ? "Команда?" : TEAM[t.team].name;
   const TASK = {}; D.tasks.forEach(t => TASK[t.id] = t);
   const PROC = {}; D.cards.forEach(p => PROC[p.id] = p);
+  /* эпик (БФТ) → история (задача «Что делаем») → подзадачи по зонам; история в одном контуре — без подзадач */
+  const ZONES = ["PO", "SA", "Design", "FE", "BE", "QA", "DevOps", "Delivery"];
+  const SUBS = D.subs || [], SUB = {}; SUBS.forEach(z => SUB[z.id] = z);
+  const subsOf = id => SUBS.filter(z => z.task === id).sort((a, b) => ZONES.indexOf(a.zone) - ZONES.indexOf(b.zone));
+  const leadOf = t => t.team in TEAM && (D.teams.find(x => x.id === t.team) || {}).lead || "";
   const qOf = where => D.questions.filter(q => q.where === where && q.open);
   /* вопросы карты («Карта») и истории («История») — одним списком; ответ PO уходит в промпт агенту */
   const QS = [...D.questions.map(q => ({ ...q, key: "map:" + q.id, doc: "map" })), ...D.storyQuestions.map(q => ({ ...q, kind: "вопрос", key: "story:" + q.id, doc: "story" }))];
@@ -43,7 +48,7 @@
   /* ---------- шапка ---------- */
   const uniqBlk = [...new Set(D.questions.filter(q => q.open && q.kind === "блокер").map(q => q.text))];
   document.getElementById("blk").innerHTML = uniqBlk.length ? `<button class="mi blk" data-guide="blk"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M3.5 12.5l9-9"/></svg>Блокеры<b class="cnt">${uniqBlk.length}</b></button>` : "";
-  const used = {}; D.tasks.forEach(t => used[t.team] = (used[t.team] || 0) + 1);
+  const used = {}; [...D.tasks, ...SUBS].forEach(t => used[t.team] = (used[t.team] || 0) + 1);
   const nTasks = n => `${n} ${n % 10 === 1 && n % 100 !== 11 ? "задача" : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? "задачи" : "задач"}`;
   document.getElementById("teams").innerHTML = D.teams.filter(t => used[t.id]).map(t => `<button class="tchip" data-tf="${t.id}" style="--c:${TEAM[t.id].c}"><i></i>${esc(t.name)}<b>${nTasks(used[t.id])}</b></button>`).join("") +
     (used["?"] ? `<button class="tchip" data-tf="?" style="--c:var(--red)"><i class="u"></i>Команда не определена<b>${nTasks(used["?"])}</b></button>` : "");
@@ -60,7 +65,7 @@
   /* фильтр по команде: подсветить её работу, на кнопке меню — чип с крестиком */
   function teamFilter(id) {
     document.querySelectorAll(".tchip").forEach(x => x.classList.toggle("on", x.dataset.tf === id));
-    document.querySelectorAll(".wk,.hw").forEach(x => x.classList.toggle("dim", !!id && x.dataset.team !== id));
+    document.querySelectorAll(".wk,.hw").forEach(x => x.classList.toggle("dim", !!id && !(x.dataset.teams || x.dataset.team).split(" ").includes(id)));
     const t = id && (id === "?" ? { name: "Команда не определена", c: "var(--red)" } : TEAM[id]);
     document.getElementById("fchip").innerHTML = t ? `<button class="fchip" data-tf-clear style="--c:${t.c}" aria-label="Снять фильтр"><i></i>${esc(t.name)}<span aria-hidden="true">×</span></button>` : "";
   }
@@ -77,8 +82,9 @@
     }).join("");
   }
   function taskHTML(t) {
-    const b = blocks(t.id).length, a = asks(t.id);
-    return `<button class="wk${b ? " blk" : ""}" data-task="${t.id}" data-team="${t.team}" style="--c:${teamC(t)}"><span class="tm${t.team === "?" ? " u" : ""}"><i></i>${esc(teamN(t))}${b ? '<span class="bl">Блокер</span>' : a ? `<span class="qn" title="Открытых вопросов: ${a}">${a}</span>` : ""}</span><span class="tx">${esc(t.text)}</span></button>`;
+    const b = blocks(t.id).length, a = asks(t.id), subs = subsOf(t.id);
+    const zs = subs.length ? `<span class="zs">${subs.map(z => `<span class="z" style="--c:${teamC(z)}"><b>${esc(z.zone)}</b>${esc(teamN(z))}</span>`).join("")}</span>` : "";
+    return `<button class="wk${b ? " blk" : ""}${subs.length ? " st3" : ""}" data-task="${t.id}" data-team="${t.team}" data-teams="${[...new Set([t.team, ...subs.map(z => z.team)])].join(" ")}" style="--c:${teamC(t)}"><span class="tm${t.team === "?" ? " u" : ""}"><i></i>${esc(teamN(t))}${b ? '<span class="bl">Блокер</span>' : a ? `<span class="qn" title="Открытых вопросов: ${a}">${a}</span>` : ""}</span><span class="tx">${esc(t.text)}</span>${zs}</button>`;
   }
   function procHTML(p) {
     const b = blocks(p.id).length + blocks(p.task).length;
@@ -479,6 +485,12 @@
     body.classList.add("side2");
   }
   function execHide() { body.classList.remove("side2", "how"); exFrom = ""; ex.dataset.task = "" }
+  /* «←»: из подзадачи — к истории, из постановки — к экрану или этапу, откуда её открыли, иначе — к экрану */
+  function goBack() {
+    const [kind, id] = (side.dataset.ctx || ":").split(":");
+    if (kind === "sub") return openTask(SUB[id].task, 0);
+    return kind === "task" && exFrom ? execBack() : openScreen(snCur);
+  }
   /* назад из постановки — к экрану или этапу, откуда её открыли */
   function execBack() {
     const [kind, id] = exFrom.split(/:(.*)/);
@@ -526,6 +538,15 @@
         ${c.bpmn ? `<div class="bpmnw"><pre>${esc(c.bpmn)}</pre></div>` : ""}</section>` }).join("")}</div>`;
     body.classList.add("side2", "how"); ex.scrollTop = 0;
     ex.querySelectorAll(".bpmnw").forEach(drawMermaid);
+  }
+  /* подзадача истории по зоне: что сделать, исполнитель, критерии приемки; «←» — к истории */
+  function openSub(id) {
+    const z = SUB[id], t = TASK[z.task];
+    const ac = z.ac.length ? `<ul class="zac">${z.ac.map(([, x]) => `<li>${mdInline(x)}</li>`).join("")}</ul>` : "";
+    side.innerHTML = head(z.text, `<b class="zt" style="--c:${teamC(z)}">${esc(z.zone)}</b> <span class="pteam" style="--c:${teamC(z)}"><i></i>${esc(z.team === "?" && z.cand ? "Команда? " + z.cand : teamN(z))}</span> · ${esc(id)} · ${esc(z.status)}`, true) + `<div class="snbody">
+      ${z.lead ? `<p class="tklead">${mdInline(z.lead)}</p>` : ""}${sec("Критерии приемки", ac)}${sec("История", t ? refList([`${idChip(t.id)} ${esc(t.text)}`]) : "")}${sec("Вопросы", qList(qsOf([id])))}</div>`;
+    body.classList.remove("wide"); body.classList.add("open"); side.scrollTop = 0;
+    side.dataset.ctx = "sub:" + id; side.dataset.note = "";
   }
   function execOpen(id) {
     openTask(id, 0, true); execShow(null, "", id);
@@ -595,7 +616,7 @@
   const qList = qs => qs.length ? `<ul class="tkq">${qs.map(q => { const st = qState(q);
     return `<li class="${q.kind === "блокер" ? "b " : ""}${st}" data-q="${esc(q.key)}" tabindex="0">${st === "done" || st === "past" ? '<i class="ok">✓</i>' : '<i class="qd"></i>'}<span>${q.kind === "блокер" ? "<b>Блокер.</b> " : ""}${esc(q.text)} <em>— ${esc(q.to)}</em></span></li>` }).join("")}</ul>` : "";
   /* ссылка на другую задачу или карточку, документ, страницу */
-  const idChip = id => PROC[id] ? `<button class="ref" data-proc="${id}" title="${esc(PROC[id].text)}">${esc(id)}</button>` : TASK[id] ? `<button class="ref" data-task="${id}" title="${esc(TASK[id].text)}">${esc(id)}</button>` : `<code>${esc(id)}</code>`;
+  const idChip = id => SUB[id] ? `<button class="ref" data-sub="${id}" title="${esc(SUB[id].text)}">${esc(id)}</button>` : PROC[id] ? `<button class="ref" data-proc="${id}" title="${esc(PROC[id].text)}">${esc(id)}</button>` : TASK[id] ? `<button class="ref" data-task="${id}" title="${esc(TASK[id].text)}">${esc(id)}</button>` : `<code>${esc(id)}</code>`;
   function refItem(r) {
     if (/^https?:\/\//.test(r)) return `<a href="${esc(r)}" target="_blank" rel="noopener">${esc(r.replace(/^https?:\/\//, "").slice(0, 60))}</a>`;
     const d = D.docs[r.toLowerCase().split(" ")[0]];
@@ -609,15 +630,15 @@
   function openTask(id, tab, fromExec) {
     if (tab != null) taskTab = tab;
     const back = fromExec || (exFrom && side.dataset.ctx === "task:" + id);
-    const t = TASK[id], br = t.brief || {}, cards = D.cards.filter(c => c.task === id);
+    const t = TASK[id], br = t.brief || {}, cards = D.cards.filter(c => c.task === id), subs = subsOf(id);
     let done = {}; try { done = JSON.parse(localStorage.getItem(dodKey(id)) || "{}") } catch (e) { }
     const ac = t.ac.map(([d, x], k) => `<label class="dod"><input type="checkbox" data-dod="${id}:${k}"${(done[k] != null ? done[k] : d) ? " checked" : ""}><span>${mdInline(x)}</span></label>`).join("");
     const links = refList([...(t.reqs.length ? [`<span class="lk">Требования БФТ</span> ${t.reqs.map(esc).join(", ")}`] : []), ...t.docs.map(refItem), ...t.refs.filter(r => !/^https?:\/\//.test(r)).map(refItem)]);
-    const html = (t.why ? `<p class="tklead">${mdInline(t.why)}</p>` : "") + sec("ASIS", mdHTML(br.ASIS || "")) + sec("GAP", mdHTML(br.GAP || "")) + sec("TOBE", mdHTML(br.TOBE || "")) +
+    const html = (t.why ? `<p class="tklead">${mdInline(t.why)}</p>` : "") + sec(`Подзадачи по зонам · ${subs.length}`, subs.length ? `<ul class="zl">${subs.map(z => `<li data-sub="${esc(z.id)}" tabindex="0"><b class="zt" style="--c:${teamC(z)}">${esc(z.zone)}</b><span>${esc(z.text)}<small>${esc(z.team === "?" && z.cand ? "Команда? " + z.cand : teamN(z))} · ${esc(z.id)} · ${esc(z.status)}</small></span></li>`).join("")}</ul>` : "") + sec("ASIS", mdHTML(br.ASIS || "")) + sec("GAP", mdHTML(br.GAP || "")) + sec("TOBE", mdHTML(br.TOBE || "")) +
       sec("HowToDemo", demoHTML(br.HowToDemo, [...t.docs, ...cards.flatMap(c => c.docs)])) + sec("Чеклист приемки", ac) + sec("Дополнительно", mdHTML(br["Дополнительно"] || "")) +
       sec("Как это работает", refList(cards.map(c => `${idChip(c.id)} ${esc(c.text)}`))) + sec("Вопросы", qList(qsOf([id, ...cards.map(c => c.id)]))) + sec("Ссылки", links);
     const tabs = `<nav class="snseg tktabs">${["Требования", "Исполнение"].map((n, i) => `<button data-tktab="${i}"${i === taskTab ? ' class="on"' : ""}>${n}</button>`).join("")}</nav>`;
-    side.innerHTML = head(t.text, `<span class="pteam" style="--c:${teamC(t)}"><i></i>${esc(t.team === "?" && t.cand ? "Команда? " + t.cand : teamN(t))}</span> · ${esc(COLS[colOf(t.stage)].name)} · ${esc(id)} · ${esc(t.status)}`, back) + `<div class="snbody">${tabs}${taskTab ? execHTML(t) : html}</div>`;
+    side.innerHTML = head(t.text, `<span class="pteam" style="--c:${teamC(t)}"><i></i>${esc(t.team === "?" && t.cand ? "Команда? " + t.cand : teamN(t))}</span>${leadOf(t) ? " · техлид " + esc(leadOf(t)) : ""} · ${esc(COLS[colOf(t.stage)].name)} · ${esc(id)} · ${esc(t.status)}`, back) + `<div class="snbody">${tabs}${taskTab ? execHTML(t) : html}</div>`;
     body.classList.remove("wide"); body.classList.add("open"); side.scrollTop = 0;
     side.dataset.ctx = "task:" + id; side.dataset.note = "";
     if (!back) { exFrom = ""; howShow(id) }
@@ -847,7 +868,8 @@
     const zm = t.closest("[data-zoom]"); if (zm) return zoom(+zm.dataset.zoom);
     const st = t.closest("[data-sntab]"); if (st) return openScreen(snCur, +st.dataset.sntab);
     const nt = t.closest("[data-snnote]"); if (nt) return openNote(+nt.dataset.snnote);
-    if (t.closest("[data-snback]")) return side.dataset.ctx.startsWith("task:") && exFrom ? execBack() : openScreen(snCur);
+    if (t.closest("[data-snback]")) return goBack();
+    const sb = t.closest("[data-sub]"); if (sb) return openSub(sb.dataset.sub);
     const et = t.closest("[data-extask]"); if (et) return execOpen(et.dataset.extask);
     if (t.closest("#burger")) return menu(!body.classList.contains("mopen"));
     const vw = t.closest("button[data-view]"); if (vw) return setView(vw.dataset.view);
@@ -890,9 +912,10 @@
   document.addEventListener("keydown", e => {
     if (body.classList.contains("showing")) { if (e.key === "ArrowRight") stepShow(1); else if (e.key === "ArrowLeft") stepShow(-1); else if (e.key === "Escape") body.classList.remove("showing"); return }
     if (!LB.hidden) { if (e.key === "Escape") LB.hidden = true; else if (gallery.length > 1 && e.key === "ArrowRight") zoom(lbI + 1); else if (gallery.length > 1 && e.key === "ArrowLeft") zoom(lbI - 1); return }
-    if (e.key === "Escape") { if (body.classList.contains("mopen")) { menu(false); burger.focus() } else if (side.querySelector("[data-snback]")) side.dataset.ctx.startsWith("task:") && exFrom ? execBack() : openScreen(snCur); else closeSide() }
+    if (e.key === "Escape") { if (body.classList.contains("mopen")) { menu(false); burger.focus() } else if (side.querySelector("[data-snback]")) goBack(); else closeSide() }
     if (e.key === "Enter" && e.target.matches && e.target.matches("[data-snnote]")) openNote(+e.target.dataset.snnote);
     if (e.key === "Enter" && e.target.matches && e.target.matches("[data-extask]")) execOpen(e.target.dataset.extask);
+    if (e.key === "Enter" && e.target.matches && e.target.matches("[data-sub]")) openSub(e.target.dataset.sub);
     if (e.key === "Enter" && e.target.matches && e.target.matches("[data-c4]")) openC4(e.target.dataset.c4);
     if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches("[data-seen]")) { e.preventDefault(); openSeen(e.target.dataset.seen) }
   });
@@ -928,6 +951,7 @@
         return { key: "screen:" + id, label: `Экран ${id} «${SCR[id].title}»${what ? " · " + what : ""}`, file: (D.noteFiles || {})[id] || storyDoc } }
       if (kind === "proc") { const s = el.closest(".tk"); return { key: "proc:" + id, label: `Карточка ${id} «${PROC[id].text}»${s ? " · раздел " + s.querySelector("h4").textContent : ""}`, file: PROC[id].file } }
       if (kind === "seen") return { key: "seen:" + id, label: `Шаги истории «${id}»`, file: storyDoc };
+      if (kind === "sub") return { key: "sub:" + id, label: `Подзадача ${id} «${SUB[id].text}»`, file: SUB[id].file };
       return { key: "map", label: "Карта", file: mapDoc };
     }
     const fr = el.closest(".fr"); if (fr) { const cap = fr.querySelector(".cap").textContent, ids = (fr.dataset.screens || "").split(",").filter(Boolean);
@@ -1045,6 +1069,7 @@
     const docs = ds => ds.forEach(d => { const x = D.docs[String(d).toLowerCase().split(" ")[0]]; if (x) add("Документ", x.file) });
     const qdoc = ids => { const qs = qsOf(ids); if (qs.some(q => q.doc === "map")) add("Вопросы", mapDoc, "таблица «Вопросы»"); if (qs.some(q => q.doc === "story")) add("Вопросы", storyDoc, "таблица «Вопросы»") };
     if (kind === "proc") { const c = PROC[id]; add("Карточка", c.file, "UserStory, JobStory, Параметры, Процесс, HowToDemo; схема — раздел «BPMN», текст mermaid"); if (TASK[c.task]) add("Задача", TASK[c.task].file); docs(c.docs); qdoc([id, c.task]) }
+    else if (kind === "sub") { const z = SUB[id]; add("Подзадача", z.file, "что сделать, исполнитель, критерии приемки"); if (TASK[z.task]) add("История", TASK[z.task].file); docs(z.docs); qdoc([id]) }
     else if (kind === "task") { const t = TASK[id]; add("Задача", t.file, "постановка, чеклист, исполнение — references и Implementation Notes"); D.cards.filter(c => c.task === id).forEach(c => add("Карточка", c.file)); docs(t.docs); qdoc([id, ...D.cards.filter(c => c.task === id).map(c => c.id)]) }
     else if (kind === "screen") { add("Требования к экрану", (D.noteFiles || {})[id]); (SCR[id] ? SCR[id].images : []).forEach(im => add("Картинка", im.src)); add("История", storyDoc, "таблица «Экраны»: из неё собраны картинки") }
     else if (kind === "seen") { const s = D.seen.find(x => x.key === id); add("История", storyDoc, "таблица «Шаги»"); (s ? s.steps.flatMap(st => st.screens) : []).forEach(x => add("Картинка", D.screens[x].img)); qdoc((s ? s.steps.flatMap(st => [st.id, ...st.screens]) : [])) }

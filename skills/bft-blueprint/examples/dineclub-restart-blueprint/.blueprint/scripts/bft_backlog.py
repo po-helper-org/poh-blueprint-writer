@@ -30,6 +30,9 @@ markdown-файлы, которыми ИИ-агент управляет чер�
 Исполнение — references (JIRA, Confluence) и Implementation Notes.
 
 Карточка «Как это работает»: подзадача задачи «Что делаем», метки `layer:<слой>` и `stage:<этап>`.
+Подзадача по зоне: подзадача истории (задачи «Что делаем»), метки `zone:<зона>` и `stage:<этап>`,
+исполнитель — команда зоны. Эпик (БФТ) → история → подзадачи по зонам; история в одном контуре —
+без подзадач.
 Описание: суть одной-двумя фразами; ### UserStory «Как …, я хочу …, чтобы …»; ### JobStory — ситуации
 «Когда …, хочу …, чтобы …»; ### Параметры (вход, управление, выход, механизм); ### Процесс — шаги
 «Участник: действие» и развилки «? вопрос» с ветками «ответ → Участник: действие»; ### BPMN — mermaid,
@@ -66,6 +69,9 @@ FINAL = bs.FINAL
 KINDS = ("создать", "доработать", "используем", "уточнить")
 
 LAYERS = ("employee", "technology", "backstage", "support")
+
+# функциональные зоны подзадач истории: кто делает свою часть результата (в JIRA — подзадача с исполнителем)
+ZONES = ("PO", "SA", "Design", "FE", "BE", "QA", "DevOps", "Delivery")
 
 # Этап «План релиза / Delivery»: дорожки-стенды, шаги, ворота между стендами.
 RELEASE_META = ("epic_slug", "version", "revised", "status")
@@ -113,6 +119,8 @@ PARAM_NAME = {"in": "Вход", "ctl": "Управление", "out": "Выхо�
 MAP_META = ("epic_slug", "source_doc", "source_stage", "source_rev", "version", "revised", "status")
 
 TEAMS_HEADER = ("ID", "Команда")
+
+TEAMS_HEADER_LEAD = ("ID", "Команда", "Техлид")      # техлид — исполнитель историй контура
 
 QUESTIONS_HEADER = ("ID", "Кому", "Вопрос", "Где", "Тип", "Ответ")
 
@@ -264,6 +272,7 @@ class BTask:
     parent: str = ""
     stage: str = ""
     layer: str = ""
+    zone: str = ""            # функциональная зона подзадачи истории: FE, BE, Design…
     team: str = ""            # ID команды или «?»
     cand: str = ""
     kind: str = ""
@@ -301,6 +310,7 @@ class Team:
     id: str
     name: str
     line: int
+    lead: str = ""            # техлид контура: исполнитель его историй
 
 @dataclass
 class Question:
@@ -587,6 +597,7 @@ class Project:
     screens: dict = field(default_factory=dict)    # {ID экрана: bsn.ScreenDoc}
     tasks: list[BTask] = field(default_factory=list)   # «Что делаем»
     cards: list[BTask] = field(default_factory=list)   # «Как это работает»
+    subtasks: list[BTask] = field(default_factory=list)  # подзадачи историй по зонам: FE, BE, Design…
     other: int = 0                                     # задачи проекта вне карты
     issues: list[bb.Issue] = field(default_factory=list)
 
@@ -601,7 +612,7 @@ class Project:
         return [i for i in self.issues if i.level == "ERROR"]
 
     def task(self, tid: str) -> BTask | None:
-        return next((t for t in self.tasks + self.cards if t.id == tid), None)
+        return next((t for t in self.tasks + self.cards + self.subtasks if t.id == tid), None)
 
     @property
     def id_re(self) -> re.Pattern:
@@ -1431,6 +1442,8 @@ def parse(root: Path) -> Project:
                     pr.err(md.rel, md.off + ln0, "BL004", "«Команды»: нет таблицы")
                 continue
             hdr, rows = found[0]
+            if name == "Команды" and tuple(hdr) == TEAMS_HEADER_LEAD:
+                header = TEAMS_HEADER_LEAD
             if tuple(hdr) != header:
                 pr.err(md.rel, md.off + ln0, "BL004", f"«{name}»: заголовок таблицы — {' | '.join(header)}")
                 continue
@@ -1443,7 +1456,8 @@ def parse(root: Path) -> Project:
                     if not TEAM_RE.match(tid) or any(t.id == tid for t in pr.teams) or not c[1].strip():
                         pr.err(md.rel, ln, "BL004", f"команда: ID — латиница-слаг, уникален, название не пусто — «{tid}»")
                         continue
-                    pr.teams.append(Team(tid, c[1].strip(), ln))
+                    lead = c[2].strip() if len(c) > 2 and c[2].strip() not in bb.EMPTY else ""
+                    pr.teams.append(Team(tid, c[1].strip(), ln, lead))
                 else:
                     qid = bs.norm_question(c[0])
                     if not qid or any(q.id == qid for q in pr.questions):
@@ -1488,12 +1502,14 @@ def parse(root: Path) -> Project:
             continue
         t.stage = st[0].upper() if st[0].lower() != FINAL else FINAL
         t.layer = (_label(t, "layer") or [""])[0].lower()
-        (pr.cards if _label(t, "layer") else pr.tasks).append(t)
+        t.zone = (_label(t, "zone") or [""])[0]
+        (pr.cards if _label(t, "layer") else pr.subtasks if _label(t, "zone") else pr.tasks).append(t)
         if len(st) > 1:
             pr.err(t.rel, 1, "BL006", f"{t.id}: меток этапа {len(st)} — одна `stage:<этап>`")
     key = lambda t: (t.ordinal, [int(x) for x in re.findall(r"\d+", t.id)])  # noqa: E731
     pr.tasks.sort(key=key)
     pr.cards.sort(key=key)
+    pr.subtasks.sort(key=key)
 
     stages = ({s.id for s in pr.story.stages} if pr.story else set()) | {FINAL}
     team_ids = {t.id for t in pr.teams}
@@ -1503,6 +1519,9 @@ def parse(root: Path) -> Project:
         _check_task(pr, t, stages, team_ids)
     for c in pr.cards:
         _check_card(pr, c, stages, team_ids, task_ids, card_ids)
+    for z in pr.subtasks:
+        _check_subtask(pr, z, stages, team_ids, task_ids)
+    sub_ids = {z.id for z in pr.subtasks}
     seam_ids = {s.id for s in pr.seams.seams} if pr.seams else set()
     for q in pr.questions:
         adr_ids = set()
@@ -1510,13 +1529,13 @@ def parse(root: Path) -> Project:
             adr_ids = {o.id for o in pr.adr.options} | {c.id for c in pr.adr.compromises}
         if pr.sysreq:
             adr_ids |= {c.id for c in pr.sysreq.contracts}
-        if q.where not in task_ids | card_ids | adr_ids | seam_ids:
+        if q.where not in task_ids | card_ids | sub_ids | adr_ids | seam_ids:
             pr.err(pr.map_doc.rel, q.line, "BL010", f"{q.id}: «Где» — ID задачи, карточки карты ({pr.prefix}-12, {pr.prefix}-12.1), стыка (S1) или этапа ADR (K1, V1, C1), а не «{q.where}»")
         if q.kind not in Q_TYPES:
             pr.err(pr.map_doc.rel, q.line, "BL010", f"{q.id}: тип «{q.kind}» — вопрос или блокер")
         if not q.to or not q.text:
             pr.err(pr.map_doc.rel, q.line, "BL010", f"{q.id}: нужны «Кому» и «Вопрос»")
-    for t in pr.tasks + pr.cards:
+    for t in pr.tasks + pr.cards + pr.subtasks:
         for d in t.docs:
             if re.match(r"^doc-\d+", str(d), re.I) and str(d).split()[0].lower() not in {k.lower() for k in pr.docs}:
                 pr.err(t.rel, 1, "BL011", f"{t.id}: документа {d} нет в backlog/docs")
@@ -1578,6 +1597,43 @@ def _check_task(pr: Project, t: BTask, stages: set, team_ids: set) -> None:
         pr.err(rel, secs["HowToDemo"][0], "BL007", f"{t.id}: HowToDemo — нумерованный сценарий хотя бы из двух шагов «1. …»")
     if not t.ac:
         pr.err(rel, 1, "BL007", f"{t.id}: нет критериев приемки (Acceptance Criteria) — `backlog task edit {t.id} --ac …`")
+
+
+def _check_subtask(pr: Project, z: BTask, stages: set, team_ids: set, task_ids: set) -> None:
+    """Подзадача истории по зоне: родитель — история, одна зона из ZONES, этап истории,
+    исполнитель — команда зоны (неизвестна — метки кандидат:, как у истории), описание — что сделать."""
+    rel = z.rel
+    zones = _label(z, "zone")
+    canon = {x.lower(): x for x in ZONES}
+    if len(zones) != 1 or zones[0].lower() not in canon:
+        pr.err(rel, 1, "BL043", f"{z.id}: зона — одна метка zone: из {', '.join(ZONES)}")
+    else:
+        z.zone = canon[zones[0].lower()]
+    if z.parent not in task_ids:
+        pr.err(rel, 1, "BL043", f"{z.id}: родитель — история «Что делаем» (`backlog task create -p {pr.prefix}-12 …`), а не «{z.parent or '—'}»")
+    par = pr.task(z.parent)
+    if pr.story and z.stage not in stages:
+        pr.err(rel, 1, "BL043", f"{z.id}: этап «{z.stage}» — ID этапа истории или `стало`")
+    elif par and z.stage != par.stage:
+        pr.err(rel, 1, "BL043", f"{z.id}: этап {z.stage}, а у истории {par.id} — {par.stage}: подзадача живёт на этапе своей истории")
+    who = [str(a).lstrip("@") for a in (z.fm.get("assignee") or [])]
+    cand = _label(z, "кандидат")
+    if len(who) > 1:
+        pr.err(rel, 1, "BL043", f"{z.id}: исполнителей {len(who)} — одна команда на подзадачу")
+    if who:
+        z.team = who[0]
+        if z.team not in team_ids:
+            pr.err(rel, 1, "BL043", f"{z.id}: команды @{z.team} нет в «Командах»")
+    else:
+        z.team = "?"
+        names = {x.id: x.name for x in pr.teams}
+        z.cand = " или ".join(names.get(c, c) for c in cand)
+    for c in cand:
+        if c not in team_ids:
+            pr.err(rel, 1, "BL043", f"{z.id}: кандидата {c} нет в «Командах»")
+    z.lead = z.desc.strip()
+    if not z.lead:
+        pr.err(rel, z.off or 1, "BL043", f"{z.id}: описание — что сделать в своей зоне, одна-две фразы")
 
 
 VAGUE_LANE = re.compile(r"^(система|сервис|приложение|бэкенд|backend|фронтенд|frontend|платформа|модуль)$", re.I)

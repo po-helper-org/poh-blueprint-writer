@@ -8,6 +8,7 @@
 Всё хранится в проекте Backlog.md. Стандарт — `resources/backlog_rules.md`.
 
   ОШИБКИ (код выхода 1)
+  BL043  подзадача истории: одна зона zone: (PO, SA, Design, FE, BE, QA, DevOps, Delivery), родитель — история, этап истории, команда, описание
   BL001  не проект Backlog.md
   BL002  документ «Карта»: паспорт <!-- bft-map -->, заголовок
   BL003  документ «История»: нет или с ошибками (ST — коды истории)
@@ -59,6 +60,8 @@
   BL040  участник процесса без имени: «Система», «Сервис», «Приложение»
   BL041  карточка technology от лица сотрудника, который на этом этапе на виду у клиента, — слой employee
   BL042  экран без исполнения: ни задача, ни её карточка не ссылаются на документ экрана — панель «Исполнение» пуста
+  BL044  кроссфункциональная история (в работе две команды и больше) без подзадач по зонам: кто что делает?
+  BL045  один экран делают истории разных команд — это один результат: одна история с подзадачами по зонам
   AR005  ADR без узких мест или компромиссов; на карте есть слой Technology (устройство систем), а документов «ADR»/«Системные требования» нет — этап включён не был
   AR007  C4 L3 ADR: нет «Компонентов»; компонент меняется, а задачи нет; компонент без потоков; контракт TO-BE не идёт ни по одному потоку
   SM005  стык без обязательств; команд 2 и больше, а документа «Стыки» нет — этап включён не был
@@ -124,6 +127,23 @@ def check(pr: bl.Project, source: Path | None, no_source: bool, explicit: bool =
             if not any(t.stage == st.id for t in pr.tasks):
                 pr.warn(pr.story_doc.rel, st.line + pr.story_doc.off, "BL020", f"этап {st.id} «{st.name}» без задач — что на нём делают команды?")
         employee_hint(pr)
+    # эпик → история → подзадачи по зонам: история, в работе которой две команды и больше, без подзадач
+    # не скажет техлидам, кто что делает; история в одном контуре — двухуровневая, подзадачи не нужны
+    for t in pr.tasks:
+        subs = [z for z in pr.subtasks if z.parent == t.id]
+        teams = ({t.team} | {c.team for c in pr.cards if c.parent == t.id} | {z.team for z in subs}) - {"?", ""}
+        if len(teams) > 1 and not subs:
+            names = {x.id: x.name for x in pr.teams}
+            pr.warn(t.rel, 1, "BL044", f"{t.id}: в работе {len(teams)} команды ({', '.join(names.get(x, x) for x in sorted(teams))}), а подзадач по зонам нет — кто что делает?")
+    by_doc: dict = {}
+    for t in pr.tasks:
+        for d in t.docs:
+            by_doc.setdefault(str(d).split()[0].lower(), []).append(t)
+    doc_sid = {k.lower(): sid for k, d in pr.docs.items() for sid, sd in pr.screens.items() if sd.path == d.path}
+    for k, ts in sorted(by_doc.items()):
+        teams = {t.team for t in ts} - {"?"}
+        if k in doc_sid and len(ts) > 1 and len(teams) > 1:
+            pr.warn(ts[1].rel, 1, "BL045", f"экран {doc_sid[k]} делают {', '.join(t.id for t in ts)} разных команд — это один результат: одна история, их работа — подзадачи по зонам")
     with_card = {c.parent for c in pr.cards}
     linked = {x for a, b, _ in pr.links() for x in (a, b)}
     for t in pr.tasks:
@@ -241,7 +261,7 @@ def check_c4(pr: bl.Project, a) -> None:
         pr.warn(rel, 1, "AR007", "нет C4 L3 («## Компоненты» и «## Потоки») — техлид не увидит, какие компоненты участвуют и как идут данные")
         return
     teams = {t.id for t in pr.teams}
-    work = {t.id.upper() for t in pr.tasks + pr.cards}
+    work = {t.id.upper() for t in pr.tasks + pr.cards + pr.subtasks}
     comps = {c.id: c for c in a.components}
     for c in a.components:
         if c.kind == "человек" and c.team in bl.EMPTY_CELL:
@@ -503,6 +523,9 @@ HINTS = {
     "BL030": "UserStory: «Как <роль>, я хочу <действие>, чтобы <ценность>»; JobStory: «- Когда <ситуация>, хочу <мотивация>, чтобы <результат>». После «хочу» — действие, не «хочу, чтобы …»",
     "BL034": "«Как это работает» — сервис после запуска. Участники процесса — пользователь, сотрудник на линии, система; PO, СА и разработка строят сервис: их работа — задача «Что делаем» или вопрос",
     "BL039": "название карточки — что происходит, когда сервис работает: кто → что → результат («Реестр принимает продажу один раз на номер чека»), а не название задачи",
+    "BL043": "подзадача: `./backlog.py task create … -p BP-5 -l \"stage:B,zone:FE\" -a @vit` — родитель история, этап её, зона из PO, SA, Design, FE, BE, QA, DevOps, Delivery; в плане — блок «## BP-5.2 · …» с «зона: FE»",
+    "BL044": "кроссфункциональная история: под ней подзадачи по зонам — «## BP-5.2 · …» с «зона: FE» и «команда: vit»; история в одном контуре остаётся без подзадач",
+    "BL045": "одно и то же делают истории разных команд: слей их в одну историю по результату, работу каждой команды — подзадачей по зоне",
     "BL042": "экран делает задача: строка «экраны: F3» в задаче (и карточке) плана, в проекте — ./backlog.py task edit BP-N --doc doc-N",
     "BL041": "сотрудник на виду у клиента (официант при госте, мастер-приёмщик при клиенте) — «слой: employee»; его планшет или сканер — в этой же карточке, не отдельной technology",
     "BL040": "участник процесса — система с именем из БФТ или «Механизма»: «Реестр продаж», «Приложение-сканер», а не «Система»",
@@ -537,7 +560,7 @@ def report(pr: bl.Project, strict: bool, name: str = "backlog-lint") -> int:
     blockers = [q for q in pr.questions if q.open and q.kind == "блокер"]
     for q in blockers:
         print(f"  блокер {q.id} → {q.to}: {q.text}")
-    print(f"{name}: {len(pr.tasks)} задач, {len(pr.cards)} карточек «Как это работает», {len(pr.screens)} экранов с требованиями, "
+    print(f"{name}: {len(pr.tasks)} задач, " + (f"{len(pr.subtasks)} подзадач по зонам, " if pr.subtasks else "") + f"{len(pr.cards)} карточек «Как это работает», {len(pr.screens)} экранов с требованиями, "
           f"задач вне карты {pr.other}, открытых вопросов {sum(q.open for q in pr.questions)} (блокеров {len(blockers)}) — "
           f"ошибок {errors}, предупреждений {warns}")
     return 1 if errors or (strict and warns) else 0

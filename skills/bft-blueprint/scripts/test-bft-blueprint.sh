@@ -271,6 +271,36 @@ for f in Path(sys.argv[1], "backlog/tasks").glob("bp-17*.md"):
     f.write_text(re.sub(r"documentation:\n  - doc-13\n", "", f.read_text(encoding="utf-8")), encoding="utf-8")
 PY
 expect_bl "экран без задачи исполнения"   1 "$EX" "BL042" --no-source --strict
+# эпик → история → подзадачи по зонам: у BP-5 четыре подзадачи (Design, FE, BE, QA), остальные истории — без подзадач
+python3 - "$tmp/bout" <<'PY' && ok "карта · подзадачи по зонам: BP-5 — Design, FE, BE, QA; остальные истории двухуровневые" || fail "карта · подзадачи по зонам не дошли до страницы"
+import json, re, sys
+from pathlib import Path
+page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf-8")
+d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
+assert [(z["id"], z["task"], z["zone"], z["team"]) for z in d["subs"]] == [("BP-5.2", "BP-5", "Design", "des"), ("BP-5.3", "BP-5", "FE", "?"), ("BP-5.4", "BP-5", "BE", "unitb"), ("BP-5.5", "BP-5", "QA", "?")], d["subs"]
+assert next(z for z in d["subs"] if z["id"] == "BP-5.3")["cand"] == "Витрина или TeamA"
+assert len(d["tasks"]) == 19 and "function openSub" in page and "data-teams" in page
+PY
+# BL043: подзадача — зона из списка, родитель — история
+ZB="$tmp/bad/zone" && cp -r "$BGOLD" "$ZB" && python3 - "$ZB" <<'PY'
+import sys
+from pathlib import Path
+t = Path(sys.argv[1], "backlog/tasks")
+f = next(t.glob("bp-5.3 *")); f.write_text(f.read_text(encoding="utf-8").replace("  - zone:FE\n", "  - zone:Frontend\n"), encoding="utf-8")
+f = next(t.glob("bp-5.4 *")); f.write_text(f.read_text(encoding="utf-8").replace("parent_task_id: BP-5\n", "parent_task_id: BP-77\n"), encoding="utf-8")
+PY
+expect_bl "подзадача по зоне: форма"      1 "$ZB" "BL043" --no-source
+# BL044: в работе истории две команды, подзадач нет; BL045: один экран делают истории разных команд
+ZW="$tmp/bad/zonew" && cp -r "$BGOLD" "$ZW" && python3 - "$ZW" <<'PY'
+import sys
+from pathlib import Path
+t = Path(sys.argv[1], "backlog/tasks")
+f = next(t.glob("bp-6.1 *")); f.write_text(f.read_text(encoding="utf-8").replace("assignee: []\n", "assignee:\n  - '@vit'\n", 1), encoding="utf-8")
+f = next(t.glob("bp-9 *")); f.write_text(f.read_text(encoding="utf-8").replace("dependencies: []\n", "dependencies: []\ndocumentation:\n  - doc-6\n", 1), encoding="utf-8")
+PY
+out="$(python3 "$BLINT" "$ZW" --no-source --strict 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && grep -q "BL044 BP-6: в работе 2 команды (UnitB, Витрина)" <<<"$out" && grep -q "BL045 экран D1 делают BP-8, BP-9" <<<"$out" \
+  && ok "карта · кроссфункциональная история без подзадач: BL044; один экран у двух команд: BL045" || fail "карта · BL044/BL045 не пойманы — $out"
 # картинки и mermaid — файлы проекта: страница ссылается на них, а не несёт в себе
 python3 - "$tmp/bout" <<'PY' && ok "карта · картинки экранов и mermaid — файлы проекта, схема BPMN — текст карточки" || fail "карта · страница несёт картинки или mermaid в себе"
 import json, re, sys
