@@ -4,11 +4,13 @@ title: Блок акции и полка ресторанов на страни�
 status: To Do
 assignee: []
 created_date: '2026-10-19 19:07'
+updated_date: '2026-10-26 16:34'
 labels:
-  - 'stage:B'
+  - stage:B
   - создать
-  - 'кандидат:vit'
-  - 'кандидат:teama'
+  - кандидат:vit
+  - кандидат:teama
+  - moscow:must
 dependencies: []
 documentation:
   - doc-4

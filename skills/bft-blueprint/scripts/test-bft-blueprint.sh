@@ -271,6 +271,107 @@ for f in Path(sys.argv[1], "backlog/tasks").glob("bp-17*.md"):
     f.write_text(re.sub(r"documentation:\n  - doc-13\n", "", f.read_text(encoding="utf-8")), encoding="utf-8")
 PY
 expect_bl "экран без задачи исполнения"   1 "$EX" "BL042" --no-source --strict
+# эпик → история → подзадачи по зонам: у BP-5 четыре подзадачи (Design, FE, BE, QA), остальные истории — без подзадач
+python3 - "$tmp/bout" <<'PY' && ok "карта · подзадачи по зонам: BP-5 — Design, FE, BE, QA; остальные истории двухуровневые" || fail "карта · подзадачи по зонам не дошли до страницы"
+import json, re, sys
+from pathlib import Path
+page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf-8")
+d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
+assert [(z["id"], z["task"], z["zone"], z["team"]) for z in d["subs"]] == [("BP-5.2", "BP-5", "Design", "des"), ("BP-5.3", "BP-5", "FE", "?"), ("BP-5.4", "BP-5", "BE", "unitb"), ("BP-5.5", "BP-5", "QA", "?")], d["subs"]
+assert next(z for z in d["subs"] if z["id"] == "BP-5.3")["cand"] == "Витрина или TeamA"
+assert len(d["tasks"]) == 19 and "function openSub" in page and "data-teams" in page and "ui-story" in page and "const uiCard" in page
+PY
+# MoSCoW: приоритет у каждой истории, Would — за линией Out of scope; без приоритета — BL046, чужое значение — BL006
+python3 - "$tmp/bout" <<'PY' && ok "карта · MoSCoW: 9 Must, 8 Should, 2 Would за линией Out of scope" || fail "карта · приоритеты MoSCoW не дошли до страницы"
+import json, re, sys
+from collections import Counter
+from pathlib import Path
+page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf-8")
+d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
+assert Counter(t["prio"] for t in d["tasks"]) == {"must": 9, "should": 8, "would": 2}
+assert {t["id"] for t in d["tasks"] if t["prio"] == "would"} == {"BP-11", "BP-14"}
+assert all(z["prio"] == "must" for z in d["subs"]) and 'class="oosl do"' in page
+PY
+MB="$tmp/bad/moscow" && cp -r "$BGOLD" "$MB" && python3 - "$MB" <<'PY'
+import sys
+from pathlib import Path
+t = Path(sys.argv[1], "backlog/tasks")
+f = next(t.glob("bp-14 *")); f.write_text(f.read_text(encoding="utf-8").replace("  - moscow:would\n", ""), encoding="utf-8")
+PY
+out="$(python3 "$BLINT" "$MB" --no-source --strict 2>&1)"; rc=$?
+sed -i 's/^  - moscow:would$/  - moscow:could/' "$MB/backlog/tasks/"bp-11\ *
+out2="$(python3 "$BLINT" "$MB" --no-source 2>&1)"; rc2=$?
+[ "$rc" -eq 1 ] && grep -q "BL046 BP-14: нет приоритета" <<<"$out" && [ "$rc2" -eq 1 ] && grep -q "BL006 BP-11: приоритет — одна метка moscow:" <<<"$out2" \
+  && ok "карта · MoSCoW: без приоритета — BL046, чужое значение — BL006" || fail "карта · MoSCoW не проверяется — $out $out2"
+# формат зон: требования — у истории, разделы — по зоне (BL047); Design — одна точка касания, BE без данных — DBA (BL048)
+ZF="$tmp/bad/zfmt" && cp -r "$BGOLD" "$ZF" && python3 - "$ZF" <<'PY'
+import sys
+from pathlib import Path
+t = Path(sys.argv[1], "backlog/tasks")
+f = next(t.glob("bp-5.3 *")); x = f.read_text(encoding="utf-8")
+f.write_text(x.replace("события блока — в Метрику.\n", "события блока — в Метрику.\n\nТребования БФТ: ИТ-1\n", 1).replace("### GAP\n", "### Разное\n", 1), encoding="utf-8")
+PY
+out="$(python3 "$BLINT" "$ZF" --no-source 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && grep -q "BL047 BP-5.3: требования БФТ — у истории BP-5" <<<"$out" && grep -q "BL047 BP-5.3: раздел «Разное»" <<<"$out" && grep -q "BL047 BP-5.3: зона FE — нужен раздел \`### GAP\`" <<<"$out" \
+  && ok "подзадачи · формат зоны: BL047 (требования в подзадаче, чужой раздел, нет GAP)" || fail "подзадачи · BL047 не пойман — $out"
+ZD="$tmp/bad/zdata" && cp -r "$BGOLD" "$ZD" && python3 - "$ZD" <<'PY'
+import sys
+from pathlib import Path
+t = Path(sys.argv[1], "backlog/tasks")
+f = next(t.glob("bp-5.4 *")); f.write_text(f.read_text(encoding="utf-8").replace("- Рейтинг: Каталог UnitB, restaurants.rating", "- Рейтинг: нет в хранилище", 1), encoding="utf-8")
+f = next(t.glob("bp-5.2 *")); f.write_text(f.read_text(encoding="utf-8").replace("documentation:\n  - doc-4\n", "documentation:\n  - doc-4\n  - doc-6\n", 1), encoding="utf-8")
+PY
+out="$(python3 "$BLINT" "$ZD" --no-source --strict 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && grep -q "BL048 BP-5.2: Design — 2 экрана" <<<"$out" && grep -q "BL048 BP-5.4: данных «нет в хранилище», а подзадачи DBA в истории BP-5 нет" <<<"$out" \
+  && ok "подзадачи · Design — одна точка касания, BE без данных — DBA: BL048" || fail "подзадачи · BL048 не пойман — $out"
+# риски исполнения: кандидаты по данным карты записаны и видны отдельной вкладкой; не записан — RK005, история мимо карты — RK003
+python3 - "$tmp/bout" <<'PY' && ok "риски исполнения · 5 рисков (стык BE+FE у BP-5, интеграция у BP-6, 12, 16, 18), вкладка «Риски»" || fail "риски исполнения не дошли до страницы"
+import json, re, sys
+from pathlib import Path
+page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf-8")
+d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
+r = d["risks"]
+assert [(a["story"], a["kind"]) for a in r["auto"]] == [("BP-5", "befe"), ("BP-6", "integration"), ("BP-12", "integration"), ("BP-16", "integration"), ("BP-18", "integration")]
+assert {(x["story"], x["kind"]) for x in r["items"]} == {(a["story"], a["kind"]) for a in r["auto"]}
+assert all(x["status"] == "на согласовании" for x in r["items"]) and 'data-view="risk">Риски' in page and "function rkBoard" in page
+PY
+RW="$tmp/bad/risks" && cp -r "$BGOLD" "$RW" && sed -i '/^| X2 | BP-6 |/d; s/^| X5 | BP-18 |/| X5 | BP-99 |/' "$RW/backlog/docs/"*Риски-исполнения.md
+out="$(python3 "$BLINT" "$RW" --no-source --strict 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && grep -q "RK005 BP-6: риск «интеграция» по данным карты не записан" <<<"$out" && grep -q "RK003 X5: истории BP-99 на карте нет" <<<"$out" \
+  && ok "риски исполнения · не записан — RK005, история мимо карты — RK003" || fail "риски исполнения · RK005/RK003 не пойманы — $out"
+# User Actions: старт пути персонажа (триггер) и точки входа — из «Карты» и согласованной истории; без триггера — BL050
+python3 - "$tmp/bout" <<'PY' && ok "карта · User Actions: два триггера, точки входа из истории" || fail "карта · User Actions не дошёл до страницы"
+import json, re, sys
+from pathlib import Path
+page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf-8")
+d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
+assert d["triggers"] == [{"persona": "rest", "text": "Ресторан подаёт заявку на участие", "stage": "A"}, {"persona": "guest", "text": "Гость купил билет на оффлайн-мероприятие", "stage": "B"}]
+assert "l-user" in page and "const ENTRY" in page and "trgHTML" in page
+PY
+TG="$tmp/bad/trg" && cp -r "$BGOLD" "$TG" && sed -i '/^| guest | Гость купил билет/d; s/^| rest | Ресторан подаёт заявку на участие | A |$/| rest | Ресторан подаёт заявку на участие | Z |/' "$TG/backlog/docs/doc-1 - "*.md
+out="$(python3 "$BLINT" "$TG" --no-source --strict 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && grep -q "BL050 у персонажа guest нет триггера" <<<"$out" && grep -q "BL049 триггер «Ресторан подаёт заявку на участие»" <<<"$out" \
+  && ok "карта · триггеры: без триггера — BL050, этап мимо истории — BL049" || fail "карта · триггеры не проверяются — $out"
+# BL043: подзадача — зона из списка, родитель — история
+ZB="$tmp/bad/zone" && cp -r "$BGOLD" "$ZB" && python3 - "$ZB" <<'PY'
+import sys
+from pathlib import Path
+t = Path(sys.argv[1], "backlog/tasks")
+f = next(t.glob("bp-5.3 *")); f.write_text(f.read_text(encoding="utf-8").replace("  - zone:FE\n", "  - zone:Frontend\n"), encoding="utf-8")
+f = next(t.glob("bp-5.4 *")); f.write_text(f.read_text(encoding="utf-8").replace("parent_task_id: BP-5\n", "parent_task_id: BP-77\n"), encoding="utf-8")
+PY
+expect_bl "подзадача по зоне: форма"      1 "$ZB" "BL043" --no-source
+# BL044: в работе истории две команды, подзадач нет; BL045: один экран делают истории разных команд
+ZW="$tmp/bad/zonew" && cp -r "$BGOLD" "$ZW" && python3 - "$ZW" <<'PY'
+import sys
+from pathlib import Path
+t = Path(sys.argv[1], "backlog/tasks")
+f = next(t.glob("bp-6.1 *")); f.write_text(f.read_text(encoding="utf-8").replace("assignee: []\n", "assignee:\n  - '@vit'\n", 1), encoding="utf-8")
+f = next(t.glob("bp-9 *")); f.write_text(f.read_text(encoding="utf-8").replace("dependencies: []\n", "dependencies: []\ndocumentation:\n  - doc-6\n", 1), encoding="utf-8")
+PY
+out="$(python3 "$BLINT" "$ZW" --no-source --strict 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && grep -q "BL044 BP-6: в работе 2 команды (UnitB, Витрина)" <<<"$out" && grep -q "BL045 экран D1 делают BP-8, BP-9" <<<"$out" \
+  && ok "карта · кроссфункциональная история без подзадач: BL044; один экран у двух команд: BL045" || fail "карта · BL044/BL045 не пойманы — $out"
 # картинки и mermaid — файлы проекта: страница ссылается на них, а не несёт в себе
 python3 - "$tmp/bout" <<'PY' && ok "карта · картинки экранов и mermaid — файлы проекта, схема BPMN — текст карточки" || fail "карта · страница несёт картинки или mermaid в себе"
 import json, re, sys
@@ -280,7 +381,7 @@ d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
 root = out / d["base"]
 assert d["base"] == "dineclub-restart-blueprint/" and "data:image" not in page and "mermaid.initialize" not in page.split("map-data")[0]
 assert all((root / s["img"]).is_file() and s["img"].startswith("backlog/assets/screens/") for s in d["screens"].values())
-assert (root / d["mermaid"]).is_file() and len(page) < 300_000
+assert (root / d["mermaid"]).is_file() and len(page) < 500_000   # mermaid в странице — мегабайты; код слоёв — сотни КБ
 for sid, md in d["notes"].items():
     for src in re.findall(r"!\[.*?\]\((.+?)\)", md):
         assert (root / src).is_file(), src
@@ -973,6 +1074,97 @@ PY
 out="$(python3 "$BLINT" "$tmp/adr-sense" --no-source 2>&1)"; rc=$?
 [ "$rc" -eq 1 ] && grep -q " AR003 " <<<"$out" \
   && ok "ADR · смысл: AR003 (выбор мимо вариантов, пустое «Почему нет»)" || fail "ADR · смысл не пойман"
+# C4 L3 (AR006): контур не из «Команд», задачи нет на карте, поток мимо компонентов, контракт не из решения
+cp -r "$BGOLD" "$tmp/adr-c4"
+python3 - "$tmp/adr-c4/backlog/docs/doc-15 - ADR.md" << 'PY'
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+t = p.read_text(encoding="utf-8")
+for a, b in [("| Платформа TeamA | teama | сервис | новый | BP-16 |", "| Платформа TeamA | nobody | сервис | новый | BP-99 |"),
+             ("| M8 | M9 | Отметка «использован» | запись | ticket-validation |", "| M8 | M99 | Отметка «использован» | запись | ticket-checks |")]:
+    assert a in t, a; t = t.replace(a, b)
+p.write_text(t, encoding="utf-8")
+PY
+out="$(python3 "$BLINT" "$tmp/adr-c4" --no-source 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && [ "$(grep -c " AR006 " <<<"$out")" -eq 4 ] \
+  && ok "ADR · C4 L3: AR006 (контур, задача, поток, контракт)" || fail "ADR · C4 L3: AR006 не пойман — $out"
+# C4 L3 (AR007): меняемый компонент без задачи, компонент без потока, контракт TO-BE без потока
+cp -r "$BGOLD" "$tmp/adr-c4w"
+python3 - "$tmp/adr-c4w/backlog/docs/doc-15 - ADR.md" << 'PY'
+import re, sys
+from pathlib import Path
+p = Path(sys.argv[1])
+t = p.read_text(encoding="utf-8")
+t = t.replace("| Каталог UnitB | unitb | хранилище | новый | BP-6 |", "| Каталог UnitB | unitb | хранилище | новый | — |")
+t = re.sub(r"^\| M8 \| M9 \|.*\n", "", t, flags=re.M)
+t = re.sub(r"^\| (M3|M4|M7) \| M[67] \|.*\n", "", t, flags=re.M)
+p.write_text(t, encoding="utf-8")
+PY
+out="$(python3 "$BLINT" "$tmp/adr-c4w" --no-source --strict 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && grep -q "AR007 M7 «Кеш каталога 10 минут»: новый, а задачи нет" <<<"$out" && grep -q "AR007 M9 «Реестр использований»: ни одного потока" <<<"$out" \
+  && grep -q "AR007 контракт «restaurant-shelf» решён, но ни один поток" <<<"$out" \
+  && ok "ADR · C4 L3: AR007 (без задачи, без потока, контракт без потока)" || fail "ADR · C4 L3: AR007 не пойман — $out"
+# C4 L3 на странице: таблицы ADR — в данных, схему рисует страница
+python3 - "$tmp/bout" <<'PY' && ok "ADR · C4 L3 на странице: 14 компонентов, 15 потоков, схема и панель компонента" || fail "ADR · C4 L3 не дошёл до страницы"
+import json, re, sys
+from pathlib import Path
+page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf-8")
+d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
+c, f = d["adr"]["components"], d["adr"]["flows"]
+assert len(c) == 14 and len(f) == 15, (len(c), len(f))
+assert {x["team"] for x in c} >= {"vit", "unitb", "teama", "dine", "ext", "?", "—"}
+assert next(x for x in c if x["id"] == "M8")["tasks"] == ["BP-16"]
+assert {x["contract"] for x in f} == {"—", "restaurant-shelf", "ticket-validation"}
+assert "function c4Code" in page and "function openC4" in page and "data-c4team" in page
+PY
+# Roadmap: форма (RM001), строки мимо карты (RM003), полнота и порядок (RM005), слой страницы
+python3 - "$tmp/bout" <<'PY' && ok "Roadmap · на странице: 22 работы за 6 недель, у BP-5 — подзадачи" || fail "Roadmap · не дошёл до страницы"
+import json, re, sys
+from pathlib import Path
+page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf-8")
+d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
+r = d["roadmap"]
+assert r["start"] == "2026-11-02" and r["sprintWeeks"] == 1 and r["weeks"] == 6 and len(r["items"]) == 22, r
+ids = {i["id"] for i in r["items"]}
+assert "BP-5" not in ids and {"BP-5.2", "BP-5.3", "BP-5.4", "BP-5.5"} <= ids
+assert 'data-view="road">Roadmap' in page and "function rmBoard" in page
+PY
+cp -r "$BGOLD" "$tmp/rm-bad"
+python3 - "$tmp/rm-bad" << 'PY'
+import sys
+from pathlib import Path
+f = next(Path(sys.argv[1], "backlog/docs").glob("doc-* - Roadmap.md"))
+t = f.read_text(encoding="utf-8")
+for a, b in [("start: 2026-11-02", "start: 2026-11-04"), ("| BP-18 | 5 | 6 |", "| BP-18 | 5 | 9 |")]:
+    assert a in t, a; t = t.replace(a, b)
+f.write_text(t, encoding="utf-8")
+PY
+out="$(python3 "$BLINT" "$tmp/rm-bad" --no-source 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && grep -q "RM001 start 2026-11-04 — понедельник" <<<"$out" && grep -q "RM001 BP-18: неделя 9 за горизонтом" <<<"$out" \
+  && ok "Roadmap · форма: RM001 (не понедельник, за горизонтом)" || fail "Roadmap · RM001 не пойман — $out"
+cp -r "$BGOLD" "$tmp/rm-ref" && sed -i 's/^| BP-19 | 5 | 6 |$/| BP-99 | 5 | 6 |/' "$tmp/rm-ref/backlog/docs/"*Roadmap.md
+out="$(python3 "$BLINT" "$tmp/rm-ref" --no-source 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && grep -q "RM003 BP-99: в Roadmap — история или подзадача карты" <<<"$out" \
+  && ok "Roadmap · строка мимо карты: RM003" || fail "Roadmap · RM003 не пойман — $out"
+cp -r "$BGOLD" "$tmp/rm-warn"
+python3 - "$tmp/rm-warn" << 'PY'
+import re, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+f = next(Path(root, "backlog/docs").glob("doc-* - Roadmap.md"))
+t = f.read_text(encoding="utf-8")
+t = re.sub(r"^\| BP-13 \|.*\n", "", t, flags=re.M)                     # история вне плана (Would вне плана — не ошибка)
+t = re.sub(r"^\| BP-5\.5 \|.*\n", "| BP-5 | 2 | 5 |\n", t, flags=re.M)  # история с подзадачами — сама в плане
+f.write_text(t, encoding="utf-8")
+g = next(Path(root, "backlog/tasks").glob("bp-17 *"))                    # BP-17 зависит от BP-16, а начинается раньше её конца
+g.write_text(g.read_text(encoding="utf-8").replace("dependencies: []", "dependencies:\n  - BP-16\n", 1).replace("  - BP-16\n\n", "  - BP-16\n", 1), encoding="utf-8")
+PY
+sed -i 's/^| BP-17 | 4 | 5 |$/| BP-17 | 3 | 5 |/' "$tmp/rm-warn/backlog/docs/"*Roadmap.md
+out="$(python3 "$BLINT" "$tmp/rm-warn" --no-source --strict 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && grep -q "RM005 BP-13 «Напоминание в окне 7 дней: письмо или SMS» не в Roadmap" <<<"$out" && ! grep -q "RM005 BP-14" <<<"$out" && grep -q "RM005 BP-5: у истории подзадачи по зонам" <<<"$out" \
+  && grep -q "RM005 BP-5.5 (QA) не в Roadmap" <<<"$out" && grep -q "RM005 BP-17 начинается на неделе 3, а его зависимость BP-16 кончается на неделе 3" <<<"$out" \
+  && ok "Roadmap · полнота и порядок: RM005" || fail "Roadmap · RM005 не пойман — $out"
 # AR002: второй ADR в проекте
 cp -r "$BGOLD" "$tmp/adr-dup"
 cp "$BGOLD/backlog/docs/doc-15 - ADR.md" "$tmp/adr-dup/backlog/docs/doc-50 - второй ADR.md"
@@ -1033,7 +1225,7 @@ block = """## Решение TO-BE
 
 """
 # план эталона уже несёт секции этапа — заменим их на тестовые (одна секция каждого вида)
-t = re.sub(r"^## (?:Решение TO-BE|Варианты|Узкие места|Компромиссы|Контракты)\n.*?(?=^## )", "", t, flags=re.S | re.M)
+t = re.sub(r"^## (?:Решение TO-BE|Варианты|Узкие места|Компромиссы|Компоненты|Потоки|Контракты)\n.*?(?=^## )", "", t, flags=re.S | re.M)
 find = re.search(r"^## BP-1 ", t, re.M)   # позиция заново: секции выше уже вырезаны
 t = t[:find.start()] + block + t[find.start():]
 p.write_text(t, encoding="utf-8")
@@ -1052,11 +1244,11 @@ python3 "$BLINT" "$tmp/adr-plan" --no-source >/dev/null 2>&1 \
 # страница: слой «Архитектура» есть с документами и нет без них
 python3 "$BBUILD" "$tmp/adr-plan" --out-dir "$tmp/adr-out" --no-zip >/dev/null 2>&1
 PAGE=$(ls "$tmp/adr-out"/*-map.html | head -1)
-grep -q '<button data-view="adr">' "$PAGE" && grep -q 'data-adrmenu' "$PAGE" && grep -q '"adr":{' "$PAGE" && grep -q '"sysreq":{' "$PAGE" \
-  && ok "ADR · страница: слой «Архитектура», данные adr и sysreq" || fail "ADR · на странице нет слоя архитектуры"
+! grep -q '<button data-view="adr">' "$PAGE" && grep -q 'data-adrmenu' "$PAGE" && grep -q '"adr":{' "$PAGE" && grep -q '"sysreq":{' "$PAGE" \
+  && ok "ADR · страница: слой «Архитектура» — пунктом меню, не в переключателе; данные adr и sysreq" || fail "ADR · на странице нет слоя архитектуры"
 python3 "$BBUILD" "$tmp/adr-none" --out-dir "$tmp/adr-out2" --no-zip >/dev/null 2>&1
 PAGE2=$(ls "$tmp/adr-out2"/*-map.html | head -1)
-grep -q '<button data-view="adr">' "$PAGE2" || grep -q '"adr":{' "$PAGE2" \
+grep -q '<button class="mi" data-adrmenu>' "$PAGE2" || grep -q '"adr":{' "$PAGE2" \
   && fail "ADR · слой появился без документов" || ok "ADR · без документов слоя нет"
 
 echo

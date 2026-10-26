@@ -14,19 +14,25 @@
     ## Варианты           этап ADR: таблица | ID | Вариант | Надёжность | Скорость реализации | Соответствие требованиям | Почему нет |
     ## Узкие места        этап ADR: таблица | ID | Узкое место | Тип | Нагрузка | Риск | Прощупывание |
     ## Компромиссы        этап ADR: таблица | ID | Компромисс | Надёжность | Скорость реализации | Соответствие требованиям | Чем платим |
+    ## Компоненты         этап ADR, C4 L3: таблица | ID | Компонент | Контекст | Контур | Тип | Изменение | Задачи |
+    ## Потоки             этап ADR, C4 L3: таблица | От | К | Данные | Способ | Контракт |
     ## Контракты          системные требования: таблица | ID | Контракт | Потребитель | Данные контракту | Источник параметров | Преобразования |
     ## Участники          стыки: таблица | ID | Стык | Поставщик | Потребитель | Ответственный за контракт |
     ## Обязательства      стыки: таблица | ID | Кто | Что | Кому | Срок | Формат/место |
     ## Контракты стыков   таблица | Стык | Аспект | Требование к фиксации |
     ## Контрольные точки  стыки: таблица | ID | Точка | Когда | Что проверяется | Кто проводит |
     ## Риски              стыки: таблица | ID | Риск | Следствие | Владелец | Митигация |
+    ## Риски исполнения  таблица | ID | История | Тип | Риск | Митигация | Владелец | Статус |
+    ## Roadmap            сроки: строки «старт: ГГГГ-ММ-ДД» (понедельник) и «спринт: 1|2» (недель), таблица | ID | Неделя с | Неделя по |
     ## Релиз              таблица шагов | ID | Стенд | Что сделать | Ответственный | Тип | Зависимости | Статус | Критерий готовности |
     ## Ворота релиза      таблица | Ворота | Кто утверждает | Критерий перехода |
     ## BP-3 · Название    задача: строки «ключ: значение», пустая строка, описание, ### Критерии приемки
     ## BP-3.1 · Название  карточка: строки «ключ: значение», пустая строка, описание карточки
 
-Ключи задачи: этап, вид, команда | кандидаты, экраны, документы, ссылки.
+Ключи задачи: этап, вид, приоритет (must | should | would), команда | кандидаты, экраны, документы, ссылки.
 Ключи карточки: этап, слой, команда (по умолчанию — команда задачи), экраны, документы, ссылки.
+Ключи подзадачи истории: этап (этап истории), зона (PO, SA, Design, FE, BE, QA, DevOps, Delivery),
+команда | кандидаты, экраны, документы, ссылки; под описанием — «### Критерии приемки» по желанию.
 
   ОШИБКИ ПЛАНА
   PL001  нет plan/map.md или раздела
@@ -66,9 +72,11 @@ HEAD = re.compile(r"^##\s+([A-Za-z]+-\d+(?:\.\d+)?)\s*·\s*(.+?)\s*$")
 
 META = re.compile(r"^([а-яё]+)\s*:\s*(.*)$")
 
-TASK_KEYS = {"этап", "вид", "команда", "кандидаты", "экраны", "документы", "ссылки"}
+TASK_KEYS = {"этап", "вид", "приоритет", "команда", "кандидаты", "экраны", "документы", "ссылки"}
 
 CARD_KEYS = {"этап", "слой", "команда", "экраны", "документы", "ссылки"}
+
+ZONE_KEYS = {"этап", "зона", "команда", "кандидаты", "экраны", "документы", "ссылки"}
 
 AC_HEADS = ("### Критерии приемки", "### Критерии приёмки", "### Чеклист приемки", "### Чеклист приёмки")
 
@@ -90,6 +98,11 @@ class Block:
         return "." in self.id
 
     @property
+    def zone(self) -> bool:
+        """Подзадача истории по зоне: дочерний блок со строкой «зона: FE» (иначе — карточка)."""
+        return self.card and "зона" in self.meta
+
+    @property
     def parent(self) -> str:
         return self.id.rsplit(".", 1)[0] if self.card else ""
 
@@ -98,9 +111,12 @@ class Plan:
     root: Path
     teams: str = ""          # таблица как текст
     questions: str = ""
+    triggers: str = ""       # «## Триггеры» — события старта персонажей
     adr: dict = field(default_factory=dict)      # {«Решение TO-BE»: текст, «Варианты»: …, «Узкие места»: …, «Компромиссы»: …} — этап ADR
     sysreq: dict = field(default_factory=dict)   # {«Контракты»: текст} — системные требования
     seams: dict = field(default_factory=dict)   # {«Участники»: текст, «Обязательства»: …, …} — этап стыков
+    roadmap: str = ""        # «## Roadmap» — старт, длина спринта и недели работ
+    risks: str = ""          # «## Риски исполнения» — риски историй, согласуются с PO
     release: str = ""        # «## Релиз» — шаги плана релиза
     gates: str = ""          # «## Ворота релиза» — кто утверждает переход между стендами
     blocks: list[Block] = field(default_factory=list)
@@ -133,7 +149,8 @@ def parse(root: Path) -> Plan:
             pl.err(rel, n, "PL007", f"шаблон не заполнен: {STUB.search(ln).group(0)}")
     # этап «ADR и Системные требования»: секции документов ADR и «Системные требования»
     ADR_SECTIONS = (("Решение TO-BE", bl.ADR_DECISION_HEADER), ("Варианты", bl.ADR_OPTION_HEADER),
-                    ("Узкие места", bl.BOTTLENECK_HEADER), ("Компромиссы", bl.COMPROMISE_HEADER))
+                    ("Узкие места", bl.BOTTLENECK_HEADER), ("Компромиссы", bl.COMPROMISE_HEADER),
+                    ("Компоненты", bl.C4_COMPONENT_HEADER), ("Потоки", bl.C4_FLOW_HEADER))
     SYSREQ_SECTIONS = (("Контракты", bl.CONTRACTS_HEADER),)
     STAGE_SECTIONS = dict(ADR_SECTIONS + SYSREQ_SECTIONS)
     SEAM_SECTIONS = (("Участники", bl.SEAM_HEADER), ("Обязательства", bl.DELIVERY_HEADER),
@@ -149,6 +166,11 @@ def parse(root: Path) -> Plan:
         if name == "Вопросы":
             pl.questions = "\n".join(body).strip()
             continue
+        if name == "Триггеры":
+            pl.triggers = "\n".join(body).strip()
+            if f"| {' | '.join(bl.TRIGGERS_HEADER)} |" not in pl.triggers:
+                pl.err(rel, n, "PL005", f"«## Триггеры»: таблица | {' | '.join(bl.TRIGGERS_HEADER)} |")
+            continue
         if name in STAGE_SECTIONS:
             text = "\n".join(body).strip()
             (pl.sysreq if name in dict(SYSREQ_SECTIONS) else pl.adr)[name] = text
@@ -160,6 +182,16 @@ def parse(root: Path) -> Plan:
             if f"| {' | '.join(SEAM_SECTION_HEADERS[name])} |" not in pl.seams[name]:
                 pl.err(rel, n, "PL005", f"«## {name}»: таблица | {' | '.join(SEAM_SECTION_HEADERS[name])} |")
             continue
+        if name == "Риски исполнения":
+            pl.risks = "\n".join(body).strip()
+            if f"| {' | '.join(bl.RISKS_HEADER)} |" not in pl.risks:
+                pl.err(rel, n, "PL005", f"«## Риски исполнения»: таблица | {' | '.join(bl.RISKS_HEADER)} |")
+            continue
+        if name == "Roadmap":
+            pl.roadmap = "\n".join(body).strip()
+            if f"| {' | '.join(bl.ROADMAP_HEADER)} |" not in pl.roadmap:
+                pl.err(rel, n, "PL005", f"«## Roadmap»: строки «старт: ГГГГ-ММ-ДД», «спринт: 1» и таблица | {' | '.join(bl.ROADMAP_HEADER)} |")
+            continue
         if name == "Релиз":
             pl.release = "\n".join(body).strip()
             continue
@@ -168,7 +200,7 @@ def parse(root: Path) -> Plan:
             continue
         m = HEAD.match(head)
         if not m:
-            pl.err(rel, n, "PL002", f"«{name}» — заголовок блока: «## BP-3 · Название задачи» (или «## Команды», «## Вопросы», «## Решение TO-BE», «## Варианты», «## Узкие места», «## Компромиссы», «## Контракты» (системные требования), «## Участники», «## Обязательства», «## Контракты стыков», «## Контрольные точки», «## Риски», «## Релиз», «## Ворота релиза»)")
+            pl.err(rel, n, "PL002", f"«{name}» — заголовок блока: «## BP-3 · Название задачи» (или «## Команды», «## Вопросы», «## Триггеры», «## Решение TO-BE», «## Варианты», «## Узкие места», «## Компромиссы», «## Компоненты», «## Потоки», «## Контракты» (системные требования), «## Участники», «## Обязательства», «## Контракты стыков», «## Контрольные точки», «## Риски», «## Риски исполнения», «## Roadmap», «## Релиз», «## Ворота релиза»)")
             continue
         b = Block(m.group(1).upper(), m.group(2), n)
         if b.id in seen:
@@ -185,14 +217,14 @@ def parse(root: Path) -> Plan:
             key, val = mm.group(1), mm.group(2).strip()
             if key == "команда" and val.startswith("кандидаты:"):   # «команда: кандидаты: a, b» — это кандидаты
                 key, val = "кандидаты", val.split(":", 1)[1].strip()
-            allowed = CARD_KEYS if b.card else TASK_KEYS
+            allowed = (CARD_KEYS | ZONE_KEYS) if b.card else TASK_KEYS
             if key not in allowed:
                 pl.err(rel, n + 1 + i, "PL003", f"{b.id}: ключ «{key}» — нужен один из: {', '.join(sorted(allowed))}")
             b.meta[key] = val
             i += 1
         text = "\n".join(body[i:]).strip("\n")
         for h in AC_HEADS:
-            if h in text and not b.card:
+            if h in text and (not b.card or b.zone):
                 text, _, tail = text.partition(h)
                 rest = re.split(r"^### ", tail, maxsplit=1, flags=re.M)
                 b.ac = [re.sub(r"^\s*(?:[-*]|\d+\.)\s+(?:\[[ xX]\]\s+)?", "", x).strip() for x in rest[0].split("\n") if x.strip()]
@@ -230,12 +262,21 @@ def parse(root: Path) -> Plan:
     return pl
 
 def _check_block(pl: Plan, b: Block, rel: str) -> None:
-    need = ("этап", "слой") if b.card else ("этап", "вид")
+    need = ("этап", "зона") if b.zone else ("этап", "слой") if b.card else ("этап", "вид")
+    if b.zone:
+        if b.meta["зона"].lower() not in {z.lower() for z in bl.ZONES}:
+            pl.err(rel, b.line, "PL003", f"{b.id}: зона «{b.meta['зона']}» — одна из {', '.join(bl.ZONES)}")
+        if not b.meta.get("команда") and not b.meta.get("кандидаты"):
+            pl.err(rel, b.line, "PL003", f"{b.id}: «команда: id» зоны или «кандидаты: id1, id2», если исполнитель не ясен")
+        if b.meta.get("слой"):
+            pl.err(rel, b.line, "PL003", f"{b.id}: «слой» — у карточки «Как это работает», «зона» — у подзадачи; одно из двух")
     for k in need:
         if not b.meta.get(k):
             pl.err(rel, b.line, "PL003", f"{b.id}: нет строки «{k}: …» сразу под заголовком")
-    if b.card and b.meta.get("слой") and b.meta["слой"] not in bl.LAYERS:
+    if b.card and not b.zone and b.meta.get("слой") and b.meta["слой"] not in bl.LAYERS:
         pl.err(rel, b.line, "PL003", f"{b.id}: слой «{b.meta['слой']}» — один из {', '.join(bl.LAYERS)}")
+    if not b.card and b.meta.get("приоритет") and b.meta["приоритет"].lower() not in bl.MOSCOW:
+        pl.err(rel, b.line, "PL003", f"{b.id}: приоритет «{b.meta['приоритет']}» — один из {', '.join(bl.MOSCOW)}")
     if not b.card and b.meta.get("вид") and b.meta["вид"] not in bl.KINDS:
         pl.err(rel, b.line, "PL003", f"{b.id}: вид «{b.meta['вид']}» — один из {', '.join(bl.KINDS)}")
     if not b.card and not b.meta.get("команда") and not b.meta.get("кандидаты"):
@@ -283,6 +324,36 @@ def seams_doc_text(title: str, pl: Plan, meta: dict) -> str:
         if pl.seams.get(sec):
             parts += [f"## {sec}", "", pl.seams[sec], ""]
     return "\n".join(parts).rstrip("\n") + "\n"
+
+RISKS_DOC_TITLE = "Риски исполнения"
+
+def risks_doc_text(title: str, pl: Plan, meta: dict) -> str:
+    """Текст документа «Риски исполнения»: паспорт и таблица «Риски»."""
+    m = "\n".join(["<!-- bft-risks"] + [f"{k}: {meta[k]}" for k in bl.RISKS_META] + ["-->", "",
+                   f"# Риски исполнения: {title}", "",
+                   "Что может сорвать срок историй: стык BE+FE в одной истории, работы DevOps, интеграция новых",
+                   "или внешних систем. Каждый риск — с митигацией и владельцем; статус согласования — с PO.", ""])
+    return "\n".join([m, "## Риски", "", pl.risks.strip(), ""]).rstrip("\n") + "\n"
+
+ROADMAP_DOC_TITLE = "Roadmap"
+
+def roadmap_doc_text(title: str, pl: Plan, meta: dict) -> str:
+    """Текст документа «Roadmap»: паспорт со стартом и длиной спринта, таблица «План»."""
+    m = "\n".join(["<!-- bft-roadmap"] + [f"{k}: {meta[k]}" for k in bl.ROADMAP_META] + ["-->", "",
+                   f"# Roadmap: {title}", "",
+                   "Сроки работ на карте: кто что делает по неделям, недели — в спринтах; горизонт — не больше",
+                   f"{bl.ROADMAP_MAX_SPRINTS} спринтов. Строка — история или подзадача истории; кто делает — исполнитель задачи.", ""])
+    table = "\n".join(ln for ln in pl.roadmap.split("\n") if ln.strip().startswith("|"))
+    return "\n".join([m, "## План", "", table, ""]).rstrip("\n") + "\n"
+
+def roadmap_keys(text: str) -> dict:
+    """Строки «старт: …» и «спринт: …» раздела «## Roadmap» плана."""
+    out = {}
+    for ln in text.split("\n"):
+        mm = META.match(ln.strip())
+        if mm and mm.group(1) in ("старт", "спринт"):
+            out[mm.group(1)] = mm.group(2).strip()
+    return out
 
 RELEASE_DOC_TITLE = "План релиза"
 
@@ -408,6 +479,8 @@ def apply(pl: Plan, root: Path) -> list[str]:
         new = _replace_section(body, "Команды", pl.teams)
         if pl.questions:
             new = _replace_section(new, "Вопросы", pl.questions)
+        if pl.triggers:
+            new = _replace_section(new, "Триггеры", pl.triggers)
         if new != body:
             f.write_text(head + new, encoding="utf-8")
             out.append(f"«Карта»: команды и вопросы — {f.relative_to(root)}")
@@ -426,9 +499,10 @@ def apply(pl: Plan, root: Path) -> list[str]:
                                  "в разделе «Диаграмма AS-IS/TO-BE». Открытые вопросы и блокеры — в таблице «Вопросы»",
                                  "документа «Карта» («Где» — ID варианта или компромисса V1, C1)."],
                                 [(s, pl.adr.get(s, "")) for s in ("Контекст", "AS-IS", "Варианты", "Решение TO-BE",
-                                                                  "Узкие места", "Компромиссы", "Диаграмма AS-IS/TO-BE")], ameta)
+                                                                  "Узкие места", "Компромиссы", "Компоненты", "Потоки",
+                                                                  "Диаграмма AS-IS/TO-BE")], ameta)
         # «Контекст», «AS-IS» и «Диаграмма» живут в документе (руками/скиллом), apply не переписывает их
-        out += _write_stage_doc(pr, bdir, root, adoc, "bft-adr", ADR_DOC_TITLE, atext, {"Решение TO-BE", "Варианты", "Узкие места", "Компромиссы"})
+        out += _write_stage_doc(pr, bdir, root, adoc, "bft-adr", ADR_DOC_TITLE, atext, {"Решение TO-BE", "Варианты", "Узкие места", "Компромиссы", "Компоненты", "Потоки"})
     if pl.sysreq:
         sdoc = next((d for d in pr.docs.values() if d.meta.get("_kind") == "bft-sysreq"), None)
         smeta = {"epic_slug": pr.meta.get("epic_slug", ""), "version": pr.meta.get("version", "1"),
@@ -473,6 +547,60 @@ def apply(pl: Plan, root: Path) -> list[str]:
                 fm["updated_date"] = cli.now()
                 seamdoc.path.write_text(cli.dump_front(fm) + text, encoding="utf-8")
                 out.append(f"«Стыки»: обновлён {did} — {seamdoc.path.relative_to(root)}")
+    # «Риски исполнения»: риски историй с митигацией и согласованием PO
+    if pl.risks:
+        kdoc = next((d for d in pr.docs.values() if d.meta.get("_kind") == "bft-risks"), None)
+        meta = {"epic_slug": pr.meta.get("epic_slug", ""), "version": pr.meta.get("version", "1"),
+                "revised": cli.now()[:10], "status": "Черновик"}
+        if kdoc:
+            meta = {k: str(kdoc.meta.get(k, "")) for k in bl.RISKS_META}
+        text = risks_doc_text(pr.title, pl, meta)
+        if kdoc is None:
+            nums = set(int(m.group(1)) for d in pr.docs for m in [re.fullmatch(r"doc-(\d+)", d)] if m)
+            nums |= getattr(pr, "_stage_doc_nums_taken", set())
+            did = f"doc-{_next_doc_num(nums)}"
+            pr._stage_doc_nums_taken = set(getattr(pr, "_stage_doc_nums_taken", set())) | {int(did[4:])}
+            fm = {"id": did, "title": RISKS_DOC_TITLE, "type": "specification", "created_date": cli.now()}
+            p = bdir / "docs" / f"{did} - {cli.slug(RISKS_DOC_TITLE)}.md"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(cli.dump_front(fm) + text, encoding="utf-8")
+            out.append(f"«Риски исполнения»: создан {did} — {p.relative_to(root)}")
+        else:
+            old = kdoc.path.read_text(encoding="utf-8")
+            fm, off = bl.yaml_front(old)
+            fm = fm or {}
+            if "\n".join(old.split("\n")[off:]).lstrip("\n") != text:
+                fm["updated_date"] = cli.now()
+                kdoc.path.write_text(cli.dump_front(fm) + text, encoding="utf-8")
+                out.append(f"«Риски исполнения»: обновлён {kdoc.id} — {kdoc.path.relative_to(root)}")
+    # «Roadmap»: сроки работ по неделям и спринтам
+    if pl.roadmap:
+        mdoc = next((d for d in pr.docs.values() if d.meta.get("_kind") == "bft-roadmap"), None)
+        keys = roadmap_keys(pl.roadmap)
+        meta = {"epic_slug": pr.meta.get("epic_slug", ""), "version": pr.meta.get("version", "1"),
+                "revised": cli.now()[:10], "status": "Черновик"}
+        if mdoc:
+            meta = {k: str(mdoc.meta.get(k, "")) for k in ("epic_slug", "version", "revised", "status")}
+        meta.update({"start": keys.get("старт", ""), "sprint_weeks": keys.get("спринт", "1")})
+        text = roadmap_doc_text(pr.title, pl, meta)
+        if mdoc is None:
+            nums = set(int(m.group(1)) for d in pr.docs for m in [re.fullmatch(r"doc-(\d+)", d)] if m)
+            nums |= getattr(pr, "_stage_doc_nums_taken", set())
+            did = f"doc-{_next_doc_num(nums)}"
+            pr._stage_doc_nums_taken = set(getattr(pr, "_stage_doc_nums_taken", set())) | {int(did[4:])}
+            fm = {"id": did, "title": ROADMAP_DOC_TITLE, "type": "specification", "created_date": cli.now()}
+            p = bdir / "docs" / f"{did} - {cli.slug(ROADMAP_DOC_TITLE)}.md"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(cli.dump_front(fm) + text, encoding="utf-8")
+            out.append(f"«Roadmap»: создан {did} — {p.relative_to(root)}")
+        else:
+            old = mdoc.path.read_text(encoding="utf-8")
+            fm, off = bl.yaml_front(old)
+            fm = fm or {}
+            if "\n".join(old.split("\n")[off:]).lstrip("\n") != text:
+                fm["updated_date"] = cli.now()
+                mdoc.path.write_text(cli.dump_front(fm) + text, encoding="utf-8")
+                out.append(f"«Roadmap»: обновлён {mdoc.id} — {mdoc.path.relative_to(root)}")
     # «План релиза»: дорожки DEV/STAGE/PROD, шаги и ворота
     if pl.release or pl.gates:
         rdoc = next((d for d in pr.docs.values() if d.meta.get("_kind") == "bft-release"), None)
@@ -540,7 +668,14 @@ def apply(pl: Plan, root: Path) -> list[str]:
                                 "assignee": [], "created_date": cli.now(), "labels": [], "dependencies": []})
         fm = t.fm
         fm["title"] = b.title
-        if b.card:
+        if b.zone:
+            zone = {z.lower(): z for z in bl.ZONES}.get(b.meta["зона"].lower(), b.meta["зона"])
+            cands = split(b.meta.get("кандидаты", ""))
+            labels = [f"stage:{b.meta.get('этап', '')}", f"zone:{zone}"] + [f"кандидат:{c}" for c in cands]
+            team = b.meta.get("команда", "")
+            fm["assignee"] = [f"@{team.lstrip('@')}"] if team and not cands else []
+            fm["parent_task_id"] = b.parent
+        elif b.card:
             labels = [f"stage:{b.meta.get('этап', '')}", f"layer:{b.meta.get('слой', '')}"]
             team = b.meta.get("команда", "")
             fm["assignee"] = [f"@{team.lstrip('@')}"] if team else []
@@ -548,10 +683,12 @@ def apply(pl: Plan, root: Path) -> list[str]:
         else:
             cands = split(b.meta.get("кандидаты", ""))
             labels = [f"stage:{b.meta.get('этап', '')}", b.meta.get("вид", "")] + [f"кандидат:{c}" for c in cands]
+            if b.meta.get("приоритет"):
+                labels.append(f"moscow:{b.meta['приоритет'].lower()}")
             team = b.meta.get("команда", "")
             fm["assignee"] = [f"@{team.lstrip('@')}"] if team and not cands else []
             fm.pop("parent_task_id", None)
-        keep = [x for x in fm.get("labels") or [] if not re.match(r"^(stage:|layer:|кандидат:)", str(x)) and x not in bl.KINDS]
+        keep = [x for x in fm.get("labels") or [] if not re.match(r"^(stage:|layer:|zone:|moscow:|кандидат:)", str(x)) and x not in bl.KINDS]
         fm["labels"] = labels + keep
         docs_ids = [screen_doc.get(s, "") for s in split(b.meta.get("экраны", ""))] + split(b.meta.get("документы", ""))
         if "экраны" in b.meta or "документы" in b.meta:
@@ -562,12 +699,12 @@ def apply(pl: Plan, root: Path) -> list[str]:
             order += 1000
             fm["ordinal"] = order
         body = b.body
-        if b.card and "### BPMN" not in body:
+        if b.card and not b.zone and "### BPMN" not in body:
             old_bpmn = re.search(r"^### BPMN\n.*?(?=^### |\Z)", t.sections.get("DESCRIPTION", ""), re.S | re.M)
             if old_bpmn and "### HowToDemo" in body:
                 body = body.replace("### HowToDemo", old_bpmn.group(0).rstrip("\n") + "\n\n### HowToDemo", 1)
         t.sections["DESCRIPTION"] = body
-        if not b.card:
+        if not b.card or b.zone:
             done = {x: d for d, x in t.ac}
             t.ac = [[done.get(x, False), x] for x in b.ac]
         ordered = {k: fm[k] for k in cli.FM_ORDER if k in fm}
@@ -615,6 +752,8 @@ def export(root: Path) -> dict[str, str]:
         m = re.search(rf"^## {name}\s*\n(.*?)(?=^## |\Z)", body, re.S | re.M)
         return m.group(1).strip() if m else ""
     o = [f"# План карты: {pr.title}", "", "## Команды", "", table("Команды"), "", "## Вопросы", "", table("Вопросы"), ""]
+    if table("Триггеры"):
+        o += ["## Триггеры", "", table("Триггеры"), ""]
     # этап «ADR и Системные требования»: секции документов ADR и «Системные требования»
     if pr.adr_doc is not None and pr.adr is not None:
         abody = pr.adr_doc.body
@@ -622,7 +761,7 @@ def export(root: Path) -> dict[str, str]:
         def stable(name: str, src: str = "") -> str:
             m = re.search(rf"^## {name}\s*\n(.*?)(?=^## |\Z)", src or abody, re.S | re.M)
             return m.group(1).strip() if m else ""
-        for sec in ("Решение TO-BE", "Варианты", "Узкие места", "Компромиссы"):
+        for sec in ("Решение TO-BE", "Варианты", "Узкие места", "Компромиссы", "Компоненты", "Потоки"):
             t = stable(sec)
             if t:
                 o += [f"## {sec}", "", t, ""]
@@ -641,6 +780,14 @@ def export(root: Path) -> dict[str, str]:
             t = stable(sec)
             if t:
                 o += [f"## {sec}", "", t, ""]
+    if pr.risks_doc is not None and pr.risks is not None:
+        mk = re.search(r"^## Риски\s*\n(.*?)(?=^## |\Z)", pr.risks_doc.body, re.S | re.M)
+        if mk:
+            o += ["## Риски исполнения", "", mk.group(1).strip(), ""]
+    if pr.roadmap_doc is not None and pr.roadmap is not None:
+        mm = re.search(r"^## План\s*\n(.*?)(?=^## |\Z)", pr.roadmap_doc.body, re.S | re.M)
+        if mm:
+            o += ["## Roadmap", "", f"старт: {pr.roadmap.start}", f"спринт: {pr.roadmap.sprint_weeks}", "", mm.group(1).strip(), ""]
     if pr.release_doc is not None and pr.release is not None:
         rbody = pr.release_doc.body if pr.release_doc else ""
 
@@ -654,7 +801,7 @@ def export(root: Path) -> dict[str, str]:
     for t in sorted(pr.tasks, key=lambda x: x.ordinal):
         r = raw[t.id]
         cands = [str(lb).split(":", 1)[1] for lb in r.fm.get("labels") or [] if str(lb).startswith("кандидат:")]
-        meta = [f"этап: {t.stage}", f"вид: {t.kind}"]
+        meta = [f"этап: {t.stage}", f"вид: {t.kind}"] + ([f"приоритет: {t.prio}"] if t.prio else [])
         meta.append(f"кандидаты: {', '.join(cands)}" if cands else f"команда: {t.team}")
         o += _export_block(t, r, meta, sid_of)
         if r.ac:
@@ -665,6 +812,13 @@ def export(root: Path) -> dict[str, str]:
             if rc.fm.get("assignee"):
                 cmeta.append(f"команда: {str(rc.fm['assignee'][0]).lstrip('@')}")
             o += _export_block(c, rc, cmeta, sid_of)
+        for z in sorted([z for z in pr.subtasks if z.parent == t.id], key=lambda x: x.ordinal):
+            rz = raw[z.id]
+            zc = [str(lb).split(":", 1)[1] for lb in rz.fm.get("labels") or [] if str(lb).startswith("кандидат:")]
+            zmeta = [f"этап: {z.stage}", f"зона: {z.zone}", f"кандидаты: {', '.join(zc)}" if zc else f"команда: {z.team}"]
+            o += _export_block(z, rz, zmeta, sid_of)
+            if rz.ac:
+                o += ["### Критерии приемки"] + [f"- {x}" for _, x in rz.ac] + [""]
     files[f"{PLAN_DIR}/map.md"] = "\n".join(o).rstrip("\n") + "\n"
     return files
 

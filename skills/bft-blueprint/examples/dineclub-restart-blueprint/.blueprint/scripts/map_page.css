@@ -104,7 +104,7 @@ body.mopen .menu{transform:none}body.mopen .mscrim{opacity:1;pointer-events:auto
 /* как это работает */
 .ml.hrow{text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink);background:#fff}.ml.hrow small{display:block;font-size:11px;font-weight:400;color:var(--muted);margin-top:1px}
 .mc.how{background:#fff;padding:14px 8px!important;justify-content:center}
-.l-employee{border-top:1.5px solid #cfcac0}.l-technology{border-top:1px solid #ece8e1}.l-backstage{border-top:1.5px dashed #9a958c}.l-support{border-top:1.5px dotted #9a958c}
+.l-employee{border-top:1.5px dashed #9a958c}.l-technology{border-top:1px solid #ece8e1}.l-backstage{border-top:1.5px dashed #9a958c}.l-support{border-top:1.5px dotted #9a958c}
 .hw{position:relative;z-index:2;display:flex;gap:6px;align-items:flex-start;text-align:left;font-size:12.5px;line-height:1.35;border-radius:10px;padding:9px 11px;cursor:pointer;border:1px solid transparent;transition:opacity .2s}
 .hw span{flex:1}.hw i{flex:none;width:8px;height:8px;border-radius:50%;background:var(--c);margin-top:4px}
 .hw.employee{background:#f7ece3;color:#6b3410}.hw.technology{background:#e5f3f4;color:#0d4e50}.hw.backstage{background:#e7edf8;color:#1d3d70}.hw.support{background:#efecf6;color:#41356b}
@@ -406,3 +406,120 @@ body.open.side2 .tr{display:none}
 .hwc>b{display:block;margin:4px 0 0;font-size:14px;font-weight:600;line-height:1.4}
 .hwc .bpmnw{margin-top:10px;max-height:260px;overflow:hidden;pointer-events:none;border:0;background:#faf9f6;padding:8px}.hwc .bpmnw pre{font-size:11px;white-space:pre-wrap;max-height:120px;overflow:hidden}
 .hwc .bpmnw svg{width:100%!important;max-width:100%!important;min-width:0!important;height:auto}
+/* C4 L3 в ADR: легенда изменений и контуров, схема компонентов, панель компонента */
+/* схема шире колонки ADR: на весь экран, иначе mermaid ужимает подписи до нечитаемых */
+.c4{margin:0 0 26px;width:calc(100vw - 48px);max-width:1680px;position:relative;left:50%;transform:translateX(-50%)}.c4 h4{margin:0 0 8px}
+.c4lg{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:0 0 10px;font-size:12.5px}
+.c4k{display:inline-flex;align-items:center;gap:6px;color:#55524c}.c4k::before{content:"";width:14px;height:10px;border-radius:3px;border:2px solid}
+.c4k.nw::before{background:#e8f4ea;border-color:#2f6b2a}.c4k.md::before{background:#fff3e3;border:2px dashed #d06a12}.c4k.kp::before{background:#f4f2ee;border-color:#b9b3a8}
+.c4k.as::before{width:18px;height:0;border:0;border-top:2px dashed #8c877d;border-radius:0}
+.c4sep{width:1px;height:16px;background:#e2ded6;margin:0 4px}
+.c4t{display:inline-flex;align-items:center;gap:6px;border:1px solid #e2ded6;background:#fff;border-radius:999px;padding:4px 10px;font:inherit;font-size:12.5px;cursor:pointer;color:var(--ink)}
+.c4t i{width:9px;height:9px;border-radius:3px;background:var(--c)}.c4t b{font-size:11px;color:#8a857c;font-weight:600}.c4t.on{border-color:var(--c);box-shadow:0 0 0 1px var(--c) inset}
+.c4box{padding:12px}.c4box.ok svg{min-width:1100px}
+.c4list{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:4px 24px}
+.c4list li{display:flex;gap:8px;align-items:baseline;padding:5px 0;border-bottom:1px solid #f0ede7;font-size:13px;line-height:1.4}
+.c4list li>b{flex:none;width:20px;height:20px;border-radius:50%;background:#f2f0ec;font-size:11px;display:inline-flex;align-items:center;justify-content:center}
+.c4list em{display:block;font-style:normal;color:#55524c}.c4list small{display:block;font-size:11.5px;color:#8a857c}.c4box g.node[data-c4]{cursor:pointer}.c4box g.node[data-c4]:hover>*:first-child{filter:brightness(.96)}
+.c4box g.node.dim{opacity:.22}.c4box small{font-size:10.5px;color:#8a857c}
+.c4fl{list-style:none;margin:0;padding:0!important}.c4fl li{display:flex;gap:8px;align-items:baseline;padding:4px 0;font-size:13.5px}
+.c4fl li>b{flex:none;width:20px;height:20px;border-radius:50%;background:#f2f0ec;font-size:11px;display:inline-flex;align-items:center;justify-content:center}
+.c4fl em{display:block;font-style:normal;color:var(--ink)}.c4fl small{display:block;font-size:12px;color:#8a857c}
+/* эпик → история → подзадачи по зонам: на карте — строки зон под историей, в постановке — список, у подзадачи — своя панель */
+.wk .zs{display:flex;flex-direction:column;gap:3px;margin-top:8px;padding-top:7px;border-top:1px dashed #e2ded6}
+.wk .z{display:flex;align-items:center;gap:7px;font-size:11.5px;color:#55524c;line-height:1.3}
+.wk .z b,.zt{flex:none;min-width:46px;padding:1px 6px;border-radius:5px;background:color-mix(in srgb,var(--c) 14%,#fff);color:color-mix(in srgb,var(--c) 75%,#000);font-size:10.5px;font-weight:700;text-align:center}
+.zl{list-style:none;margin:0;padding:0!important}.zl li{display:flex;gap:10px;align-items:baseline;padding:6px 4px;margin:0!important;border-radius:6px;cursor:pointer}.zl li:hover{background:#faf8f4}
+.zl small{display:block;font-size:12px;color:#8a857c}.tkmeta .zt{display:inline-block;margin-right:2px}
+.zac{margin:0;padding-left:18px}
+/* слой «Roadmap»: строки — команды, столбцы — недели в спринтах, полосы — работы */
+.road{display:none}
+body[data-view="road"] .hero,body[data-view="road"] .wrap,body[data-view="road"] .mstack{display:none}
+body[data-view="road"] .road{display:block}
+.rmwrap{--rmw:190px;padding:76px 24px 60px;background:var(--soft);min-height:100vh;box-sizing:border-box}
+.rmhead{max-width:1400px;margin:0 auto 14px}.rmhead h2{margin:6px 0 4px;font-size:26px}.rmhead p{margin:0;color:var(--muted);font-size:14px}
+.rmscroll{overflow-x:auto;max-width:1400px;margin:0 auto;background:#fff;border:1px solid var(--line);border-radius:14px}
+.rmboard{min-width:calc(var(--rmw) + 6 * 112px)}
+.rmhd,.rmrow{display:grid;column-gap:0;row-gap:6px}
+.rmhd{position:sticky;top:0;background:#fff;z-index:2;border-bottom:1px solid var(--line);row-gap:0}
+.rmc0{grid-row:1 / 3}
+.rmsp{grid-row:1;padding:10px 10px 2px;font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#55524c;border-left:1px solid var(--line)}
+.rmwk{grid-row:2;padding:2px 10px 10px;font-size:11.5px;color:#8a857c;border-left:1px solid #f0ede7}.rmwk b{display:block;font-size:12.5px;color:var(--ink);font-weight:600}
+.rmwk.now{background:#fff7e6}.rmwk.now b::after{content:" · сейчас";color:#b7791f;font-weight:600}
+.rmrow{padding:10px 0;border-bottom:1px solid #f0ede7;position:relative}.rmrow:last-child{border-bottom:0}
+.rmtm{grid-column:1;padding:2px 12px;display:flex;flex-direction:column;gap:1px;font-size:13px}.rmtm i{width:10px;height:10px;border-radius:3px;background:var(--c);margin-bottom:3px}
+.rmtm small{font-size:11.5px;color:#8a857c}
+.rmc{border-left:1px solid #f0ede7;margin:-10px 0}.rmc.se{border-right:1px solid var(--line)}.rmc.now{background:#fffaf0}
+.rmbar{position:relative;z-index:1;margin:0 4px;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;text-align:left;padding:6px 9px;border:1px solid color-mix(in srgb,var(--c) 45%,#fff);border-left:4px solid var(--c);border-radius:8px;background:color-mix(in srgb,var(--c) 9%,#fff);font:inherit;cursor:pointer}
+.rmbar:hover{background:color-mix(in srgb,var(--c) 16%,#fff)}.rmbar.blk{box-shadow:inset 0 0 0 1px var(--red)}
+.rmid{display:flex;gap:6px;align-items:center;font-size:11px;font-weight:700;color:#55524c}.rmid .zt{font-style:normal;min-width:0}
+.rmtx{font-size:12.5px;line-height:1.3;color:var(--ink);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.rmoff{max-width:1400px;margin:16px auto 0}.rmoff h4{margin:0 0 6px;font-size:13px}
+.rmback{display:none;border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 12px;font:inherit;font-size:13px;margin:0 0 10px;cursor:pointer}
+@media(max-width:700px){.rmwrap{--rmw:120px;padding:60px 10px 40px}.rmback{display:block}}
+/* слои «Архитектура», «Roadmap», «Релиз» — длиннее экрана: на большом экране html и body не прокручиваются
+   (карта листается в своём окне), поэтому слой — своё окно прокрутки */
+@media(min-width:701px){body[data-view="adr"] .adrscr,body[data-view="rel"] .rel,body[data-view="road"] .road,body[data-view="risk"] .risk{height:100vh;overflow-y:auto;overflow-x:hidden}}
+/* MoSCoW и линия Out of scope на слое «Что делаем»: Would — под линией, приглушённо */
+.wk .tm .pr,.tkmeta .pr{margin-left:6px;padding:0 5px;border-radius:4px;font-size:9.5px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;line-height:15px}
+.pr.must{background:#1d1d1b;color:#fff}.pr.should{background:#ece8df;color:#55524c}.pr.would{background:none;border:1px dashed #b9b3a8;color:#8a857c}
+.tkmeta .pr{margin-left:0;font-size:10px}
+.oosl{grid-column:1 / -1;position:relative;border-top:2px dashed #c4bdb1;margin:6px 0 0;height:0}
+.ml.oosm{color:#8a857c;padding-top:16px!important}.ml.oosm small{display:block;margin-top:4px;font-size:10.5px;font-weight:500;letter-spacing:0;text-transform:none;line-height:1.3;color:#a8a399}
+.mc.oosc{padding-top:12px!important}
+.wk.oos,.hw.oos{opacity:.62;border-style:dashed}.wk.oos:hover,.hw.oos:hover{opacity:1}
+.rmbar.oos{opacity:.6;border-style:dashed;border-left-style:solid}
+.lb.oosb{color:#8a857c;border-top:2px dashed #c4bdb1;padding-top:8px}
+body[data-view="how"] .oosl,body[data-view="how"] .oosm,body[data-view="how"] .oosc{display:none}
+/* компоненты «Что делаем»: история — пунктирная группа, работа — белая карточка (референс PO) */
+.ui-story{width:100%;box-sizing:border-box;border:2px dashed #cfcac0;border-radius:16px;padding:10px;display:flex;flex-direction:column;gap:8px;transition:opacity .2s}
+.ui-head{display:grid;grid-template-columns:auto 1fr auto;align-items:start;gap:10px;padding:2px 4px 2px;border:0;background:none;text-align:left;font:inherit;cursor:pointer;color:var(--ink)}
+.ui-chip{flex:none;margin-top:1px;padding:2px 8px;border-radius:6px;background:#ece8fb;color:#6b4fd4;font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;line-height:16px}
+.ui-name{min-width:0;font-size:14px;font-weight:700;line-height:1.35}
+.ui-head:hover .ui-name{text-decoration:underline;text-decoration-color:#cfcac0;text-underline-offset:3px}
+.ui-prio{flex:none;padding:1px 7px;border-radius:6px;border:1px solid #d8d3c9;color:#6b6b6b;font-size:10.5px;font-weight:600;line-height:16px}
+.ui-prio.would{border-style:dashed}
+.ui-head .ui-tags{margin-top:1px}
+.ui-card{width:100%;display:flex;flex-direction:column;gap:6px;text-align:left;background:#fff;border:1px solid #e6e2da;border-radius:12px;padding:10px 12px 11px;font:inherit;color:var(--ink);cursor:pointer;transition:border-color .15s,box-shadow .15s,opacity .2s}
+.ui-card:hover,.ui-card:focus-visible,.ui-head:focus-visible{border-color:#cfc8bb;box-shadow:0 6px 18px rgba(0,0,0,.07);outline:none}
+.ui-card.blk{background:#fdf4f2;border-color:#efc9c2}
+.ui-top{display:flex;align-items:center;gap:8px;min-height:20px}
+.ui-team{display:flex;align-items:center;gap:7px;min-width:0;font-size:12.5px;font-weight:700;color:#55524c}.ui-team i{flex:none;width:9px;height:9px;border-radius:50%;background:var(--c)}
+.ui-team.u{color:var(--red)}.ui-team.u i{background:#fff;border:1.5px dashed var(--red)}
+.ui-tags{margin-left:auto;display:flex;align-items:center;gap:6px;flex:none}
+.ui-zone{padding:1px 7px;border:1px solid #d8d3c9;border-radius:6px;font-size:11px;color:#6b6b6b;line-height:16px}
+.ui-q{min-width:20px;height:20px;border-radius:10px;background:#fbe3e0;color:var(--red);font-size:11px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;padding:0 5px;box-sizing:border-box}
+.ui-blk{padding:2px 8px;border-radius:7px;background:var(--red);color:#fff;font-size:11px;font-weight:700;line-height:16px}
+.ui-title{font-size:13.5px;line-height:1.4}
+.ui-own{padding:8px 12px}
+.ui-story.oos{opacity:.6}.ui-story.oos:hover{opacity:1}.ui-story.dim,.ui-card.dim{opacity:.15}
+.zreq{margin:6px 0 0;font-size:13px}
+/* вкладка «Риски»: сводка по типам, риски по историям, статус согласования с PO */
+.risk{display:none}
+body[data-view="risk"] .hero,body[data-view="risk"] .wrap,body[data-view="risk"] .mstack{display:none}
+body[data-view="risk"] .risk{display:block}
+.rkwrap{max-width:1100px;margin:0 auto;padding:76px 24px 60px;box-sizing:border-box}
+.rksum{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:0 0 22px}
+.rks{background:#fff;border:1px solid #e6e2da;border-radius:14px;padding:14px 16px}.rks b{display:block;font-size:26px;line-height:1}.rks span{display:block;margin-top:6px;font-weight:700;font-size:14px}.rks small{display:block;margin-top:4px;font-size:12.5px;color:#8a857c;line-height:1.4}
+.rkst-g{border:2px dashed #cfcac0;border-radius:16px;padding:10px;margin:0 0 14px}
+.rkgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:8px;margin-top:8px}
+.rkcard{background:#fff;border:1px solid #e6e2da;border-radius:12px;padding:12px 14px}
+.rktop{display:flex;align-items:center;gap:8px}.rkid{font-size:11.5px;color:#8a857c;font-weight:600}
+.rkk{padding:1px 8px;border-radius:6px;background:#f6ecea;color:#a0392d;font-size:11px;font-weight:700;line-height:17px;white-space:nowrap}
+.rkst{margin-left:auto;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600;line-height:17px;background:#fff4e0;color:#9a6a12}.rkst.ok{background:#e8f4ea;color:#2f6b2a}.rkst.off{background:#f2f0ec;color:#8a857c}
+.rktx{margin:8px 0 6px;font-size:14px;line-height:1.45}.rkm{margin:0 0 6px;font-size:13px;line-height:1.45;color:#3e3c38}.rkm span{display:block;font-size:11px;font-weight:700;color:#8a857c;text-transform:uppercase;letter-spacing:.4px}
+.rko{margin:0;font-size:12px;color:#8a857c}.rkcard.off{opacity:.6}
+.rkmiss{margin-top:20px}.rkmiss h4{margin:0 0 8px;font-size:13px}
+.rkm-i{display:block;width:100%;text-align:left;background:#fff;border:1px dashed #e0b9b2;border-radius:12px;padding:10px 12px;margin:0 0 8px;font:inherit;font-size:13.5px;cursor:pointer}.rkm-i small{display:block;color:#8a857c;font-size:12px;margin-top:3px}.rkm-i .rkk{margin-right:6px}
+.rkst-g .ui-head{width:100%}
+/* User Actions: точки входа клиента — круглая точка, экран, контур и персонаж; ниже — линия взаимодействия */
+.mc.how.l-user{flex-direction:row;flex-wrap:wrap;align-items:flex-start;justify-content:flex-start;gap:10px 18px}
+.ua{position:relative;z-index:2;display:flex;align-items:flex-start;gap:8px;max-width:100%;border:0;background:none;padding:2px 0;text-align:left;font:inherit;cursor:pointer;color:var(--ink)}
+.ua i{flex:none;width:14px;height:14px;margin-top:2px;border-radius:50%;background:#1d1d1b;box-shadow:0 0 0 4px #fff,0 0 0 5px #cfcac0}
+.ua span{display:flex;flex-direction:column;min-width:0}.ua b{font-size:12.5px;font-weight:600;line-height:1.35}.ua small{font-size:11.5px;color:#8a857c}
+.ua:hover b{text-decoration:underline;text-decoration-color:#cfcac0;text-underline-offset:3px}
+/* триггер: стартовое событие BPMN — зелёный круг, «Старт» и событие */
+.uat{position:relative;z-index:2;display:flex;align-items:flex-start;gap:8px;max-width:100%;padding:2px 0}
+.uat i{flex:none;width:16px;height:16px;margin-top:1px;border-radius:50%;background:#fff;border:2.5px solid #2f6b2a;box-sizing:border-box}
+.uat span{display:flex;flex-direction:column;min-width:0}.uat em{font-style:normal;font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#2f6b2a}
+.uat b{font-size:12.5px;font-weight:700;line-height:1.35}.uat small{font-size:11.5px;color:#8a857c}

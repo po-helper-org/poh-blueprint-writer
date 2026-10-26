@@ -23,6 +23,18 @@
   const teamN = t => t.team === "?" || !TEAM[t.team] ? "Команда?" : TEAM[t.team].name;
   const TASK = {}; D.tasks.forEach(t => TASK[t.id] = t);
   const PROC = {}; D.cards.forEach(p => PROC[p.id] = p);
+  /* эпик (БФТ) → история (задача «Что делаем») → подзадачи по зонам; история в одном контуре — без подзадач */
+  const ZONES = ["PO", "BA", "SA", "ADR", "Design", "BE", "DBA", "FE", "DevOps", "QA", "Delivery"];
+  /* постановка подзадачи — в формате зоны; чеклист называется по смыслу зоны */
+  const ZONE_SECS = { Design: ["UserStory", "JobStory", "UserFlow"], BE: ["ASIS", "GAP", "TOBE", "Данные"], DBA: ["ASIS", "GAP", "TOBE"], FE: ["ASIS", "GAP", "TOBE"], DevOps: ["ASIS", "GAP", "TOBE"] };
+  const ZONE_CHECK = { PO: "Согласования", BA: "Вопросы по бизнес-логике", SA: "Вопросы по системной реализации", ADR: "Решения", Design: "На экране" };
+  const SUBS = D.subs || [], SUB = {}; SUBS.forEach(z => SUB[z.id] = z);
+  const subsOf = id => SUBS.filter(z => z.task === id).sort((a, b) => ZONES.indexOf(a.zone) - ZONES.indexOf(b.zone));
+  /* MoSCoW: Must и Should — коммитмент заказчику, Would — за линией Out of scope */
+  const PRIO = { must: "Must", should: "Should", would: "Would" }, PRIO_ORD = { must: 0, should: 1, "": 2, would: 3 };
+  const oos = t => t && t.prio === "would";
+  const byPrio = list => list.slice().sort((a, b) => PRIO_ORD[a.prio || ""] - PRIO_ORD[b.prio || ""]);
+  const leadOf = t => t.team in TEAM && (D.teams.find(x => x.id === t.team) || {}).lead || "";
   const qOf = where => D.questions.filter(q => q.where === where && q.open);
   /* вопросы карты («Карта») и истории («История») — одним списком; ответ PO уходит в промпт агенту */
   const QS = [...D.questions.map(q => ({ ...q, key: "map:" + q.id, doc: "map" })), ...D.storyQuestions.map(q => ({ ...q, kind: "вопрос", key: "story:" + q.id, doc: "story" }))];
@@ -43,7 +55,7 @@
   /* ---------- шапка ---------- */
   const uniqBlk = [...new Set(D.questions.filter(q => q.open && q.kind === "блокер").map(q => q.text))];
   document.getElementById("blk").innerHTML = uniqBlk.length ? `<button class="mi blk" data-guide="blk"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M3.5 12.5l9-9"/></svg>Блокеры<b class="cnt">${uniqBlk.length}</b></button>` : "";
-  const used = {}; D.tasks.forEach(t => used[t.team] = (used[t.team] || 0) + 1);
+  const used = {}; [...D.tasks, ...SUBS].forEach(t => used[t.team] = (used[t.team] || 0) + 1);
   const nTasks = n => `${n} ${n % 10 === 1 && n % 100 !== 11 ? "задача" : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? "задачи" : "задач"}`;
   document.getElementById("teams").innerHTML = D.teams.filter(t => used[t.id]).map(t => `<button class="tchip" data-tf="${t.id}" style="--c:${TEAM[t.id].c}"><i></i>${esc(t.name)}<b>${nTasks(used[t.id])}</b></button>`).join("") +
     (used["?"] ? `<button class="tchip" data-tf="?" style="--c:var(--red)"><i class="u"></i>Команда не определена<b>${nTasks(used["?"])}</b></button>` : "");
@@ -60,7 +72,7 @@
   /* фильтр по команде: подсветить её работу, на кнопке меню — чип с крестиком */
   function teamFilter(id) {
     document.querySelectorAll(".tchip").forEach(x => x.classList.toggle("on", x.dataset.tf === id));
-    document.querySelectorAll(".wk,.hw").forEach(x => x.classList.toggle("dim", !!id && x.dataset.team !== id));
+    document.querySelectorAll(".ui-story,.hw,.ui-card[data-sub]").forEach(x => x.classList.toggle("dim", !!id && !(x.dataset.teams || x.dataset.team).split(" ").includes(id)));
     const t = id && (id === "?" ? { name: "Команда не определена", c: "var(--red)" } : TEAM[id]);
     document.getElementById("fchip").innerHTML = t ? `<button class="fchip" data-tf-clear style="--c:${t.c}" aria-label="Снять фильтр"><i></i>${esc(t.name)}<span aria-hidden="true">×</span></button>` : "";
   }
@@ -76,22 +88,58 @@
       return `<div class="seen" data-seen="${s.key}" role="button" tabindex="0"><span class="th">${mock(s.steps[0].screens[0])}</span><div class="sx">${w}<b>${esc(s.steps[0].title)}</b><p>${esc(s.steps[0].text)}</p>${more ? `<span class="more">+${more} ${plural(more, "шаг", "шага", "шагов")}</span>` : ""}</div></div>`;
     }).join("");
   }
+  /* компоненты слоя «Что делаем» — страница собирает их из данных Backlog.md, разметку не пишет никто:
+     история — пунктирная группа (чип «История», название, приоритет, вопросы и блокер истории);
+     работа — карточка (команда, зона, вопросы, блокер, название). Кроссфункциональная история —
+     группа с карточками подзадач; история в одном контуре — группа со строкой команды. */
+  const uiTeam = w => `<span class="ui-team${w.team === "?" ? " u" : ""}"><i style="--c:${teamC(w)}"></i>${esc(w.team === "?" && w.cand ? "Команда? " + w.cand : teamN(w))}</span>`;
+  const uiTags = (id, zone, prio) => { const n = asks(id), b = blocks(id).length;
+    return `<span class="ui-tags">${prio && prio !== "must" ? `<span class="ui-prio ${prio}">${PRIO[prio]}</span>` : ""}${zone ? `<span class="ui-zone">${esc(zone)}</span>` : ""}${n && !b ? `<span class="ui-q" title="Открытых вопросов: ${n}">${n}</span>` : ""}${b ? '<span class="ui-blk">Блокер</span>' : ""}</span>` };
+  const uiCard = z => `<button class="ui-card${blocks(z.id).length ? " blk" : ""}" data-sub="${esc(z.id)}" data-team="${z.team}"><span class="ui-top">${uiTeam(z)}${uiTags(z.id, z.zone)}</span><span class="ui-title">${esc(z.text)}</span></button>`;
   function taskHTML(t) {
-    const b = blocks(t.id).length, a = asks(t.id);
-    return `<button class="wk${b ? " blk" : ""}" data-task="${t.id}" data-team="${t.team}" style="--c:${teamC(t)}"><span class="tm${t.team === "?" ? " u" : ""}"><i></i>${esc(teamN(t))}${b ? '<span class="bl">Блокер</span>' : a ? `<span class="qn" title="Открытых вопросов: ${a}">${a}</span>` : ""}</span><span class="tx">${esc(t.text)}</span></button>`;
+    const subs = subsOf(t.id), teams = [...new Set([t.team, ...subs.map(z => z.team)])].join(" ");
+    const head = `<button class="ui-head" data-task="${t.id}"><span class="ui-chip">История</span><span class="ui-name">${esc(t.text)}</span>${subs.length ? uiTags(t.id, "", t.prio) : ""}</button>`;
+    const body = subs.length ? subs.map(uiCard).join("")
+      : `<button class="ui-card ui-own${blocks(t.id).length ? " blk" : ""}" data-task="${t.id}"><span class="ui-top">${uiTeam(t)}${uiTags(t.id, "", t.prio)}</span></button>`;
+    return `<div class="ui-story${oos(t) ? " oos" : ""}" data-teams="${teams}">${head}${body}</div>`;
   }
   function procHTML(p) {
     const b = blocks(p.id).length + blocks(p.task).length;
-    return `<button class="hw ${p.layer}${b ? " blk" : ""}" data-proc="${p.id}" data-team="${p.team}" style="--c:${teamC(p)}"><span>${esc(p.text)}</span><i title="${esc(teamN(p))}"></i></button>`;
+    return `<button class="hw ${p.layer}${b ? " blk" : ""}${oos(TASK[p.task]) ? " oos" : ""}" data-proc="${p.id}" data-team="${p.team}" style="--c:${teamC(p)}"><span>${esc(p.text)}</span><i title="${esc(teamN(p))}"></i></button>`;
   }
 
   /* ---------- холст ---------- */
   grid.className = "map";
-  grid.style.gridTemplateColumns = `96px repeat(${COLS.length}, minmax(224px, 1fr))`;
-  grid.style.minWidth = `${96 + COLS.length * 236}px`;
+  grid.style.gridTemplateColumns = `96px repeat(${COLS.length}, minmax(272px, 1fr))`;
+  grid.style.minWidth = `${96 + COLS.length * 284}px`;
   let h = `<div class="mh corner"></div>` + COLS.map((c, i) => `<div class="mh"><span class="n">${i === COLS.length - 1 ? "✓" : i + 1}</span><span class="hx"><b>${esc(c.name)}</b>${c.when ? `<small>${esc(c.when)}</small>` : ""}</span></div>`).join("");
-  h += `<div class="ml do">Что делаем</div>` + COLS.map((col, c) => `<div class="mc do">${D.tasks.filter(t => t.stage === col.id).map(taskHTML).join("")}</div>`).join("");
+  h += `<div class="ml do">Что делаем</div>` + COLS.map(col => `<div class="mc do">${byPrio(D.tasks.filter(t => t.stage === col.id && !oos(t))).map(taskHTML).join("")}</div>`).join("");
+  /* линия Out of scope: под ней — истории Would, они к инициативе относятся, но коммитментом заказчику не обсуждались */
+  if (D.tasks.some(oos)) h += `<div class="oosl do"></div><div class="ml do oosm">Out of scope<small>Would — не коммитмент заказчику</small></div>` +
+    COLS.map(col => `<div class="mc do oosc">${D.tasks.filter(t => t.stage === col.id && oos(t)).map(taskHTML).join("")}</div>`).join("");
   /* все четыре ряда — даже пустой: «сотрудника на виду у гостя нет» — тоже ответ */
+  /* User Actions — над слоями: точки входа клиента. Точка — страница, с которой персонаж начинает свой
+     процесс на этапе: первый экран его шага и каждый переход в другой контур (письмо → витрина). Шаг на
+     чужой поверхности (экран официанта, который видит гость) точкой не считается — это вход другого
+     персонажа. Всё — из согласованной истории (шаги и таблица «Экраны»), без новых данных. */
+  const ENTRY = COLS.map((_, c) => {
+    const firsts = {};
+    const per = D.seen.filter(s => s.col === c && !s.final).map(s => {
+      const pts = []; let prev = null;
+      s.steps.forEach(st => { const sid = st.screens[0]; if (!sid) return; const k = D.screens[sid].contour; if (prev === null || k !== prev) pts.push({ sid, contour: k, persona: s.persona, first: !pts.length }); prev = k });
+      if (pts[0]) firsts[pts[0].contour] = s.persona;
+      return pts;
+    }).flat();
+    const seenSid = new Set();
+    return per.filter(e => (e.first || !(e.contour in firsts) || firsts[e.contour] === e.persona) && !seenSid.has(e.sid) && seenSid.add(e.sid));
+  });
+  const scrTitle = sid => { const d = Object.values(D.docs).find(x => x.screen === sid); return d ? d.title.replace(/^[^·]*·\s*/, "") : sid };
+  const entryHTML = e => { const p = D.personas.find(x => x.id === e.persona) || { name: "" };
+    return `<button class="ua" data-entry="${esc(e.sid)}" data-persona="${esc(e.persona)}" title="${esc(p.name)}: ${esc(scrTitle(e.sid))}"><i></i><span><b>${esc(e.sid)} · ${esc(scrTitle(e.sid))}</b><small>${esc(e.contour)} · ${esc(p.name.split(/[\s-]+/)[0])}</small></span></button>` };
+  /* триггер — событие старта пути персонажа («Гость купил билет»): с него начинается чтение диаграммы */
+  const trgHTML = tg => { const p = D.personas.find(x => x.id === tg.persona) || { name: tg.persona };
+    return `<div class="uat" data-persona="${esc(tg.persona)}" title="Старт пути: ${esc(p.name)}"><i></i><span><em>Старт</em><b>${esc(tg.text)}</b><small>${esc(p.name.split(/[\s-]+/)[0])}</small></span></div>` };
+  h += `<div class="ml hrow how l-user">User Actions<small>старт и точки входа клиента</small></div>` + COLS.map((col, c) => `<div class="mc how l-user">${(D.triggers || []).filter(tg => tg.stage === col.id).map(trgHTML).join("")}${ENTRY[c].map(entryHTML).join("")}</div>`).join("");
   Object.keys(LAYER).forEach(l => {
     h += `<div class="ml hrow how l-${l}">${LAYER[l][0]}<small>${LAYER[l][1]}</small></div>` + COLS.map(col => `<div class="mc how l-${l}">${D.cards.filter(p => p.layer === l && p.stage === col.id).map(procHTML).join("")}</div>`).join("");
   });
@@ -116,6 +164,20 @@
       if (Math.abs(A.cx - B.cx) < 40) s += B.t > A.b ? path([[A.cx, A.b], [A.cx, B.t]]) : path([[A.cx, A.t], [A.cx, B.b]]);
       else if (B.l > A.r) s += Math.abs(A.cy - B.cy) < 3 ? path([[A.r, A.cy], [B.l, B.cy]]) : path([[A.r, A.cy], [B.l - 12, A.cy], [B.l - 12, B.cy], [B.l, B.cy]]);
       else if (A.l > B.r) s += path([[A.l, A.cy], [B.r + 12, A.cy], [B.r + 12, B.cy], [B.r, B.cy]]);
+    });
+    grid.querySelectorAll(".uat").forEach(tg => {
+      const dot = tg.parentElement.querySelector(`.ua[data-persona="${tg.dataset.persona}"]`); if (!dot) return;
+      const A = R(tg.querySelector("i")), B = R(dot.querySelector("i"));
+      s += Math.abs(A.cy - B.cy) < 4 ? path([[A.r, A.cy], [B.l, B.cy]]) : path([[A.cx, A.b], [A.cx, B.cy], [B.l, B.cy]]);
+    });
+    grid.querySelectorAll(".ua[data-entry]").forEach(dot => {
+      const sid = dot.dataset.entry, key = Object.keys(D.docs).find(k => D.docs[k].screen === sid);
+      const col = dot.closest(".mc"), idx = [...grid.children].indexOf(col) % (COLS.length + 1);
+      const card = key && [...grid.querySelectorAll(".hw[data-proc]")].find(el => [...grid.children].indexOf(el.closest(".mc")) % (COLS.length + 1) === idx
+        && PROC[el.dataset.proc].docs.some(d => String(d).toLowerCase().split(" ")[0] === key));
+      if (!card) return;
+      const A = R(dot.querySelector("i")), B = R(card);
+      s += path([[A.cx, A.b], [A.cx, B.t]]);
     });
     grid.insertAdjacentHTML("beforeend", s + "</svg>");
   }
@@ -367,6 +429,67 @@
     rlSave(); rlBoard(); openRelease(nid);
   }
   function rlGo(id) { if (body.dataset.view === "rel") { openRelease(id); const c = gridRel.querySelector(`[data-rlstep="${id}"]`); if (c) c.scrollIntoView({ block: "center", behavior: "smooth" }) } }
+  /* ---------- слой «Roadmap»: кто что делает по неделям, недели — в спринтах ----------
+     Данные — документ «Roadmap» (ключ roadmap #map-data). Строка — команда-исполнитель (техлид рядом),
+     полоса — история или подзадача по зоне, с какой недели по какую; пересекающиеся полосы команды —
+     друг под другом. Шапка — спринты и недели с датами, текущая неделя подсвечена. Клик — постановка.
+     Работы карты без строки в плане — списком «Вне плана». */
+  const RM = D.roadmap || null, gridRoad = document.getElementById("road");
+  function rmBoard() {
+    if (!RM || !gridRoad) return;
+    const W = RM.weeks, SW = RM.sprintWeeks, d0 = new Date(RM.start + "T00:00:00");
+    const day = (w, k) => { const x = new Date(d0); x.setDate(x.getDate() + 7 * (w - 1) + k); return x };
+    const dm = x => `${String(x.getDate()).padStart(2, "0")}.${String(x.getMonth() + 1).padStart(2, "0")}`;
+    const now = new Date(), nowW = Math.floor((now - d0) / 864e5 / 7) + 1;
+    const work = id => TASK[id] || SUB[id];
+    const items = RM.items.filter(i => work(i.id));
+    const teamIds = [...D.teams.map(t => t.id), "?"].filter(tm => items.some(i => work(i.id).team === tm));
+    const cols = `grid-template-columns:var(--rmw) repeat(${W}, minmax(112px, 1fr))`;
+    const wcol = (w, cls) => `<div class="rmc${w % SW === 0 && w < W ? " se" : ""}${w === nowW ? " now" : ""}${cls || ""}" style="grid-column:${w + 1}"></div>`;
+    let h = `<div class="rmhd" style="${cols}"><div class="rmc0"></div>${Array.from({ length: W / SW }, (_, k) => `<div class="rmsp" style="grid-column:${k * SW + 2} / span ${SW}">Спринт ${k + 1}</div>`).join("")}
+      ${Array.from({ length: W }, (_, k) => `<div class="rmwk${k + 1 === nowW ? " now" : ""}" style="grid-column:${k + 2}"><b>Неделя ${k + 1}</b>${dm(day(k + 1, 0))}–${dm(day(k + 1, 4))}</div>`).join("")}</div>`;
+    teamIds.forEach(tm => {
+      const mine = items.filter(i => work(i.id).team === tm).sort((a, b) => a.start - b.start || b.end - a.end);
+      const lanes = []; mine.forEach(i => { let l = lanes.findIndex(end => end < i.start); if (l < 0) { l = lanes.length; lanes.push(0) } lanes[l] = i.end; i._lane = l + 1 });
+      const t = tm === "?" ? { team: "?" } : { team: tm }, lead = tm in TEAM && (D.teams.find(x => x.id === tm) || {}).lead;
+      h += `<div class="rmrow" style="${cols};--c:${teamC(t)}"><div class="rmtm" style="grid-row:1 / ${lanes.length + 1}"><i></i><b>${esc(tm === "?" ? "Команда не определена" : teamN(t))}</b>${lead ? `<small>${esc(lead)}</small>` : ""}<small>${mine.length} ${plural(mine.length, "работа", "работы", "работ")}</small></div>
+        ${Array.from({ length: W }, (_, k) => wcol(k + 1).replace('style="', `style="grid-row:1 / ${lanes.length + 1};`)).join("")}
+        ${mine.map(i => { const w = work(i.id), z = SUB[i.id];
+          return `<button class="rmbar${blocks(i.id).length ? " blk" : ""}${oos(w) ? " oos" : ""}" ${z ? "data-sub" : "data-task"}="${esc(i.id)}" style="grid-column:${i.start + 1} / ${i.end + 2};grid-row:${i._lane}" title="${esc(i.id)} · ${esc(w.text)} · недели ${i.start}–${i.end}"><span class="rmid">${z ? `<i class="zt" style="--c:${teamC(z)}">${esc(z.zone)}</i>` : ""}${esc(i.id)}</span><span class="rmtx">${esc(w.text)}</span></button>` }).join("")}</div>`;
+    });
+    const planned = new Set(RM.items.map(i => i.id));
+    const off = [...D.tasks.filter(t => !oos(t) && !subsOf(t.id).length && !planned.has(t.id)), ...SUBS.filter(z => !oos(z) && !planned.has(z.id))];
+    const last = day(W, 4);
+    gridRoad.innerHTML = `<div class="rmwrap"><div class="rmhead"><button class="rmback" data-view="see">← К карте</button><span class="arst">${esc(RM.status)}</span><h2>Roadmap</h2>
+      <p>${W / SW} ${plural(W / SW, "спринт", "спринта", "спринтов")} по ${SW} ${plural(SW, "неделе", "недели", "недель")} · ${dm(day(1, 0))} — ${dm(last)}.${last.getFullYear()} · не больше ${RM.maxSprints} спринтов</p></div>
+      <div class="rmscroll"><div class="rmboard">${h}</div></div>
+      ${off.length ? `<div class="rmoff"><h4>Вне плана · ${off.length}</h4>${off.map(w => `<button class="ref" ${SUB[w.id] ? "data-sub" : "data-task"}="${esc(w.id)}" title="${esc(w.text)}">${esc(w.id)}</button>`).join(" ")}</div>` : ""}</div>`;
+  }
+
+  /* ---------- вкладка «Риски»: риски исполнения историй, согласуются с PO, на основной карте их нет ----------
+     Данные — документ «Риски исполнения» (ключ risks.items) и кандидаты по данным карты (risks.auto):
+     стык BE+FE, DevOps, интеграция систем. Сводка по типам, риски по историям со статусом согласования;
+     кандидаты без строки в документе — блоком «Не записаны». */
+  const RK = D.risks || null, gridRisk = document.getElementById("risk");
+  const RK_KIND = { befe: ["Стык BE+FE", "в истории подзадачи BE и FE — детали реализации не собраны, бэкенд может не успеть отдать данные"], devops: ["DevOps", "в истории работы DevOps — CI/CD, сетевые доступы, загрузка команды"], integration: ["Интеграция систем", "история работает с внешней системой или заводит новый сервис — согласования и доступы"], other: ["Другое", ""] };
+  const RK_ST = { "на согласовании": "wait", "согласован": "ok", "снят": "off" };
+  function rkBoard() {
+    if (!RK || !gridRisk) return;
+    const items = RK.items, have = new Set(items.map(r => r.story + ":" + r.kind)), miss = RK.auto.filter(a => !have.has(a.story + ":" + a.kind));
+    const kinds = Object.keys(RK_KIND).filter(k => items.some(r => r.kind === k) || miss.some(a => a.kind === k));
+    const ok = items.filter(r => r.status === "согласован").length;
+    const stories = [...new Set(items.map(r => r.story))].sort((a, b) => D.tasks.findIndex(t => t.id === a) - D.tasks.findIndex(t => t.id === b));
+    const card = r => `<div class="rkcard ${RK_ST[r.status] || ""}"><div class="rktop"><span class="rkk">${esc(RK_KIND[r.kind][0])}</span><span class="rkid">${esc(r.id)}</span><span class="rkst ${RK_ST[r.status] || ""}">${esc(r.status)}</span></div>
+      <p class="rktx">${mdInline(r.text)}</p><p class="rkm"><span>Митигация</span>${mdInline(r.mitigation)}</p><p class="rko">Владелец · ${esc(r.owner)}</p></div>`;
+    gridRisk.innerHTML = `<div class="rkwrap"><div class="rmhead"><button class="rmback" data-view="see">← К карте</button>${RK.status ? `<span class="arst">${esc(RK.status)}</span>` : ""}<h2>Риски исполнения</h2>
+      <p>Согласуются с PO инициативы · ${items.length} ${plural(items.length, "риск", "риска", "рисков")}, согласовано ${ok}${miss.length ? ` · не записано ${miss.length}` : ""}</p></div>
+      <div class="rksum">${kinds.map(k => `<div class="rks"><b>${items.filter(r => r.kind === k).length + miss.filter(a => a.kind === k).length}</b><span>${esc(RK_KIND[k][0])}</span><small>${esc(RK_KIND[k][1])}</small></div>`).join("")}</div>
+      ${stories.map(sid => { const t = TASK[sid] || { id: sid, text: sid };
+        return `<section class="rkst-g"><button class="ui-head" data-task="${esc(sid)}"><span class="ui-chip">История</span><span class="ui-name">${esc(t.text)}</span><span class="ui-tags"><span class="ui-zone">${esc(sid)}</span></span></button>
+          <div class="rkgrid">${items.filter(r => r.story === sid).map(card).join("")}</div></section>` }).join("")}
+      ${miss.length ? `<section class="rkmiss"><h4>Не записаны — найдены по данным карты</h4>${miss.map(a => `<button class="rkm-i" data-task="${esc(a.story)}"><span class="rkk">${esc(RK_KIND[a.kind][0])}</span><b>${esc(a.story)}</b> ${esc((TASK[a.story] || {}).text || "")}<small>${esc(RK_KIND[a.kind][1])}</small></button>`).join("")}</section>` : ""}</div>`;
+  }
+
   /* первый шаг дорожки — куда ведут её ворота */
   const rlStepOfTrack = tr => { const s = RL.steps.find(x => x.track === tr); return s ? s.id : (RL.steps[0] ? RL.steps[0].id : "") };
 
@@ -383,8 +506,10 @@
     document.querySelectorAll("button[data-view]").forEach(b => b.classList.toggle("on", b.dataset.view === v));
     if (v === "rel") { if (RL) { rlBoard(); gridRel.scrollIntoView({ block: "start" }) } return }
     if (v === "adr") { if (AR || SR) { adrBoard(); adrGrid.scrollIntoView({ block: "start" }) } return }
-    if (was === "rel" || was === "adr") { window.scrollTo(0, 0) }
-    const col = was === "see" ? firstVisible(hh, hs, 132) : was === "rel" ? 0 : firstVisible(mh, work, 96);
+    if (v === "road") { if (RM) { rmBoard(); gridRoad.scrollTop = 0 } return }
+    if (v === "risk") { if (RK) { rkBoard(); gridRisk.scrollTop = 0 } return }
+    if (was === "rel" || was === "adr" || was === "road" || was === "risk") { window.scrollTo(0, 0) }
+    const col = was === "see" ? firstVisible(hh, hs, 132) : was === "rel" || was === "road" || was === "risk" ? 0 : firstVisible(mh, work, 96);
     if (v === "see") hs.scrollLeft = hh[col] ? hh[col].offsetLeft - 132 : 0;
     else { work.scrollTop = 0; work.scrollLeft = mh[col] ? mh[col].offsetLeft - 96 : 0 }
     drawLinks();
@@ -393,9 +518,9 @@
 
   /* ---------- телефон: шаг за шагом сверху вниз; план релиза и архитектура — секциями в начале стека ---------- */
   document.getElementById("mstack").innerHTML = (RL ? `<section class="ms rlms"><div class="mh2"><span class="n">↗</span><div><b>План релиза</b><small>DEV → STAGE → PROD, ворота переходов</small></div></div><div class="wl" id="mrel"></div></section>` : "") + ((AR || SR) ? `<section class="ms arsms"><div class="mh2"><span class="n">A</span><div><b>Архитектура</b><small>ADR и системные требования: как реализуем</small></div></div><div id="madr"></div></section>` : "") + COLS.map((col, c) => {
-    const tasks = D.tasks.filter(t => t.stage === col.id), procs = D.cards.filter(p => p.stage === col.id);
+    const tasks = byPrio(D.tasks.filter(t => t.stage === col.id)), procs = D.cards.filter(p => p.stage === col.id);
     return `<section class="ms"><div class="mh2"><span class="n">${c === COLS.length - 1 ? "✓" : c + 1}</span><div><b>${esc(col.name)}</b>${col.when ? `<small>${esc(col.when)}</small>` : ""}</div></div>
-      <div class="wl">${seenHTML(c)}</div>${tasks.length ? `<span class="lb">Что делаем</span><div class="wl">${tasks.map(taskHTML).join("")}</div>` : ""}
+      <div class="wl">${seenHTML(c)}</div>${tasks.some(t => !oos(t)) ? `<span class="lb">Что делаем</span><div class="wl">${tasks.filter(t => !oos(t)).map(taskHTML).join("")}</div>` : ""}${tasks.some(oos) ? `<span class="lb oosb">Out of scope · Would</span><div class="wl">${tasks.filter(oos).map(taskHTML).join("")}</div>` : ""}
       ${procs.length ? `<span class="lb">Как это работает</span><div class="wl">${procs.map(procHTML).join("")}</div>` : ""}</section>`;
   }).join("");
   /* телефон: план релиза — дорожки по очереди, карточки те же, ворота строкой */
@@ -416,11 +541,11 @@
     if (!mr) return;
     {
       arCur = "adr";
-      mr.innerHTML = `<div class="arwrap"><div class="arnav">${AR ? `<button data-artab="adr" class="on">ADR</button>` : ""}${SR ? `<button data-artab="sys">Системные требования</button>` : ""}</div>${AR ? adrOpen() : ""}${SR ? sysOpen() : ""}</div>`;
+      mr.innerHTML = `<div class="arwrap"><div class="arnav">${AR ? `<button data-artab="adr" class="on">ADR</button>` : ""}${SR ? `<button data-artab="sys">Системные требования</button>` : ""}</div>${AR ? adrOpen(true) : ""}${SR ? sysOpen() : ""}</div>`;
       mr.querySelectorAll("[data-artab]").forEach(b => b.addEventListener("click", () => {
         arCur = b.dataset.artab;
         mr.querySelectorAll("[data-artab]").forEach(x => x.classList.toggle("on", x === b));
-        mr.innerHTML = `<div class="arwrap"><div class="arnav">${AR ? `<button data-artab="adr"${arCur === "adr" ? ' class="on"' : ""}>ADR</button>` : ""}${SR ? `<button data-artab="sys"${arCur === "sys" ? ' class="on"' : ""}>Системные требования</button>` : ""}</div>${arCur === "adr" && AR ? adrOpen() : ""}${arCur === "sys" && SR ? sysOpen() : ""}</div>`;
+        mr.innerHTML = `<div class="arwrap"><div class="arnav">${AR ? `<button data-artab="adr"${arCur === "adr" ? ' class="on"' : ""}>ADR</button>` : ""}${SR ? `<button data-artab="sys"${arCur === "sys" ? ' class="on"' : ""}>Системные требования</button>` : ""}</div>${arCur === "adr" && AR ? adrOpen(true) : ""}${arCur === "sys" && SR ? sysOpen() : ""}</div>`;
       }));
     }
   }
@@ -479,6 +604,13 @@
     body.classList.add("side2");
   }
   function execHide() { body.classList.remove("side2", "how"); exFrom = ""; ex.dataset.task = "" }
+  /* «←»: из подзадачи и карточки «Как это работает» — к истории, из постановки — к экрану или этапу, откуда её открыли, иначе — к экрану */
+  function goBack() {
+    const [kind, id] = (side.dataset.ctx || ":").split(":");
+    if (kind === "sub") return openTask(SUB[id].task, 0);
+    if (kind === "proc" && TASK[PROC[id].task]) return openTask(PROC[id].task, 0);
+    return kind === "task" && exFrom ? execBack() : openScreen(snCur);
+  }
   /* назад из постановки — к экрану или этапу, откуда её открыли */
   function execBack() {
     const [kind, id] = exFrom.split(/:(.*)/);
@@ -526,6 +658,17 @@
         ${c.bpmn ? `<div class="bpmnw"><pre>${esc(c.bpmn)}</pre></div>` : ""}</section>` }).join("")}</div>`;
     body.classList.add("side2", "how"); ex.scrollTop = 0;
     ex.querySelectorAll(".bpmnw").forEach(drawMermaid);
+  }
+  /* подзадача истории по зоне: что сделать, исполнитель, критерии приемки; «←» — к истории */
+  function openSub(id) {
+    const z = SUB[id], t = TASK[z.task];
+    const ac = z.ac.length ? `<ul class="zac">${z.ac.map(([, x]) => `<li>${mdInline(x)}</li>`).join("")}</ul>` : "";
+    const brief = (ZONE_SECS[z.zone] || []).map(k => sec(k, mdHTML((z.brief || {})[k] || ""))).join("");
+    const reqs = t && t.reqs.length ? `<p class="zreq"><span class="lk">Требования БФТ</span> ${t.reqs.map(esc).join(", ")}</p>` : "";
+    side.innerHTML = head(z.text, `<b class="zt" style="--c:${teamC(z)}">${esc(z.zone)}</b> <span class="pteam" style="--c:${teamC(z)}"><i></i>${esc(z.team === "?" && z.cand ? "Команда? " + z.cand : teamN(z))}</span> · ${esc(id)} · ${esc(z.status)}`, true) + `<div class="snbody">
+      ${z.lead ? `<p class="tklead">${mdInline(z.lead)}</p>` : ""}${brief}${sec(ZONE_CHECK[z.zone] || "Критерии приемки", ac)}${sec("Требования истории", t ? refList([`${idChip(t.id)} ${esc(t.text)}`]) + reqs : "")}${sec("Вопросы", qList(qsOf([id])))}</div>`;
+    body.classList.remove("wide"); body.classList.add("open"); side.scrollTop = 0;
+    side.dataset.ctx = "sub:" + id; side.dataset.note = "";
   }
   function execOpen(id) {
     openTask(id, 0, true); execShow(null, "", id);
@@ -595,7 +738,7 @@
   const qList = qs => qs.length ? `<ul class="tkq">${qs.map(q => { const st = qState(q);
     return `<li class="${q.kind === "блокер" ? "b " : ""}${st}" data-q="${esc(q.key)}" tabindex="0">${st === "done" || st === "past" ? '<i class="ok">✓</i>' : '<i class="qd"></i>'}<span>${q.kind === "блокер" ? "<b>Блокер.</b> " : ""}${esc(q.text)} <em>— ${esc(q.to)}</em></span></li>` }).join("")}</ul>` : "";
   /* ссылка на другую задачу или карточку, документ, страницу */
-  const idChip = id => PROC[id] ? `<button class="ref" data-proc="${id}" title="${esc(PROC[id].text)}">${esc(id)}</button>` : TASK[id] ? `<button class="ref" data-task="${id}" title="${esc(TASK[id].text)}">${esc(id)}</button>` : `<code>${esc(id)}</code>`;
+  const idChip = id => SUB[id] ? `<button class="ref" data-sub="${id}" title="${esc(SUB[id].text)}">${esc(id)}</button>` : PROC[id] ? `<button class="ref" data-proc="${id}" title="${esc(PROC[id].text)}">${esc(id)}</button>` : TASK[id] ? `<button class="ref" data-task="${id}" title="${esc(TASK[id].text)}">${esc(id)}</button>` : `<code>${esc(id)}</code>`;
   function refItem(r) {
     if (/^https?:\/\//.test(r)) return `<a href="${esc(r)}" target="_blank" rel="noopener">${esc(r.replace(/^https?:\/\//, "").slice(0, 60))}</a>`;
     const d = D.docs[r.toLowerCase().split(" ")[0]];
@@ -609,15 +752,15 @@
   function openTask(id, tab, fromExec) {
     if (tab != null) taskTab = tab;
     const back = fromExec || (exFrom && side.dataset.ctx === "task:" + id);
-    const t = TASK[id], br = t.brief || {}, cards = D.cards.filter(c => c.task === id);
+    const t = TASK[id], br = t.brief || {}, cards = D.cards.filter(c => c.task === id), subs = subsOf(id);
     let done = {}; try { done = JSON.parse(localStorage.getItem(dodKey(id)) || "{}") } catch (e) { }
     const ac = t.ac.map(([d, x], k) => `<label class="dod"><input type="checkbox" data-dod="${id}:${k}"${(done[k] != null ? done[k] : d) ? " checked" : ""}><span>${mdInline(x)}</span></label>`).join("");
     const links = refList([...(t.reqs.length ? [`<span class="lk">Требования БФТ</span> ${t.reqs.map(esc).join(", ")}`] : []), ...t.docs.map(refItem), ...t.refs.filter(r => !/^https?:\/\//.test(r)).map(refItem)]);
-    const html = (t.why ? `<p class="tklead">${mdInline(t.why)}</p>` : "") + sec("ASIS", mdHTML(br.ASIS || "")) + sec("GAP", mdHTML(br.GAP || "")) + sec("TOBE", mdHTML(br.TOBE || "")) +
+    const html = (t.why ? `<p class="tklead">${mdInline(t.why)}</p>` : "") + sec(`Подзадачи по зонам · ${subs.length}`, subs.length ? `<ul class="zl">${subs.map(z => `<li data-sub="${esc(z.id)}" tabindex="0"><b class="zt" style="--c:${teamC(z)}">${esc(z.zone)}</b><span>${esc(z.text)}<small>${esc(z.team === "?" && z.cand ? "Команда? " + z.cand : teamN(z))} · ${esc(z.id)} · ${esc(z.status)}</small></span></li>`).join("")}</ul>` : "") + sec("ASIS", mdHTML(br.ASIS || "")) + sec("GAP", mdHTML(br.GAP || "")) + sec("TOBE", mdHTML(br.TOBE || "")) +
       sec("HowToDemo", demoHTML(br.HowToDemo, [...t.docs, ...cards.flatMap(c => c.docs)])) + sec("Чеклист приемки", ac) + sec("Дополнительно", mdHTML(br["Дополнительно"] || "")) +
       sec("Как это работает", refList(cards.map(c => `${idChip(c.id)} ${esc(c.text)}`))) + sec("Вопросы", qList(qsOf([id, ...cards.map(c => c.id)]))) + sec("Ссылки", links);
     const tabs = `<nav class="snseg tktabs">${["Требования", "Исполнение"].map((n, i) => `<button data-tktab="${i}"${i === taskTab ? ' class="on"' : ""}>${n}</button>`).join("")}</nav>`;
-    side.innerHTML = head(t.text, `<span class="pteam" style="--c:${teamC(t)}"><i></i>${esc(t.team === "?" && t.cand ? "Команда? " + t.cand : teamN(t))}</span> · ${esc(COLS[colOf(t.stage)].name)} · ${esc(id)} · ${esc(t.status)}`, back) + `<div class="snbody">${tabs}${taskTab ? execHTML(t) : html}</div>`;
+    side.innerHTML = head(t.text, `<span class="pteam" style="--c:${teamC(t)}"><i></i>${esc(t.team === "?" && t.cand ? "Команда? " + t.cand : teamN(t))}</span>${leadOf(t) ? " · техлид " + esc(leadOf(t)) : ""}${t.prio ? ` · <span class="pr ${t.prio}">${PRIO[t.prio]}${oos(t) ? " · Out of scope" : ""}</span>` : ""} · ${esc(COLS[colOf(t.stage)].name)} · ${esc(id)} · ${esc(t.status)}`, back) + `<div class="snbody">${tabs}${taskTab ? execHTML(t) : html}</div>`;
     body.classList.remove("wide"); body.classList.add("open"); side.scrollTop = 0;
     side.dataset.ctx = "task:" + id; side.dataset.note = "";
     if (!back) { exFrom = ""; howShow(id) }
@@ -661,6 +804,8 @@
     if ((AR.decisions || []).length) parts.push(arTable("Решение TO-BE", AR.decisions.map(d => tr([d.id + " ✓", d.contract, d.text, d.why])), ["ID", "Контракт", "Суть решения", "Обоснование"]));
     if ((AR.options || []).length) parts.push(arTable("Варианты", AR.options.map(opt), ["ID", "Вариант", "Надёжность", "Скорость", "Соответствие", "Почему нет"]));
     if ((AR.bottlenecks || []).length) parts.push(arTable("Узкие места", AR.bottlenecks.map(n => tr([n.id, n.text, AR_KIND[n.kind] || n.kind, n.load, n.risk, n.probe])), ["ID", "Узкое место", "Тип", "Нагрузка", "Риск", "Прощупывание"]));
+    if ((AR.components || []).length) parts.push(arTable("Компоненты", AR.components.map(c => tr([c.id, c.name, c.ctx, c.kind === "человек" ? "—" : c4TeamName(c.team), c.kind, c.change, c.tasks.join(", ") || "—"])), ["ID", "Компонент", "Контекст", "Контур", "Тип", "Изменение", "Задачи"]));
+    if (d && (AR.flows || []).length) parts.push(arTable("Потоки", AR.flows.map((f, i) => tr([i + 1, `${f.src} → ${f.dst}`, f.data, f.how, f.contract || "—"])), ["№", "От → К", "Данные", "Способ", "Контракт"]));
     if ((AR.compromises || []).length) parts.push(arTable("Компромиссы", AR.compromises.map(c => tr([c.id, c.text, c.rel, c.speed, c.fit, c.cost])), ["ID", "Компромисс", "Надёжность", "Скорость", "Соответствие", "Чем платим"]));
     const openQ = (D.questions || []).filter(q => q.open && /^(?:V|C)\d+/.test(q.where));
     return parts.join("") + (openQ.length ? `<div class="qdiv">Открытые вопросы ADR · ${openQ.length}</div><ul class="qul">${openQ.map(qItem).join("")}</ul>` : "");
@@ -684,9 +829,77 @@
     adrGrid.innerHTML = `<div class="arwrap"><div class="arhead"><span class="arst">${esc(status)}</span><h2>ADR и Системные требования</h2>
       <p>Как реализуем работу на карте: варианты и выбор TO-BE, узкие места и компромиссы; по каждому контракту — данные, источники, преобразования.</p>
       <nav class="arnav">${AR ? tab("adr", arCur === "adr", "ADR", nA) : ""}${SR ? tab("sys", arCur === "sys", "Системные требования", nS) : ""}</nav></div>
-      ${diag}${arCur === "adr" && AR ? adrOpen() : ""}${arCur === "sys" && SR ? sysOpen() : ""}</div>`;
-    const box = adrGrid.querySelector(".bpmnw");
+      ${arCur === "adr" ? c4Block() : ""}${diag}${arCur === "adr" && AR ? adrOpen() : ""}${arCur === "sys" && SR ? sysOpen() : ""}</div>`;
+    const c4b = adrGrid.querySelector(".c4box"); if (c4b) c4Draw(c4b);
+    const box = adrGrid.querySelector(".bpmnw:not(.c4box)");
     if (box) drawMermaid(box);
+  }
+  /* ---------- C4 L3: компоненты по контурам и контекстам, потоки данных ----------
+     Данные — таблицы «Компоненты» и «Потоки» ADR. Контур (команда) — цветная рамка, контекст (система) —
+     пунктирная рамка внутри; форма узла — тип, заливка — изменение; поток — номер и данные, асинхронный —
+     пунктиром. Клик по компоненту — панель: задачи, входящие и исходящие потоки; клик по контуру
+     в легенде — подсветить его компоненты. На стрелке — только номер потока: подписи с данными
+     раздвигают схему вдвое; данные — нумерованным списком под схемой. */
+  const C4 = AR && (AR.components || []).length ? AR : null;
+  const C4_SHAPE = { "человек": ['(["', '"])'], "интерфейс": ['("', '")'], "сервис": ['["', '"]'], "хранилище": ['[("', '")]'], "очередь": ['>"', '"]'], "внешняя система": ['[["', '"]]'] };
+  const C4_CHG = { "новый": "nw", "доработка": "md", "без изменений": "kp" };
+  const C4_ASYNC = /асинхрон|событ|очеред/i;
+  const c4Comp = id => C4.components.find(c => c.id === id);
+  const c4TeamName = tm => tm === "?" ? "Контур не определён" : TEAM[tm] ? TEAM[tm].name : tm;
+  const cssVar = v => { const m = String(v).match(/var\((--[\w-]+)\)/); return m ? getComputedStyle(document.documentElement).getPropertyValue(m[1]).trim() || "#888" : v };
+  const c4Color = tm => cssVar(tm === "?" ? "var(--red)" : TEAM[tm] ? TEAM[tm].c : "#888");
+  function c4Code() {
+    const q = x => String(x).replace(/"/g, "'").replace(/[<>]/g, " ");
+    const node = c => { const [a, b] = C4_SHAPE[c.kind] || C4_SHAPE["сервис"];
+      return `${c.id}${a}${q(c.name)}<br/><small>${q(c.kind)}${c.tasks.length ? " · " + c.tasks.join(", ") : ""}</small>${b}:::${c.kind === "человек" ? "pp" : C4_CHG[c.change] || "kp"}` };
+    const L = ["flowchart LR", "classDef nw fill:#e8f4ea,stroke:#2f6b2a,stroke-width:2px,color:#1d1d1b", "classDef md fill:#fff3e3,stroke:#d06a12,stroke-width:2px,stroke-dasharray:6 3,color:#1d1d1b",
+      "classDef kp fill:#f4f2ee,stroke:#b9b3a8,color:#55524c", "classDef pp fill:#ffffff,stroke:#55524c,color:#1d1d1b"];
+    C4.components.filter(c => c.kind === "человек").forEach(c => L.push("  " + node(c)));
+    const teams = [...new Set(C4.components.filter(c => c.kind !== "человек").map(c => c.team))];
+    teams.forEach((tm, ti) => {
+      L.push(`  subgraph T${ti}["${q(c4TeamName(tm))}"]`);
+      const ctxs = [...new Set(C4.components.filter(c => c.kind !== "человек" && c.team === tm).map(c => c.ctx))];
+      ctxs.forEach((cx, xi) => {
+        L.push(`    subgraph T${ti}X${xi}["${q(cx)}"]`);
+        C4.components.filter(c => c.kind !== "человек" && c.team === tm && c.ctx === cx).forEach(c => L.push("      " + node(c)));
+        L.push("    end", `    style T${ti}X${xi} fill:#fbfaf8,stroke:#cfcac0,stroke-dasharray:4 3,color:#55524c`);
+      });
+      const col = c4Color(tm);
+      L.push("  end", `  style T${ti} fill:transparent,stroke:${col},stroke-width:2px,color:${col}`);
+    });
+    C4.flows.forEach((f, i) => L.push(`  ${f.src} ${C4_ASYNC.test(f.how) ? "-.->" : "-->"}|"${i + 1}"| ${f.dst}`));
+    return L.join("\n");
+  }
+  function c4Draw(box) {
+    mermaidLib().then(m => m.render(`c4${++mmN}`, c4Code())).then(r => {
+      if (!box.isConnected) return;
+      box.innerHTML = r.svg; box.classList.add("ok");
+      box.querySelectorAll("g.node").forEach(g => { const m = (g.id || "").match(/flowchart-(M\d+)-\d+$/); if (m) { g.dataset.c4 = m[1]; g.setAttribute("tabindex", "0") } });
+    }).catch(() => { box.classList.add("raw"); box.innerHTML = `<pre>${esc(c4Code())}</pre>` });
+  }
+  function c4Block() {
+    if (!C4) return "";
+    const teams = [...new Set(C4.components.filter(c => c.kind !== "человек").map(c => c.team))];
+    const work = tm => C4.components.filter(c => c.team === tm && c.change !== "без изменений").length;
+    return `<div class="c4"><h4>Компоненты и потоки данных · C4 L3</h4>
+      <div class="c4lg"><span class="c4k nw">новый</span><span class="c4k md">доработка</span><span class="c4k kp">без изменений</span><span class="c4k as">асинхронно</span>
+      <span class="c4sep"></span>${teams.map(tm => `<button class="c4t" data-c4team="${esc(tm)}" style="--c:${c4Color(tm)}"><i></i>${esc(c4TeamName(tm))}${work(tm) ? `<b>${work(tm)}</b>` : ""}</button>`).join("")}</div>
+      <div class="bpmnw c4box"><pre>${esc(c4Code())}</pre></div>
+      <ol class="c4list">${C4.flows.map((f, i) => `<li><b>${i + 1}</b><span>${esc(c4Comp(f.src) ? c4Comp(f.src).name : f.src)} → ${esc(c4Comp(f.dst) ? c4Comp(f.dst).name : f.dst)}<em>${esc(f.data)}</em><small>${esc(f.how)}${/^[—–-]?$/.test(f.contract || "") ? "" : " · " + esc(f.contract)}</small></span></li>`).join("")}</ol></div>`;
+  }
+  function c4Focus(tm) {
+    const on = adrGrid.querySelector(`[data-c4team="${tm}"].on`) ? "" : tm;
+    adrGrid.querySelectorAll("[data-c4team]").forEach(b => b.classList.toggle("on", b.dataset.c4team === on));
+    adrGrid.querySelectorAll(".c4box g.node[data-c4]").forEach(g => g.classList.toggle("dim", !!on && c4Comp(g.dataset.c4).team !== on));
+  }
+  function openC4(id) {
+    const c = c4Comp(id), name = x => { const k = c4Comp(x); return k ? k.name : x };
+    const fl = (list, dir) => list.length ? `<ul class="c4fl">${list.map(f => `<li><b>${C4.flows.indexOf(f) + 1}</b><span>${esc(dir === "in" ? name(f.src) + " →" : "→ " + name(f.dst))} <em>${esc(f.data)}</em><small>${esc(f.how)}${f.contract && !/^[—–-]?$/.test(f.contract) ? " · " + esc(f.contract) : ""}</small></span></li>`).join("")}</ul>` : "";
+    const tasks = c.tasks.length ? refList(c.tasks.map(t => `${idChip(t)} ${esc((TASK[t] || PROC[t] || {}).text || "")}`)) : "";
+    side.innerHTML = head(c.name, `${c.kind === "человек" ? "" : `<span class="pteam" style="--c:${c4Color(c.team)}"><i></i>${esc(c4TeamName(c.team))}</span> · `}${esc(c.ctx)} · ${esc(c.kind)} · ${esc(c.change)} · ${esc(c.id)}`) + `<div class="snbody">
+      ${sec("Задачи", tasks)}${sec("Входящие потоки", fl(C4.flows.filter(f => f.dst === id), "in"))}${sec("Исходящие потоки", fl(C4.flows.filter(f => f.src === id), "out"))}</div>`;
+    execHide(); body.classList.remove("wide"); body.classList.add("open"); side.scrollTop = 0;
+    side.dataset.ctx = "c4:" + id; side.dataset.note = "";
   }
   function setArTab(t) { arCur = t; adrBoard(); adrGrid.scrollIntoView({ block: "start" }) }
 
@@ -696,7 +909,7 @@
     const row = k => (P[k] || []).length ? `<div class="pp"><span>${PNAME[k]}</span><ul>${P[k].map(it => `<li>${mdInline(it.t)}${it.r.length ? " " + it.r.map(idChip).join(" ") : ""}</li>`).join("")}</ul></div>` : "";
     const lnk = refList([t ? `<span class="lk">Задача</span> ${idChip(t.id)} ${esc(t.text)}` : "", ...c.docs.map(refItem), ...c.refs.map(refItem)].filter(Boolean));
     const proc = (c.lead ? `<p class="tklead">${mdInline(c.lead)}</p>` : "") + (c.bpmn ? `<div class="bpmnw"><pre>${esc(c.bpmn)}</pre></div><details class="mmcode"><summary>Текст схемы</summary><pre>${esc(c.bpmn)}</pre></details>` : "");
-    side.innerHTML = head(c.text, `<span class="lay" style="--c:${L[2]}">${L[0]}</span> · <span class="pteam" style="--c:${teamC(c)}"><i></i>${esc(teamN(c))}</span> · ${esc(COLS[colOf(c.stage)].name)} · ${esc(id)} · ${esc(c.status)}`) + `<div class="snbody">
+    side.innerHTML = head(c.text, `<span class="lay" style="--c:${L[2]}">${L[0]}</span> · <span class="pteam" style="--c:${teamC(c)}"><i></i>${esc(teamN(c))}</span> · ${esc(COLS[colOf(c.stage)].name)} · ${esc(id)} · ${esc(c.status)}`, !!t) + `<div class="snbody">
       ${sec("UserStory", c.us ? `<p>${mdInline(c.us)}</p>` : "")}
       ${sec("JobStory", (c.js || []).length ? `<ul class="js">${c.js.map(x => `<li>${mdInline(x)}</li>`).join("")}</ul>` : "")}
       ${sec("Процесс", proc)}${sec("Параметры", ["in", "ctl", "out", "mech"].map(row).join(""))}
@@ -777,7 +990,8 @@
     const zm = t.closest("[data-zoom]"); if (zm) return zoom(+zm.dataset.zoom);
     const st = t.closest("[data-sntab]"); if (st) return openScreen(snCur, +st.dataset.sntab);
     const nt = t.closest("[data-snnote]"); if (nt) return openNote(+nt.dataset.snnote);
-    if (t.closest("[data-snback]")) return side.dataset.ctx.startsWith("task:") && exFrom ? execBack() : openScreen(snCur);
+    if (t.closest("[data-snback]")) return goBack();
+    const sb = t.closest("[data-sub]"); if (sb) return openSub(sb.dataset.sub);
     const et = t.closest("[data-extask]"); if (et) return execOpen(et.dataset.extask);
     if (t.closest("#burger")) return menu(!body.classList.contains("mopen"));
     const vw = t.closest("button[data-view]"); if (vw) return setView(vw.dataset.view);
@@ -785,6 +999,8 @@
     if (t.closest("[data-tf-clear]")) return teamFilter("");
     /* слой «Архитектура»: вкладки ADR / Системные требования, пункт меню */
     const at = t.closest("[data-artab]"); if (at) return setArTab(at.dataset.artab);
+    const c4t = t.closest("[data-c4team]"); if (c4t) return c4Focus(c4t.dataset.c4team);
+    const c4n = t.closest("[data-c4]"); if (c4n) return openC4(c4n.dataset.c4);
     if (t.closest("[data-adrmenu]")) { menu(false); if (AR || SR) return setView("adr") }
     /* слой «Релиз»: шаг, ворота, статусы, дорожки, команда для бэклога */
     const rgo = t.closest("[data-rlgo]"); if (rgo) return rlGo(rgo.dataset.rlgo);
@@ -796,10 +1012,12 @@
     const rcn = t.closest("[data-rlcancel]"); if (rcn) return closeSide();
     const rcp = t.closest("[data-rlcopy]"); if (rcp) return copyText(rlCmd(), rcp);
     if (t.closest("[data-rlmenu]")) { menu(false); if (RL) return setView("rel") }
+    if (t.closest("[data-rmmenu]")) { menu(false); if (RM) return setView("road") }
     if (t.closest("#menu [data-guide]") || t.closest("#menu .play")) menu(false);
     const sl = t.closest("[data-sl]"); if (sl) return slide(sl.closest(".pic"), +sl.dataset.sl);
     const dd = t.closest("[data-dot]"); if (dd) return slide(dd.closest(".fr").querySelector(".pic"), 0, +dd.dataset.dot);
     const sd = t.closest("[data-screen-doc]"); if (sd) return openScreen(sd.dataset.screenDoc, 0);
+    const ua = t.closest("[data-entry]"); if (ua) { const sid = ua.dataset.entry; if (NOTE_OF[sid]) return openScreen(sid, 0); const s = D.seen.find(x => x.steps.some(st => st.screens.includes(sid))); if (s) return openSeen(s.key) }
     const tf = t.closest("[data-tf]");
     if (tf) { teamFilter(tf.classList.contains("on") ? "" : tf.dataset.tf); return menu(false) }
     const g = t.closest("[data-guide]"); if (g) return openGuide(g.dataset.guide);
@@ -818,9 +1036,11 @@
   document.addEventListener("keydown", e => {
     if (body.classList.contains("showing")) { if (e.key === "ArrowRight") stepShow(1); else if (e.key === "ArrowLeft") stepShow(-1); else if (e.key === "Escape") body.classList.remove("showing"); return }
     if (!LB.hidden) { if (e.key === "Escape") LB.hidden = true; else if (gallery.length > 1 && e.key === "ArrowRight") zoom(lbI + 1); else if (gallery.length > 1 && e.key === "ArrowLeft") zoom(lbI - 1); return }
-    if (e.key === "Escape") { if (body.classList.contains("mopen")) { menu(false); burger.focus() } else if (side.querySelector("[data-snback]")) side.dataset.ctx.startsWith("task:") && exFrom ? execBack() : openScreen(snCur); else closeSide() }
+    if (e.key === "Escape") { if (body.classList.contains("mopen")) { menu(false); burger.focus() } else if (side.querySelector("[data-snback]")) goBack(); else closeSide() }
     if (e.key === "Enter" && e.target.matches && e.target.matches("[data-snnote]")) openNote(+e.target.dataset.snnote);
     if (e.key === "Enter" && e.target.matches && e.target.matches("[data-extask]")) execOpen(e.target.dataset.extask);
+    if (e.key === "Enter" && e.target.matches && e.target.matches("[data-sub]")) openSub(e.target.dataset.sub);
+    if (e.key === "Enter" && e.target.matches && e.target.matches("[data-c4]")) openC4(e.target.dataset.c4);
     if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches("[data-seen]")) { e.preventDefault(); openSeen(e.target.dataset.seen) }
   });
   /* ---------- замечания и уточнения → промпт для ИИ-агента ----------
@@ -855,6 +1075,7 @@
         return { key: "screen:" + id, label: `Экран ${id} «${SCR[id].title}»${what ? " · " + what : ""}`, file: (D.noteFiles || {})[id] || storyDoc } }
       if (kind === "proc") { const s = el.closest(".tk"); return { key: "proc:" + id, label: `Карточка ${id} «${PROC[id].text}»${s ? " · раздел " + s.querySelector("h4").textContent : ""}`, file: PROC[id].file } }
       if (kind === "seen") return { key: "seen:" + id, label: `Шаги истории «${id}»`, file: storyDoc };
+      if (kind === "sub") return { key: "sub:" + id, label: `Подзадача ${id} «${SUB[id].text}»`, file: SUB[id].file };
       return { key: "map", label: "Карта", file: mapDoc };
     }
     const fr = el.closest(".fr"); if (fr) { const cap = fr.querySelector(".cap").textContent, ids = (fr.dataset.screens || "").split(",").filter(Boolean);
@@ -972,6 +1193,7 @@
     const docs = ds => ds.forEach(d => { const x = D.docs[String(d).toLowerCase().split(" ")[0]]; if (x) add("Документ", x.file) });
     const qdoc = ids => { const qs = qsOf(ids); if (qs.some(q => q.doc === "map")) add("Вопросы", mapDoc, "таблица «Вопросы»"); if (qs.some(q => q.doc === "story")) add("Вопросы", storyDoc, "таблица «Вопросы»") };
     if (kind === "proc") { const c = PROC[id]; add("Карточка", c.file, "UserStory, JobStory, Параметры, Процесс, HowToDemo; схема — раздел «BPMN», текст mermaid"); if (TASK[c.task]) add("Задача", TASK[c.task].file); docs(c.docs); qdoc([id, c.task]) }
+    else if (kind === "sub") { const z = SUB[id]; add("Подзадача", z.file, "что сделать, исполнитель, критерии приемки"); if (TASK[z.task]) add("История", TASK[z.task].file); docs(z.docs); qdoc([id]) }
     else if (kind === "task") { const t = TASK[id]; add("Задача", t.file, "постановка, чеклист, исполнение — references и Implementation Notes"); D.cards.filter(c => c.task === id).forEach(c => add("Карточка", c.file)); docs(t.docs); qdoc([id, ...D.cards.filter(c => c.task === id).map(c => c.id)]) }
     else if (kind === "screen") { add("Требования к экрану", (D.noteFiles || {})[id]); (SCR[id] ? SCR[id].images : []).forEach(im => add("Картинка", im.src)); add("История", storyDoc, "таблица «Экраны»: из неё собраны картинки") }
     else if (kind === "seen") { const s = D.seen.find(x => x.key === id); add("История", storyDoc, "таблица «Шаги»"); (s ? s.steps.flatMap(st => st.screens) : []).forEach(x => add("Картинка", D.screens[x].img)); qdoc((s ? s.steps.flatMap(st => [st.id, ...st.screens]) : [])) }

@@ -5,9 +5,11 @@ status: To Do
 assignee:
   - '@ext'
 created_date: '2026-10-19 19:07'
+updated_date: '2026-10-26 16:34'
 labels:
-  - 'stage:E'
+  - stage:E
   - используем
+  - moscow:would
 dependencies: []
 ordinal: 14000
 ---

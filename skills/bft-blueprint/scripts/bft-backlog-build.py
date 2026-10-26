@@ -78,14 +78,14 @@ PAGE = """<!doctype html>
 {css}</style></head>
 <body>
 <h1 class="ptitle">{h1}</h1>
-<div class="fab"><button class="burger" id="burger" aria-label="Меню карты" aria-expanded="false" aria-controls="menu"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg><span class="bdot" id="bdot"></span></button><nav class="views" aria-label="Слой карты"><button data-view="see" class="on">Что видят</button><button data-view="do">Что делаем</button><button data-view="how">Как это работает</button>{adr_btn}{rel_btn}</nav><span id="fchip"></span></div>
+<div class="fab"><button class="burger" id="burger" aria-label="Меню карты" aria-expanded="false" aria-controls="menu"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg><span class="bdot" id="bdot"></span></button><nav class="views" aria-label="Слой карты"><button data-view="see" class="on">Что видят</button><button data-view="how">Как это работает</button><button data-view="do">Что делаем</button>{rm_btn}{rk_btn}{rel_btn}</nav><span id="fchip"></span></div>
 <div class="tr"><button class="ib iq" data-qpanel title="Уточнить: ответить на открытые вопросы" aria-label="Уточнить"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M6.2 6.1a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.6"/><circle cx="8" cy="11.6" r=".4"/></svg><span id="iq"></span></button><button class="ib icm" data-cmpanel title="Замечания" aria-label="Замечания"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7.5H7l-3 2.5V11H2.5z"/></svg><span id="icm"></span></button></div>
 <div class="mscrim"></div>
 <nav class="menu" id="menu" aria-label="Меню карты"><div class="mtop"><div><span class="draft{status_cls}">{status}</span><h1>{h1}</h1></div><button class="x" data-menu="close" aria-label="Закрыть">×</button></div>
 <button class="play" id="play">▶ Рассказать историю</button>
 <div class="mlist"><span id="blk"></span>
 <button class="mi" data-guide="help"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h4.5A1.5 1.5 0 0 1 8 4.5V14a1.5 1.5 0 0 0-1.5-1.5H2zM14 3H9.5A1.5 1.5 0 0 0 8 4.5V14a1.5 1.5 0 0 1 1.5-1.5H14z"/></svg>Инструкции</button>
-<button class="mi" data-guide="legend"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2.5" width="4" height="4" rx="1"/><path d="M8.5 4.5H14"/><circle cx="4" cy="11.5" r="2"/><path d="M8.5 11.5H14"/></svg>Легенда</button>{adr_menu}{rel_menu}
+<button class="mi" data-guide="legend"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2.5" width="4" height="4" rx="1"/><path d="M8.5 4.5H14"/><circle cx="4" cy="11.5" r="2"/><path d="M8.5 11.5H14"/></svg>Легенда</button>{adr_menu}{rm_menu}{rel_menu}
 <button class="mi" data-qpanel><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M6.2 6.1a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.6"/></svg>Уточнить</button>
 <button class="mi" data-seamspanel hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h5v8H2zM9 4h5v8H9z" fill="none"/><path d="M7 8h2"/></svg>Стыки<b class="cnt" id="seamcnt" hidden></b></button>
 <button class="mi" data-cmpanel><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7.5H7l-3 2.5V11H2.5z"/></svg>Замечания<b class="cnt cmn" id="cmn" hidden></b></button></div>
@@ -93,6 +93,8 @@ PAGE = """<!doctype html>
 <section class="hero" id="hero" aria-label="Что видят люди — путь слева направо"></section>
 <div class="wrap" id="work"><div id="grid"></div></div>
 <section class="adrscr" id="adr" aria-label="ADR и Системные требования — как реализуем работу"></section>
+<section class="risk" id="risk" aria-label="Риски исполнения — согласуются с PO"></section>
+<section class="road" id="road" aria-label="Roadmap — кто что делает по неделям и спринтам"></section>
 <section class="rel" id="rel" aria-label="План релиза — дорожки DEV, STAGE, PROD"></section>
 <div class="mstack" id="mstack"></div>
 <div class="scrim"></div><aside class="execp" id="exec" aria-label="Исполнение: задачи команд по экрану"></aside><aside class="side" id="side" aria-label="Подробности"></aside><div class="zoombox" id="lb" hidden></div>
@@ -151,11 +153,14 @@ def model(pr: bl.Project, base: str = "") -> dict:
     docs = {k: {"title": d.title, "file": d.rel, "screen": doc_screen.get(k, "")} for k, d in pr.docs.items()}
     common = lambda t: {"id": t.id, "stage": t.stage, "team": t.team, "text": t.title, "status": t.status,  # noqa: E731
                         "refs": [str(x) for x in t.refs], "docs": [str(x) for x in t.docs], "file": t.rel}
-    tasks = [{**common(t), "cand": t.cand, "why": t.why, "reqs": t.reqs, "kind": t.kind, "notes": t.notes,
+    tasks = [{**common(t), "prio": t.prio, "cand": t.cand, "why": t.why, "reqs": t.reqs, "kind": t.kind, "notes": t.notes,
               "brief": {k: v[1] for k, v in t.sections.items()}, "ac": [[d, x] for d, x in t.ac]} for t in pr.tasks]
     cards = [{**common(c), "task": c.parent, "layer": c.layer, "lead": c.lead, "us": c.user_story, "js": c.job_stories, "bpmn": re.sub(r"^```mermaid\n|\n?```$", "", c.mermaid.strip()),
               "params": {k: [{"t": it.text, "r": it.refs} for it in v] for k, v in c.params.items()},
               "demo": c.sections.get("HowToDemo", (0, ""))[1]} for c in pr.cards]
+    subs = [{**common(z), "task": z.parent, "zone": z.zone, "prio": z.prio, "cand": z.cand, "lead": z.lead,
+             "brief": {k: v[1] for k, v in z.sections.items()},
+             "ac": [[d, x] for d, x in z.ac]} for z in pr.subtasks]
     return {
         "epic": pr.meta.get("epic_slug", ""), "title": pr.title, "prefix": pr.prefix,
         "stages": [{"id": s.id, "name": s.name, "when": s.when} for s in st.stages],
@@ -166,7 +171,9 @@ def model(pr: bl.Project, base: str = "") -> dict:
         "noteFiles": {sid: doc.rel for sid, doc in sorted(pr.screens.items())},
         "docs": docs,
         "storyQuestions": [{"id": q.id, "to": q.to, "text": q.text, "where": q.where, "open": q.open, "answer": q.answer} for q in st.questions],
-        "teams": [{"id": t.id, "name": t.name} for t in pr.teams], "tasks": tasks, "cards": cards,
+        "teams": [{"id": t.id, "name": t.name, **({"lead": t.lead} if t.lead else {})} for t in pr.teams],
+        "triggers": [{"persona": t.persona, "text": t.text, "stage": t.stage} for t in pr.triggers],
+        "tasks": tasks, "cards": cards, "subs": subs,
         "links": [{"src": a, "dst": b, "what": w} for a, b, w in pr.links()],
         "questions": [{"id": q.id, "to": q.to, "text": q.text, "where": q.where, "kind": q.kind,
                        "open": q.open, "answer": q.answer} for q in pr.questions],
@@ -178,6 +185,9 @@ def model(pr: bl.Project, base: str = "") -> dict:
                                      "risk": n.risk, "probe": n.probe} for n in pr.adr.bottlenecks],
                     "compromises": [{"id": c.id, "text": c.text, "rel": c.reliability, "speed": c.speed,
                                      "fit": c.fit, "cost": c.cost} for c in pr.adr.compromises],
+                    "components": [{"id": c.id, "name": c.name, "ctx": c.context, "team": c.team, "kind": c.kind,
+                                    "change": c.change, "tasks": c.tasks} for c in pr.adr.components],
+                    "flows": [{"src": f.src, "dst": f.dst, "data": f.data, "how": f.how, "contract": f.contract} for f in pr.adr.flows],
                     "asis": pr.adr.asis, "context": pr.adr.context,
                     "diagram": re.sub(r"^```mermaid\n|\n?```$", "", pr.adr.diagram.strip()),
                     "file": pr.adr_doc.rel}}
@@ -202,6 +212,16 @@ def model(pr: bl.Project, base: str = "") -> dict:
                                  "mitigation": r.mitigation} for r in pr.seams.risks],
                       "file": pr.seams_doc.rel}}
            if pr.seams is not None and pr.seams_doc is not None else {}),
+        **({"risks": {"status": pr.risks.meta.get("status", "") if pr.risks else "", "file": pr.risks_doc.rel if pr.risks_doc else "",
+                      "items": [{"id": r.id, "story": r.story, "kind": r.kind, "text": r.text, "mitigation": r.mitigation,
+                                 "owner": r.owner, "status": r.status} for r in (pr.risks.items if pr.risks else [])],
+                      "auto": [{"story": sid, "kind": k} for sid, k in bl.auto_risks(pr)]}}
+           if (pr.risks is not None and pr.risks_doc is not None) or bl.auto_risks(pr) else {}),
+        **({"roadmap": {"status": pr.roadmap.meta.get("status", ""), "version": pr.roadmap.meta.get("version", ""),
+                        "start": pr.roadmap.start, "sprintWeeks": pr.roadmap.sprint_weeks, "weeks": pr.roadmap.weeks,
+                        "maxSprints": bl.ROADMAP_MAX_SPRINTS, "file": pr.roadmap_doc.rel,
+                        "items": [{"id": i.id, "start": i.start, "end": i.end} for i in pr.roadmap.items]}}
+           if pr.roadmap is not None and pr.roadmap_doc is not None else {}),
         **({"release": {"status": pr.release.meta.get("status", ""), "version": pr.release.meta.get("version", ""),
                         "doc": pr.release_doc.id,
                         "tracks": [{"id": t, "title": bl.RELEASE_TRACK_TITLE[t]} for t in bl.RELEASE_TRACKS],
@@ -252,7 +272,7 @@ def provenance(m: dict, pr: bl.Project) -> list[str]:
                 if len(ln) >= 3 and ln not in text and ln not in bare:
                     miss.append(ln)
     walk(m, "")
-    paths = [x["file"] for x in m["tasks"] + m["cards"]] + [d["file"] for d in m["docs"].values()] + [s["img"] for s in m["screens"].values()]
+    paths = [x["file"] for x in m["tasks"] + m["cards"] + m["subs"]] + [d["file"] for d in m["docs"].values()] + [s["img"] for s in m["screens"].values()]
     miss += [f"файл {p}" for p in paths if not (pr.root / p).is_file()]
     return miss
 
@@ -263,9 +283,13 @@ def render(pr: bl.Project, base: str = "") -> str:
     data = json.dumps(m, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     status = pr.meta.get("status", "")
     has_adr = m.get("adr") is not None or m.get("sysreq") is not None
-    adr_btn = '<button data-view="adr">Архитектура</button>' if has_adr else ""
     adr_menu = ('<button class="mi" data-adrmenu><svg viewBox="0 0 16 16" aria-hidden="true">'
                 '<path d="M2 13.5L8 2l6 11.5M4.6 9h6.8" fill="none"/></svg>ADR и системные требования</button>') if has_adr else ""
+    has_rm = pr.roadmap is not None and pr.roadmap_doc is not None
+    rm_btn = '<button data-view="road">Roadmap</button>' if has_rm else ""
+    rm_menu = ('<button class="mi" data-rmmenu><svg viewBox="0 0 16 16" aria-hidden="true">'
+               '<path d="M2 4h7M5 8h8M3 12h6" fill="none"/></svg>Roadmap</button>') if has_rm else ""
+    rk_btn = '<button data-view="risk">Риски</button>' if (pr.risks is not None and pr.risks_doc is not None) or bl.auto_risks(pr) else ""
     has_rel = pr.release is not None and pr.release_doc is not None
     rel_btn = '<button data-view="rel">Релиз</button>' if has_rel else ""
     rel_menu = ('<button class="mi" data-rlmenu><svg viewBox="0 0 16 16" aria-hidden="true">'
@@ -273,7 +297,7 @@ def render(pr: bl.Project, base: str = "") -> str:
     return PAGE.format(
         title_tag=html.escape(f"Карта · {pr.meta.get('epic_slug', '')}"), h1=html.escape(pr.title),
         status=html.escape(status), status_cls=" ok" if status.lower() == "согласован" else "",
-        adr_btn=adr_btn, adr_menu=adr_menu, rel_btn=rel_btn, rel_menu=rel_menu,
+        adr_menu=adr_menu, rm_btn=rm_btn, rm_menu=rm_menu, rk_btn=rk_btn, rel_btn=rel_btn, rel_menu=rel_menu,
         css=(HERE / "map_page.css").read_text(encoding="utf-8"),
         kit=(HERE / "page_kit.js").read_text(encoding="utf-8"),
         js=(HERE / "map_page.js").read_text(encoding="utf-8"), data=data)

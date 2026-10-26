@@ -8,6 +8,9 @@
 Всё хранится в проекте Backlog.md. Стандарт — `resources/backlog_rules.md`.
 
   ОШИБКИ (код выхода 1)
+  BL049  «Триггеры» «Карты»: | Персонаж | Триггер | Этап |, персонаж и этап — из «Истории»
+  BL047  подзадача: требования БФТ — у истории; постановка в формате зоны (Design — UserStory, JobStory, UserFlow; BE — ASIS, GAP, TOBE, Данные; DBA, FE, DevOps — ASIS, GAP, TOBE); чеклист у PO, BA, SA, ADR, Design, QA, Delivery
+  BL043  подзадача истории: одна зона zone: (PO, SA, Design, FE, BE, QA, DevOps, Delivery), родитель — история, этап истории, команда, описание
   BL001  не проект Backlog.md
   BL002  документ «Карта»: паспорт <!-- bft-map -->, заголовок
   BL003  документ «История»: нет или с ошибками (ST — коды истории)
@@ -28,6 +31,7 @@
   AR002  второй документ «ADR» или «Системные требования»
   AR003  смысл этапа: ≥2 вариантов и явный выбор TO-BE, узкие места, компромиссы по трём осям, контракты совпадают с ADR, три вопроса системной аналитики
   AR005  предупреждения: нет узких мест/компромиссов, на карте есть слой Technology, а документов нет — этап включён не был
+  AR006  C4 L3 ADR: контур — команда из «Команд», задачи есть на карте, потоки — между компонентами, контракт — из «Решения TO-BE»
   SM001  документ «Стыки» (<!-- bft-seams -->): паспорт, таблицы участников, обязательств, контрактов, точек, рисков
   SM002  второй документ «Стыки»
   SM003  стыки: команды-участники из «Команд», обязательства и контракты привязаны к стыкам
@@ -36,6 +40,14 @@
   RL002  второй документ «План релиза»
   RL003  план релиза: зависимости шагов, ворота между стендами
   RL005  план релиза: предупреждения — шаг без зависимостей, дорожка без ворот
+  RK001  документ «Риски исполнения» (<!-- bft-risks -->): паспорт, «## Риски» | ID | История | Тип | Риск | Митигация | Владелец | Статус |
+  RK002  второй документ «Риски исполнения»
+  RK003  риск исполнения: «История» — история карты
+  RK005  риск исполнения по данным карты (стык BE+FE, DevOps, интеграция систем) не записан — его не согласовать с PO
+  RM001  документ «Roadmap» (<!-- bft-roadmap -->): паспорт (start — понедельник, sprint_weeks 1|2), «## План» | ID | Неделя с | Неделя по |, не больше 6 спринтов
+  RM002  второй документ «Roadmap»
+  RM003  Roadmap: строка плана — история или подзадача карты
+  RM005  Roadmap: предупреждения — работа не в плане, у кроссфункциональной истории в плане не подзадачи, начало раньше конца зависимости
   SN0xx  требования к экранам — `bft_screens.py`, `resources/screen_notes.md`
 
   ПРЕДУПРЕЖДЕНИЯ (код выхода 1 только с --strict)
@@ -58,7 +70,13 @@
   BL040  участник процесса без имени: «Система», «Сервис», «Приложение»
   BL041  карточка technology от лица сотрудника, который на этом этапе на виду у клиента, — слой employee
   BL042  экран без исполнения: ни задача, ни её карточка не ссылаются на документ экрана — панель «Исполнение» пуста
+  BL044  кроссфункциональная история (в работе две команды и больше) без подзадач по зонам: кто что делает?
+  BL045  один экран делают истории разных команд — это один результат: одна история с подзадачами по зонам
+  BL046  у истории нет приоритета Must / Should / Would (метка moscow:) — что коммитим заказчику?
+  BL050  у персонажа истории нет триггера — с какого события начинается его путь на «Как это работает»?
+  BL048  Design — не одна точка касания (экран) на задачу; BE берёт данные «нет в хранилище», а DBA в истории нет
   AR005  ADR без узких мест или компромиссов; на карте есть слой Technology (устройство систем), а документов «ADR»/«Системные требования» нет — этап включён не был
+  AR007  C4 L3 ADR: нет «Компонентов»; компонент меняется, а задачи нет; компонент без потоков; контракт TO-BE не идёт ни по одному потоку
   SM005  стык без обязательств; команд 2 и больше, а документа «Стыки» нет — этап включён не был
 
   СБОРКА (`bft-backlog-build.py`)
@@ -115,6 +133,10 @@ def check(pr: bl.Project, source: Path | None, no_source: bool, explicit: bool =
     check_seams(pr)
     # --- план релиза / Delivery ----------------------------------------------------------------
     check_release(pr)
+    # --- Roadmap: сроки по неделям и спринтам --------------------------------------------------
+    check_roadmap(pr)
+    # --- риски исполнения: стык BE+FE, DevOps, интеграция систем --------------------------------
+    check_risks(pr)
 
     # --- полнота и связность -----------------------------------------------------------------
     if pr.story:
@@ -122,6 +144,45 @@ def check(pr: bl.Project, source: Path | None, no_source: bool, explicit: bool =
             if not any(t.stage == st.id for t in pr.tasks):
                 pr.warn(pr.story_doc.rel, st.line + pr.story_doc.off, "BL020", f"этап {st.id} «{st.name}» без задач — что на нём делают команды?")
         employee_hint(pr)
+    # эпик → история → подзадачи по зонам: история, в работе которой две команды и больше, без подзадач
+    # не скажет техлидам, кто что делает; история в одном контуре — двухуровневая, подзадачи не нужны
+    for t in pr.tasks:
+        subs = [z for z in pr.subtasks if z.parent == t.id]
+        teams = ({t.team} | {c.team for c in pr.cards if c.parent == t.id} | {z.team for z in subs}) - {"?", ""}
+        if len(teams) > 1 and not subs:
+            names = {x.id: x.name for x in pr.teams}
+            pr.warn(t.rel, 1, "BL044", f"{t.id}: в работе {len(teams)} команды ({', '.join(names.get(x, x) for x in sorted(teams))}), а подзадач по зонам нет — кто что делает?")
+    # триггеры: старт пути каждого персонажа — событие на своём этапе
+    if pr.story and pr.map_doc:
+        pids, sids = {p.id for p in pr.story.personas}, {s.id for s in pr.story.stages}
+        for tg in pr.triggers:
+            if tg.persona not in pids or tg.stage not in sids:
+                pr.err(pr.map_doc.rel, tg.line, "BL049", f"триггер «{tg.text}»: персонаж {tg.persona} и этап {tg.stage} — ID из «Истории»")
+        for p in pr.story.personas:
+            if any(s.kind == "step" for s in pr.story.steps_of(p.id)) and not any(t.persona == p.id for t in pr.triggers):
+                pr.warn(pr.map_doc.rel, 1, "BL050", f"у персонажа {p.id} нет триггера — с какого события начинается его путь? («## Триггеры» плана)")
+    # формат зон: Design — одна точка касания на задачу; данных BE нет в хранилище — нужна DBA
+    scr_doc = {k.lower() for k, d in pr.docs.items() for sd in pr.screens.values() if sd.path == d.path}
+    for z in pr.subtasks:
+        if z.zone == "Design":
+            n = len({str(d).split()[0].lower() for d in z.docs} & scr_doc)
+            if n != 1:
+                pr.warn(z.rel, 1, "BL048", f"{z.id}: Design — {'ни одного экрана' if not n else f'{n} экрана'}; одна точка касания клиента — одна задача (экраны: F3)")
+        if z.zone == "BE" and re.search(r"нет в хранилище", z.sections.get("Данные", (0, ""))[1], re.I) \
+                and not any(x.zone == "DBA" and x.parent == z.parent for x in pr.subtasks):
+            pr.warn(z.rel, 1, "BL048", f"{z.id}: данных «нет в хранилище», а подзадачи DBA в истории {z.parent} нет — кто доработает схему?")
+    by_doc: dict = {}
+    for t in pr.tasks:
+        for d in t.docs:
+            by_doc.setdefault(str(d).split()[0].lower(), []).append(t)
+    doc_sid = {k.lower(): sid for k, d in pr.docs.items() for sid, sd in pr.screens.items() if sd.path == d.path}
+    for k, ts in sorted(by_doc.items()):
+        teams = {t.team for t in ts} - {"?"}
+        if k in doc_sid and len(ts) > 1 and len(teams) > 1:
+            pr.warn(ts[1].rel, 1, "BL045", f"экран {doc_sid[k]} делают {', '.join(t.id for t in ts)} разных команд — это один результат: одна история, их работа — подзадачи по зонам")
+    for t in pr.tasks:
+        if not t.prio and not any(str(x).lower().startswith("moscow:") for x in t.labels):
+            pr.warn(t.rel, 1, "BL046", f"{t.id}: нет приоритета — must, should или would (would — за линией Out of scope)")
     with_card = {c.parent for c in pr.cards}
     linked = {x for a, b, _ in pr.links() for x in (a, b)}
     for t in pr.tasks:
@@ -229,6 +290,95 @@ def employee_hint(pr: bl.Project) -> None:
 def _norm(s: str) -> str:
     return re.sub(r"[^\w%]+", " ", s.lower().replace("ё", "е")).strip()
 
+RISK_TITLE = {"befe": "стык BE+FE", "devops": "DevOps", "integration": "интеграция"}
+
+def check_risks(pr: bl.Project) -> None:
+    """Риски исполнения: «История» — история карты (RK003). Каждый кандидат из данных карты
+    (bl.auto_risks) записан в документ с митигацией, владельцем и статусом — RK005."""
+    rk = pr.risks
+    found = bl.auto_risks(pr)
+    rel = rk.doc.rel if rk and rk.doc else (pr.map_doc.rel if pr.map_doc else "")
+    if rk and rk.doc:
+        stories = {t.id for t in pr.tasks}
+        for r in rk.items:
+            if r.story not in stories:
+                pr.err(rel, r.line, "RK003", f"{r.id}: истории {r.story} на карте нет")
+    have = {(r.story, r.kind) for r in (rk.items if rk else [])}
+    for sid, kind in found:
+        if (sid, kind) not in have:
+            pr.warn(rel, 1, "RK005", f"{sid}: риск «{RISK_TITLE[kind]}» по данным карты не записан в «Риски исполнения» — митигация, владелец, согласование с PO")
+
+def check_roadmap(pr: bl.Project) -> None:
+    """Roadmap: строки — истории и подзадачи карты (RM003). Полнота и порядок — предупреждения RM005:
+    каждая работа в плане; у кроссфункциональной истории в плане подзадачи, а не она сама (у них свои
+    исполнители); работа не начинается раньше, чем кончится её зависимость (dependencies Backlog.md)."""
+    rm = pr.roadmap
+    if rm is None or rm.doc is None:
+        return
+    rel = rm.doc.rel
+    stories = {t.id: t for t in pr.tasks}
+    subs = {z.id: z for z in pr.subtasks}
+    plan = {i.id: i for i in rm.items}
+    for i in rm.items:
+        if i.id not in stories and i.id not in subs:
+            pr.err(rel, i.line, "RM003", f"{i.id}: в Roadmap — история или подзадача карты, такой нет")
+    for t in pr.tasks:
+        mine = [z for z in pr.subtasks if z.parent == t.id]
+        if mine:
+            if t.id in plan:
+                pr.warn(rel, plan[t.id].line, "RM005", f"{t.id}: у истории подзадачи по зонам — в план ставь их, у них свои исполнители и сроки")
+            for z in mine:
+                if z.id not in plan and t.prio != "would":
+                    pr.warn(rel, 1, "RM005", f"{z.id} ({z.zone}) не в Roadmap — когда её делают?")
+        elif t.id not in plan and t.prio != "would":
+            pr.warn(rel, 1, "RM005", f"{t.id} «{t.title}» не в Roadmap — когда её делают?")
+    for i in rm.items:
+        w = stories.get(i.id) or subs.get(i.id)
+        if not w:
+            continue
+        for dep in [str(x).upper() for x in (w.fm.get("dependencies") or [])]:
+            d = plan.get(dep)
+            if d and i.start <= d.end:
+                pr.warn(rel, i.line, "RM005", f"{i.id} начинается на неделе {i.start}, а его зависимость {dep} кончается на неделе {d.end}")
+
+def check_c4(pr: bl.Project, a) -> None:
+    """C4 L3 ADR: компоненты и потоки. Ссылки — ошибки AR006: контур — команда из «Команд»
+    («—» у человека, «?» — не определён), задачи — на карте, потоки — между компонентами,
+    контракт — из «Решения TO-BE». Полнота — предупреждения AR007: без неё схема не отвечает,
+    кто что меняет и где идут данные."""
+    rel = a.doc.rel
+    if not a.components:
+        pr.warn(rel, 1, "AR007", "нет C4 L3 («## Компоненты» и «## Потоки») — техлид не увидит, какие компоненты участвуют и как идут данные")
+        return
+    teams = {t.id for t in pr.teams}
+    work = {t.id.upper() for t in pr.tasks + pr.cards + pr.subtasks}
+    comps = {c.id: c for c in a.components}
+    for c in a.components:
+        if c.kind == "человек" and c.team in bl.EMPTY_CELL:
+            pass
+        elif c.team not in teams and c.team != "?":
+            pr.err(rel, c.line, "AR006", f"{c.id}: контур «{c.team}» — ID команды из «Команд» ({', '.join(sorted(teams))}), «?» — не определён")
+        for t in c.tasks:
+            if t not in work:
+                pr.err(rel, c.line, "AR006", f"{c.id}: задачи {t} на карте нет")
+        if c.change != "без изменений" and not c.tasks:
+            pr.warn(rel, c.line, "AR007", f"{c.id} «{c.name}»: {c.change}, а задачи нет — кто и где это делает?")
+    decided = {d.contract.strip().lower() for d in a.decisions}
+    for f in a.flows:
+        for x in (f.src, f.dst):
+            if x not in comps:
+                pr.err(rel, f.line, "AR006", f"поток {f.src} → {f.dst}: компонента {x} нет в «Компонентах»")
+        if f.contract not in bl.EMPTY_CELL and f.contract.strip().lower() not in decided:
+            pr.err(rel, f.line, "AR006", f"поток {f.src} → {f.dst}: контракт «{f.contract}» — из «Решения TO-BE» или «—»")
+    linked = {x for f in a.flows for x in (f.src, f.dst)}
+    for c in a.components:
+        if c.id not in linked:
+            pr.warn(rel, c.line, "AR007", f"{c.id} «{c.name}»: ни одного потока — с кем он обменивается данными?")
+    on_flows = {f.contract.strip().lower() for f in a.flows}
+    for d in a.decisions:
+        if d.contract.strip().lower() not in on_flows:
+            pr.warn(rel, d.line, "AR007", f"контракт «{d.contract}» решён, но ни один поток C4 по нему не идёт")
+
 def check_adr(pr: bl.Project) -> None:
     """Смысл этапа «ADR и Системные требования»: ≥2 вариантов и явный выбор TO-BE, узкие места
     по нагрузке/надёжности, компромиссы по трём осям, контракты «Системных требований» совпадают
@@ -267,6 +417,7 @@ def check_adr(pr: bl.Project) -> None:
         # диаграмма AS-IS/TO-BE
         if not a.diagram:
             pr.warn(doc.rel, 1, "AR005", "нет ADR-диаграммы AS-IS/TO-BE (mermaid-блок в «## Диаграмма AS-IS/TO-BE»)")
+        check_c4(pr, a)
         # контракты «Системных требований» совпадают с решением ADR
         if s is not None and s.doc is not None and a.decisions:
             decided = {d.contract.strip().lower() for d in a.decisions}
@@ -428,6 +579,8 @@ HINTS = {
     "AR001": "«ADR»: паспорт <!-- bft-adr --> (epic_slug, version, revised, status: Черновик/Предложено/Принято/Отклонено/Заменено), «## Контекст» | Участник | Роль в решении |, «## AS-IS» текстом, «## Варианты» | ID | Вариант | Надёжность | Скорость реализации | Соответствие требованиям | Почему нет |, «## Решение TO-BE» | ID | Контракт | Суть решения | Обоснование |, «## Узкие места» | ID | Узкое место | Тип | Нагрузка | Риск | Прощупывание |, «## Компромиссы» | ID | Компромисс | Надёжность | Скорость реализации | Соответствие требованиям | Чем платим |, «## Диаграмма AS-IS/TO-BE» mermaid; «Системные требования»: паспорт <!-- bft-sysreq -->, «## Контракты» | ID | Контракт | Потребитель | Данные контракту | Источник параметров | Преобразования |, «## AS-IS» | ID | Как устроено сейчас | Что меняется |, «## Изменения» | ID | Изменение | Причина |, «## Открытые вопросы» | ID | Кому | Вопрос | Ответ |",
     "AR002": "документы «ADR» и «Системные требования» — по одному: с паспортом <!-- bft-adr --> / <!-- bft-sysreq --> в проекте один",
     "AR003": "ADR: вариантов ≥2, у каждого явное «Почему нет», решение TO-BE ссылается на ID варианта; узкие места и компромиссы по трём осям «надёжность vs скорость реализации vs соответствие требованиям»; контракты «Системных требований» — те же, что в «Решении TO-BE», и по каждому три вопроса: данные, источники, преобразования",
+    "AR006": "C4: «Контур» — ID команды из «Команд» («—» у человека, «?» — не определён); «Задачи» — ID с карты; «От»/«К» — ID из «Компонентов»; «Контракт» — из «Решения TO-BE» или «—»",
+    "AR007": "C4 L3: «## Компоненты» | ID | Компонент | Контекст | Контур | Тип | Изменение | Задачи | и «## Потоки» | От | К | Данные | Способ | Контракт |; у меняемого компонента — задача, у каждого — поток, у каждого контракта TO-BE — поток",
     "AR005": "нет узких мест/компромиссов/диаграммы — допиши разделы; слой Technology на карте без документов «ADR»/«Системные требования» — этап не проводился, создай документы или оставь как есть, если устройство систем не трогается",
     "SM001": "«Стыки»: паспорт <!-- bft-seams --> (epic_slug, version, revised, status) и таблицы «## Участники» | ID | Стык | Поставщик | Потребитель | Ответственный за контракт |, «## Обязательства» | ID | Кто | Что | Кому | Срок | Формат/место |, «## Контракты» | Стык | Аспект | Требование к фиксации |, «## Контрольные точки» | ID | Точка | Когда | Что проверяется | Кто проводит |, «## Риски» | ID | Риск | Следствие | Владелец | Митигация |",
     "SM002": "документ «Стыки» один: с паспортом <!-- bft-seams --> в проекте один",
@@ -460,12 +613,28 @@ HINTS = {
     "BL030": "UserStory: «Как <роль>, я хочу <действие>, чтобы <ценность>»; JobStory: «- Когда <ситуация>, хочу <мотивация>, чтобы <результат>». После «хочу» — действие, не «хочу, чтобы …»",
     "BL034": "«Как это работает» — сервис после запуска. Участники процесса — пользователь, сотрудник на линии, система; PO, СА и разработка строят сервис: их работа — задача «Что делаем» или вопрос",
     "BL039": "название карточки — что происходит, когда сервис работает: кто → что → результат («Реестр принимает продажу один раз на номер чека»), а не название задачи",
+    "BL043": "подзадача: `./backlog.py task create … -p BP-5 -l \"stage:B,zone:FE\" -a @vit` — родитель история, этап её, зона из PO, SA, Design, FE, BE, QA, DevOps, Delivery; в плане — блок «## BP-5.2 · …» с «зона: FE»",
+    "BL044": "кроссфункциональная история: под ней подзадачи по зонам — «## BP-5.2 · …» с «зона: FE» и «команда: vit»; история в одном контуре остаётся без подзадач",
+    "BL045": "одно и то же делают истории разных команд: слей их в одну историю по результату, работу каждой команды — подзадачей по зоне",
+    "BL047": "подзадача: требования БФТ перенеси в историю; разделы по зоне — Design: ### UserStory, ### JobStory, ### UserFlow; BE: ### ASIS, ### GAP, ### TOBE, ### Данные; DBA, FE, DevOps: ### ASIS, ### GAP, ### TOBE; у PO, BA, SA, ADR, Design, QA, Delivery — «### Критерии приемки» (согласования, вопросы, решения, что на экране)",
+    "BL048": "Design: одна точка касания клиента — одна задача, «экраны: F3»; BE с данными «нет в хранилище» — подзадача DBA в той же истории",
+    "BL049": "«## Триггеры» плана: | Персонаж | Триггер | Этап |, персонаж — ID из «Персонажей» «Истории», этап — ID этапа, где событие происходит",
+    "BL050": "в плане — «## Триггеры»: по строке на персонажа, событие старта его пути: «Гость купил билет на оффлайн-мероприятие»",
+    "BL046": "приоритет истории: в плане строка «приоритет: must | should | would», в проекте — метка moscow:must; would — за линией Out of scope, не коммитмент заказчику",
     "BL042": "экран делает задача: строка «экраны: F3» в задаче (и карточке) плана, в проекте — ./backlog.py task edit BP-N --doc doc-N",
     "BL041": "сотрудник на виду у клиента (официант при госте, мастер-приёмщик при клиенте) — «слой: employee»; его планшет или сканер — в этой же карточке, не отдельной technology",
     "BL040": "участник процесса — система с именем из БФТ или «Механизма»: «Реестр продаж», «Приложение-сканер», а не «Система»",
     "BL035": "один кандидат — это исполнитель: «команда: id»; сомнение — строкой «Вопросов»",
     "BL033": "UserStory пишется от лица того, кто пользуется результатом карточки (гость, официант, контент-менеджер, PO), а не команды, которая её делает",
     "SN001": "файл экрана — plan/screens/<ID>.md, ID из таблицы «Экраны» «Истории»",
+    "RK001": "«Риски исполнения»: паспорт <!-- bft-risks --> (epic_slug, version, revised, status), «## Риски» | ID | История | Тип | Риск | Митигация | Владелец | Статус |; ID X1…, тип — стык BE+FE, DevOps, интеграция, другое; статус — на согласовании, согласован, снят",
+    "RK002": "«Риски исполнения» одни: документ с <!-- bft-risks --> в проекте один",
+    "RK003": "«История» риска — ID истории карты (BP-5), не подзадачи",
+    "RK005": "в плане — «## Риски исполнения»: строка на риск истории с митигацией, владельцем и статусом «на согласовании», пока PO не согласовал",
+    "RM001": "Roadmap: паспорт <!-- bft-roadmap --> (epic_slug, version, revised, status, start — понедельник ГГГГ-ММ-ДД, sprint_weeks — 1 или 2), «## План» | ID | Неделя с | Неделя по |, недели с 1, не больше 6 спринтов",
+    "RM002": "Roadmap один: документ с <!-- bft-roadmap --> в проекте один",
+    "RM003": "строка Roadmap — ID истории (BP-5) или подзадачи по зоне (BP-5.3); карточки «Как это работает» в план не ставят",
+    "RM005": "в Roadmap — каждая история; у кроссфункциональной — её подзадачи; работа начинается после конца зависимости",
     "RL001": "«План релиза»: паспорт <!-- bft-release --> (epic_slug, version, revised, status), «## Шаги» | ID | Стенд | Что сделать | Ответственный | Тип | Зависимости | Статус | Критерий готовности |, «## Ворота» | Ворота | Кто утверждает | Критерий перехода |",
     "RL002": "план релиза один: документ с <!-- bft-release --> в проекте один",
     "RL003": "шаг: зависимости — ID шагов R1… из «Шагов»; ворота — по одному на переход dev → stage и stage → prod",
@@ -494,7 +663,7 @@ def report(pr: bl.Project, strict: bool, name: str = "backlog-lint") -> int:
     blockers = [q for q in pr.questions if q.open and q.kind == "блокер"]
     for q in blockers:
         print(f"  блокер {q.id} → {q.to}: {q.text}")
-    print(f"{name}: {len(pr.tasks)} задач, {len(pr.cards)} карточек «Как это работает», {len(pr.screens)} экранов с требованиями, "
+    print(f"{name}: {len(pr.tasks)} задач, " + (f"{len(pr.subtasks)} подзадач по зонам, " if pr.subtasks else "") + f"{len(pr.cards)} карточек «Как это работает», {len(pr.screens)} экранов с требованиями, "
           f"задач вне карты {pr.other}, открытых вопросов {sum(q.open for q in pr.questions)} (блокеров {len(blockers)}) — "
           f"ошибок {errors}, предупреждений {warns}")
     return 1 if errors or (strict and warns) else 0

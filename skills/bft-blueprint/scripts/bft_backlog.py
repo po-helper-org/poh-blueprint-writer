@@ -16,6 +16,8 @@ markdown-файлы, которыми ИИ-агент управляет чер�
                                              контракты → параметры → источники → преобразования → AS-IS → изменения
   backlog/docs/doc-… - Стыки.md               этап «Контроль стыковочных работ» <!-- bft-seams … -->:
                                              участники стыков, обязательства, контракты, точки, риски
+  backlog/docs/doc-… - Риски-исполнения.md   риски исполнения историй, согласуются с PO <!-- bft-risks … -->
+  backlog/docs/doc-… - Roadmap.md             сроки: кто что делает по неделям и спринтам <!-- bft-roadmap … -->
   backlog/docs/doc-… - План-релиза.md         этап «План релиза / Delivery» <!-- bft-release … -->:
                                              дорожки DEV/STAGE/PROD, шаги и ворота между стендами
   backlog/docs/screens/doc-… - F3 · ….md      требования к экрану для дизайнера
@@ -30,6 +32,9 @@ markdown-файлы, которыми ИИ-агент управляет чер�
 Исполнение — references (JIRA, Confluence) и Implementation Notes.
 
 Карточка «Как это работает»: подзадача задачи «Что делаем», метки `layer:<слой>` и `stage:<этап>`.
+Подзадача по зоне: подзадача истории (задачи «Что делаем»), метки `zone:<зона>` и `stage:<этап>`,
+исполнитель — команда зоны. Эпик (БФТ) → история → подзадачи по зонам; история в одном контуре —
+без подзадач.
 Описание: суть одной-двумя фразами; ### UserStory «Как …, я хочу …, чтобы …»; ### JobStory — ситуации
 «Когда …, хочу …, чтобы …»; ### Параметры (вход, управление, выход, механизм); ### Процесс — шаги
 «Участник: действие» и развилки «? вопрос» с ветками «ответ → Участник: действие»; ### BPMN — mermaid,
@@ -65,10 +70,54 @@ FINAL = bs.FINAL
 
 KINDS = ("создать", "доработать", "используем", "уточнить")
 
+# приоритет истории по MoSCoW — метка moscow:<приоритет>; Would — за линией Out of scope:
+# относится к инициативе, но коммитментом заказчику не обсуждалась
+MOSCOW = ("must", "should", "would")
+
 LAYERS = ("employee", "technology", "backstage", "support")
+
+# функциональные зоны подзадач истории: кто делает свою часть результата (в JIRA — подзадача с исполнителем).
+# Требования БФТ — у истории; у подзадачи — исполнитель, постановка в формате зоны и чеклист приемки.
+# Аналитика: PO — согласования, BA — вопросы бизнес-логики, SA — вопросы системной реализации,
+# ADR — архитектурные решения (чеклист — то, на что нужно получить ответ). Исполнение: Design —
+# UserStory, JobStory, UserFlow (одна точка касания — одна задача); BE — ASIS/GAP/TOBE и «Данные»
+# (откуда и как берём каждый параметр); DBA — доработка БД под данные, которых в хранилище не было;
+# FE, DevOps — ASIS/GAP/TOBE. QA, Delivery — что сделать и чеклист.
+ZONES = ("PO", "BA", "SA", "ADR", "Design", "BE", "DBA", "FE", "DevOps", "QA", "Delivery")
+
+ZONE_SECTIONS = {"Design": ("UserStory", "JobStory", "UserFlow"), "BE": ("ASIS", "GAP", "TOBE", "Данные"),
+                 "DBA": ("ASIS", "GAP", "TOBE"), "FE": ("ASIS", "GAP", "TOBE"), "DevOps": ("ASIS", "GAP", "TOBE")}
+
+ZONE_CHECKLIST = ("PO", "BA", "SA", "ADR", "Design", "QA", "Delivery")   # без чеклиста подзадача пустая
+
+ZONE_CHECK_HINT = {"PO": "ключевые согласования", "BA": "ключевые вопросы по бизнес-логике",
+                   "SA": "ключевые вопросы по системной реализации", "ADR": "ключевые архитектурные решения",
+                   "Design": "что пользователь может сделать на экране", "QA": "что проверить", "Delivery": "что отгрузить"}
 
 # Этап «План релиза / Delivery»: дорожки-стенды, шаги, ворота между стендами.
 RELEASE_META = ("epic_slug", "version", "revised", "status")
+
+# Roadmap: сроки работ на карте — по неделям, сгруппированным в спринты. Строка плана — история или
+# подзадача истории (у кроссфункциональной истории в план идут её подзадачи: у них свои исполнители);
+# «кто» — исполнитель задачи, в плане его не повторяют. Горизонт — не больше 6 спринтов.
+ROADMAP_META = ("epic_slug", "version", "revised", "status", "start", "sprint_weeks")
+
+ROADMAP_HEADER = ("ID", "Неделя с", "Неделя по")
+
+ROADMAP_MAX_SPRINTS = 6
+
+# Риски исполнения: что может сорвать срок истории. Кандидатов находит auto_risks() по данным карты —
+# стык BE+FE в одной истории, работы DevOps, интеграция новых или внешних систем; документ «Риски
+# исполнения» их записывает с митигацией, владельцем и статусом согласования с PO.
+RISKS_META = ("epic_slug", "version", "revised", "status")
+
+RISKS_HEADER = ("ID", "История", "Тип", "Риск", "Митигация", "Владелец", "Статус")
+
+RISK_KINDS = {"стык be+fe": "befe", "devops": "devops", "интеграция": "integration", "другое": "other"}
+
+RISK_STATUSES = ("на согласовании", "согласован", "снят")
+
+EXEC_RISK_ID = re.compile(r"^X-?(?P<num>\d+)$", re.I)
 
 RELEASE_TRACKS = ("dev", "stage", "prod")
 
@@ -114,6 +163,12 @@ MAP_META = ("epic_slug", "source_doc", "source_stage", "source_rev", "version", 
 
 TEAMS_HEADER = ("ID", "Команда")
 
+TEAMS_HEADER_LEAD = ("ID", "Команда", "Техлид")      # техлид — исполнитель историй контура
+
+# триггер — событие, с которого персонаж начинает свой путь («Гость купил билет»): старт чтения
+# диаграммы «Как это работает»; раздел «Триггеры» «Карты», этап — где событие происходит
+TRIGGERS_HEADER = ("Персонаж", "Триггер", "Этап")
+
 QUESTIONS_HEADER = ("ID", "Кому", "Вопрос", "Где", "Тип", "Ответ")
 
 Q_TYPES = ("вопрос", "блокер")
@@ -147,6 +202,21 @@ VARIANT_ID = re.compile(r"^V-?(?P<num>\d+)$", re.I)
 BOTTLENECK_ID = re.compile(r"^N-?(?P<num>\d+)$", re.I)
 
 COMPROMISE_ID = re.compile(r"^C-?(?P<num>\d+)$", re.I)
+
+# C4 L3 в ADR: компоненты и потоки данных между ними. Компонент живёт в контексте (система —
+# граница C4) и в контуре ответственности (команда из «Команд»); «Задачи» — где на карте
+# запланированы работы над ним. Схему страница рисует сама из этих двух таблиц.
+C4_COMPONENT_HEADER = ("ID", "Компонент", "Контекст", "Контур", "Тип", "Изменение", "Задачи")
+
+C4_FLOW_HEADER = ("От", "К", "Данные", "Способ", "Контракт")
+
+COMPONENT_ID = re.compile(r"^M-?(?P<num>\d+)$", re.I)
+
+C4_KINDS = ("человек", "интерфейс", "сервис", "хранилище", "очередь", "внешняя система")
+
+C4_CHANGES = ("новый", "доработка", "без изменений")
+
+EMPTY_CELL = ("", "—", "-", "–")
 
 # Системные требования: три вопроса на КАЖДЫЙ контракт — (1) какие данные нужны контракту,
 # (2) источник каждого параметра (система/сервис/поле/справочник), (3) какие преобразования
@@ -214,7 +284,7 @@ REQS_LINE = re.compile(r"^Требования(?: БФТ)?\s*:\s*(.*)$")
 
 STEP_RE = re.compile(r"^\d+\.\s+\S")
 
-META_OPEN = re.compile(r"^<!--\s*(bft-map|bft-story|bft-adr|bft-sysreq|bft-seams|bft-release)\s*$")
+META_OPEN = re.compile(r"^<!--\s*(bft-map|bft-story|bft-adr|bft-sysreq|bft-seams|bft-release|bft-roadmap|bft-risks)\s*$")
 
 MERMAID = re.compile(r"```mermaid\n(.*?)\n```", re.S)
 
@@ -249,6 +319,8 @@ class BTask:
     parent: str = ""
     stage: str = ""
     layer: str = ""
+    zone: str = ""            # функциональная зона подзадачи истории: FE, BE, Design…
+    prio: str = ""            # MoSCoW истории: must, should, would; у подзадачи — как у истории
     team: str = ""            # ID команды или «?»
     cand: str = ""
     kind: str = ""
@@ -285,6 +357,14 @@ class BTask:
 class Team:
     id: str
     name: str
+    line: int
+    lead: str = ""            # техлид контура: исполнитель его историй
+
+@dataclass
+class Trigger:
+    persona: str
+    text: str
+    stage: str
     line: int
 
 @dataclass
@@ -393,6 +473,28 @@ class Compromise:
     line: int
 
 @dataclass
+class Component:
+    """Компонент C4 L3: где живёт (контекст), чей (контур — команда), что это и что с ним делаем."""
+    id: str
+    name: str
+    context: str          # система / граница C4: «Витрина Acme Tickets»
+    team: str             # контур ответственности — ID команды; «—» у человека, «?» — не определён
+    kind: str             # C4_KINDS
+    change: str           # C4_CHANGES
+    tasks: list           # ID задач и карточек карты, где запланированы работы
+    line: int
+
+@dataclass
+class Flow:
+    """Поток данных C4 L3: от компонента к компоненту — что передаётся, как и по какому контракту."""
+    src: str
+    dst: str
+    data: str
+    how: str              # способ: «HTTP, синхронно», «событие», «интерфейс»
+    contract: str         # контракт из «Решения TO-BE» или «—»
+    line: int
+
+@dataclass
 class ADR:
     """Документ «ADR» (<!-- bft-adr … -->): этап «ADR и Системные требования», часть системного дизайна.
 
@@ -411,6 +513,8 @@ class ADR:
     bottlenecks: list = field(default_factory=list)       # [Bottleneck]
     compromises: list = field(default_factory=list)       # [Compromise]
     diagram: str = ""                                     # mermaid-диаграмма AS-IS/TO-BE
+    components: list = field(default_factory=list)        # [Component] — C4 L3
+    flows: list = field(default_factory=list)             # [Flow] — потоки данных C4 L3
     doc: Doc | None = None
 
     def by_id(self, vid: str) -> Option | None:
@@ -489,6 +593,46 @@ class Seams:
         return next((s for s in self.seams if s.id == sid), None)
 
 @dataclass
+class ExecRisk:
+    """Риск исполнения истории: тип, суть, митигация, владелец, статус согласования с PO."""
+    id: str
+    story: str
+    kind: str             # befe | devops | integration | other
+    text: str
+    mitigation: str
+    owner: str
+    status: str
+    line: int
+
+@dataclass
+class ExecRisks:
+    meta: dict = field(default_factory=dict)
+    items: list = field(default_factory=list)     # [ExecRisk]
+    doc: "Doc | None" = None
+
+@dataclass
+class RoadmapItem:
+    """Строка Roadmap: работа на карте (история или подзадача) и её недели."""
+    id: str
+    start: int            # неделя начала, с 1
+    end: int              # неделя конца, включительно
+    line: int
+
+@dataclass
+class Roadmap:
+    meta: dict = field(default_factory=dict)
+    start: str = ""                               # понедельник первой недели, ГГГГ-ММ-ДД
+    sprint_weeks: int = 1                         # недель в спринте
+    items: list = field(default_factory=list)     # [RoadmapItem]
+    doc: "Doc | None" = None
+
+    @property
+    def weeks(self) -> int:
+        """Горизонт плана в неделях: до последней занятой недели, не меньше одного спринта."""
+        last = max([i.end for i in self.items], default=0)
+        return max(self.sprint_weeks, -(-last // self.sprint_weeks) * self.sprint_weeks)
+
+@dataclass
 class ReleaseStep:
     """Шаг дорожки «План релиза»: что сделать на стенде, чтобы задача прошла дальше."""
     id: str
@@ -541,13 +685,19 @@ class Project:
     seams: Seams | None = None
     release_doc: Doc | None = None
     release: Release | None = None
+    roadmap_doc: Doc | None = None
+    roadmap: Roadmap | None = None
+    risks_doc: Doc | None = None
+    risks: ExecRisks | None = None
     story: bs.Story | None = None
     teams: list[Team] = field(default_factory=list)
+    triggers: list[Trigger] = field(default_factory=list)   # события старта персонажей
     questions: list[Question] = field(default_factory=list)
     docs: dict = field(default_factory=dict)       # {doc-id: Doc}
     screens: dict = field(default_factory=dict)    # {ID экрана: bsn.ScreenDoc}
     tasks: list[BTask] = field(default_factory=list)   # «Что делаем»
     cards: list[BTask] = field(default_factory=list)   # «Как это работает»
+    subtasks: list[BTask] = field(default_factory=list)  # подзадачи историй по зонам: FE, BE, Design…
     other: int = 0                                     # задачи проекта вне карты
     issues: list[bb.Issue] = field(default_factory=list)
 
@@ -562,7 +712,7 @@ class Project:
         return [i for i in self.issues if i.level == "ERROR"]
 
     def task(self, tid: str) -> BTask | None:
-        return next((t for t in self.tasks + self.cards if t.id == tid), None)
+        return next((t for t in self.tasks + self.cards + self.subtasks if t.id == tid), None)
 
     @property
     def id_re(self) -> re.Pattern:
@@ -782,6 +932,35 @@ def parse_adr(pr: Project, d: Doc) -> ADR:
                 err(ln, "AR001", f"{cid}: нужны «Компромисс», оценки по трём осям и «Чем платим»")
                 continue
             a.compromises.append(Compromise(cid, c[1].strip(), c[2].strip(), c[3].strip(), c[4].strip(), c[5].strip(), ln))
+    # C4 L3 — условные разделы: нет — AR007 в check_adr подскажет; форма — если раздел есть
+    if "Компоненты" in secs:
+        for ln, c in _table(d, secs, "Компоненты", C4_COMPONENT_HEADER, err):
+            mid = _norm_id(c[0], COMPONENT_ID, "M")
+            if not mid or mid in {x.id for x in a.components}:
+                err(ln, "AR001", f"компонент: ID вида M1…, уникален — «{c[0]}»")
+                continue
+            name, ctx, team, kind, change = (x.strip() for x in c[1:6])
+            if not (name and ctx and team and kind and change):
+                err(ln, "AR001", f"{mid}: нужны «Компонент», «Контекст», «Контур», «Тип», «Изменение»")
+                continue
+            if kind.lower() not in C4_KINDS:
+                err(ln, "AR001", f"{mid}: тип «{kind}» — один из: {', '.join(C4_KINDS)}")
+                continue
+            if change.lower() not in C4_CHANGES:
+                err(ln, "AR001", f"{mid}: изменение «{change}» — одно из: {', '.join(C4_CHANGES)}")
+                continue
+            tasks = [] if c[6].strip() in EMPTY_CELL else [x.strip().upper() for x in re.split(r"[,;\s]+", c[6]) if x.strip()]
+            a.components.append(Component(mid, name, ctx, team, kind.lower(), change.lower(), tasks, ln))
+    if "Потоки" in secs:
+        for ln, c in _table(d, secs, "Потоки", C4_FLOW_HEADER, err):
+            src, dst = _norm_id(c[0], COMPONENT_ID, "M"), _norm_id(c[1], COMPONENT_ID, "M")
+            if not src or not dst:
+                err(ln, "AR001", f"поток: «От» и «К» — ID компонентов M1…, а не «{c[0]}» → «{c[1]}»")
+                continue
+            if not (c[2].strip() and c[3].strip()):
+                err(ln, "AR001", f"поток {src} → {dst}: нужны «Данные» и «Способ»")
+                continue
+            a.flows.append(Flow(src, dst, c[2].strip(), c[3].strip(), c[4].strip(), ln))
     if "Диаграмма AS-IS/TO-BE" in secs:
         mm = MERMAID.search("\n".join(secs["Диаграмма AS-IS/TO-BE"][1]))
         a.diagram = f"```mermaid\n{mm.group(1)}\n```" if mm else ""
@@ -1068,6 +1247,142 @@ def parse_release(pr: Project, d: Doc) -> Release:
     rel.meta["_issues"] = issues
     return rel
 
+def parse_risks(pr: Project, d: Doc) -> ExecRisks:
+    """Документ «Риски исполнения» (<!-- bft-risks … -->): «## Риски» | ID | История | Тип | Риск |
+    Митигация | Владелец | Статус |. Форма — здесь (RK001); ссылки и полнота — в линтере."""
+    rk = ExecRisks(meta={k: v for k, v in d.meta.items() if not k.startswith("_")})
+    rk.doc = d
+    issues: list[bb.Issue] = []
+    err = lambda ln, code, msg: issues.append(bb.Issue(ln, "ERROR", code, msg, d.rel))  # noqa: E731
+    for key in RISKS_META:
+        if not str(rk.meta.get(key, "")).strip():
+            err(d.off + 1, "RK001", f"паспорт <!-- bft-risks -->: нет ключа `{key}`")
+    lines = d.body.split("\n")
+    if not next((ln for ln in lines if ln.startswith("# ")), ""):
+        err(d.off + 1, "RK001", "нет заголовка `# Риски исполнения: <инициатива>`")
+    secs = bb._sections(lines)
+    if "Риски" not in secs:
+        err(d.off + 1, "RK001", f"нет раздела «## Риски» с таблицей | {' | '.join(RISKS_HEADER)} |")
+    else:
+        ln0, tbody = secs["Риски"]
+        found = bb.tables(tbody, first_lineno=d.off + ln0 + 1)
+        if not found or tuple(found[0][0]) != RISKS_HEADER:
+            err(d.off + ln0, "RK001", f"«Риски»: таблица | {' | '.join(RISKS_HEADER)} |")
+        else:
+            for ln, c in found[0][1]:
+                if len(c) != len(RISKS_HEADER):
+                    err(ln, "RK001", f"«Риски»: в строке {len(c)} колонок, нужно {len(RISKS_HEADER)}")
+                    continue
+                rid = _norm_id(c[0], EXEC_RISK_ID, "X")
+                if not rid or any(r.id == rid for r in rk.items):
+                    err(ln, "RK001", f"риск: ID вида X1…, уникален — «{c[0]}»")
+                    continue
+                kind = RISK_KINDS.get(c[2].strip().lower())
+                if not kind:
+                    err(ln, "RK001", f"{rid}: тип «{c[2].strip()}» — один из: стык BE+FE, DevOps, интеграция, другое")
+                    continue
+                status = c[6].strip().lower()
+                if status not in RISK_STATUSES:
+                    err(ln, "RK001", f"{rid}: статус «{c[6].strip()}» — один из: {', '.join(RISK_STATUSES)}")
+                    continue
+                if not all(x.strip() for x in (c[1], c[3], c[4], c[5])):
+                    err(ln, "RK001", f"{rid}: нужны «История», «Риск», «Митигация», «Владелец»")
+                    continue
+                rk.items.append(ExecRisk(rid, c[1].strip().upper(), kind, c[3].strip(), c[4].strip(), c[5].strip(), status, ln))
+    rk.meta["_issues"] = issues
+    return rk
+
+def auto_risks(pr: Project) -> list[tuple[str, str]]:
+    """Кандидаты в риски исполнения по данным карты: [(история, befe|devops|integration)].
+    Стык BE+FE — у истории подзадачи BE и FE; DevOps — подзадача DevOps; интеграция — история
+    работает с внешней системой (поток C4 к ней) или заводит новый сервис, хранилище, очередь."""
+    out: list[tuple[str, str]] = []
+    add = lambda sid, kind: (sid, kind) not in out and out.append((sid, kind))  # noqa: E731
+    for t in pr.tasks:
+        zones = {z.zone for z in pr.subtasks if z.parent == t.id}
+        if {"BE", "FE"} <= zones:
+            add(t.id, "befe")
+        if "DevOps" in zones:
+            add(t.id, "devops")
+    a = pr.adr
+    if a and a.components:
+        parent = {z.id: z.parent for z in pr.subtasks} | {c.id: c.parent for c in pr.cards}
+        story = lambda w: parent.get(w, w)  # noqa: E731
+        stories = {t.id for t in pr.tasks}
+        comps = {c.id: c for c in a.components}
+        for c in a.components:
+            touch = []
+            if c.kind == "внешняя система":
+                touch = [comps[f.dst if f.src == c.id else f.src] for f in a.flows if c.id in (f.src, f.dst)
+                         and (f.dst if f.src == c.id else f.src) in comps]
+            elif c.change == "новый" and c.kind in ("сервис", "хранилище", "очередь"):
+                touch = [c]
+            for o in touch:
+                for w in o.tasks:
+                    if story(w) in stories:
+                        add(story(w), "integration")
+    return sorted(out, key=lambda x: ([int(n) for n in re.findall(r"\d+", x[0])], x[1]))
+
+def parse_roadmap(pr: Project, d: Doc) -> Roadmap:
+    """Документ «Roadmap» (<!-- bft-roadmap … -->): паспорт со стартом и длиной спринта, «## План» —
+    | ID | Неделя с | Неделя по |. Форма — здесь (RM001); ссылки на карту и полнота — в линтере."""
+    rm = Roadmap(meta={k: v for k, v in d.meta.items() if not k.startswith("_")})
+    rm.doc = d
+    issues: list[bb.Issue] = []
+    err = lambda ln, code, msg: issues.append(bb.Issue(ln, "ERROR", code, msg, d.rel))  # noqa: E731
+    for key in ROADMAP_META:
+        if not str(rm.meta.get(key, "")).strip():
+            err(d.off + 1, "RM001", f"паспорт <!-- bft-roadmap -->: нет ключа `{key}`")
+    rm.start = str(rm.meta.get("start", "")).strip()
+    try:
+        import datetime as _dt
+        if _dt.date.fromisoformat(rm.start).weekday() != 0:
+            err(d.off + 1, "RM001", f"start {rm.start} — понедельник первой недели плана")
+    except ValueError:
+        if rm.start:
+            err(d.off + 1, "RM001", f"start «{rm.start}» — дата ГГГГ-ММ-ДД, понедельник первой недели")
+    sw = str(rm.meta.get("sprint_weeks", "")).strip()
+    if sw:
+        if sw in ("1", "2"):
+            rm.sprint_weeks = int(sw)
+        else:
+            err(d.off + 1, "RM001", f"sprint_weeks «{sw}» — недель в спринте: 1 или 2")
+    horizon = ROADMAP_MAX_SPRINTS * rm.sprint_weeks
+    lines = d.body.split("\n")
+    if not next((ln for ln in lines if ln.startswith("# ")), ""):
+        err(d.off + 1, "RM001", "нет заголовка `# Roadmap: <инициатива>`")
+    secs = bb._sections(lines)
+    if "План" not in secs:
+        err(d.off + 1, "RM001", "нет раздела «## План» с таблицей | ID | Неделя с | Неделя по |")
+    else:
+        ln0, tbody = secs["План"]
+        found = bb.tables(tbody, first_lineno=d.off + ln0 + 1)
+        if not found or tuple(found[0][0]) != ROADMAP_HEADER:
+            err(d.off + ln0, "RM001", f"«План»: таблица | {' | '.join(ROADMAP_HEADER)} |")
+        else:
+            for ln, c in found[0][1]:
+                if len(c) != len(ROADMAP_HEADER):
+                    err(ln, "RM001", f"«План»: в строке {len(c)} колонок, нужно {len(ROADMAP_HEADER)}")
+                    continue
+                iid = c[0].strip().upper()
+                if any(i.id == iid for i in rm.items):
+                    err(ln, "RM001", f"{iid}: в плане дважды — одна строка на работу")
+                    continue
+                try:
+                    a, b = int(c[1].strip()), int(c[2].strip())
+                except ValueError:
+                    err(ln, "RM001", f"{iid}: недели — числа с 1: «{c[1].strip()}» … «{c[2].strip()}»")
+                    continue
+                if not 1 <= a <= b:
+                    err(ln, "RM001", f"{iid}: неделя с {a} по {b} — начало с 1 и не позже конца")
+                    continue
+                if b > horizon:
+                    err(ln, "RM001", f"{iid}: неделя {b} за горизонтом — план не длиннее {ROADMAP_MAX_SPRINTS} спринтов ({horizon} недель)")
+                    continue
+                rm.items.append(RoadmapItem(iid, a, b, ln))
+    rm.meta["_issues"] = issues
+    return rm
+
 def _subsections(text: str, first: int) -> tuple[list[str], dict, list[tuple[int, str]]]:
     """Текст описания: (строки до первого ###, {раздел: (строка, текст)}, порядок [(строка, раздел)])."""
     pre, secs, order, cur, buf, start = [], {}, [], None, [], 0
@@ -1296,7 +1611,7 @@ def parse(root: Path) -> Project:
             pr.err(d.rel, 1, "BL005", f"второй документ с ID {d.id} — `backlog doctor`")
             continue
         pr.docs[d.id] = d
-        for kind in ("bft-map", "bft-story", "bft-adr", "bft-sysreq", "bft-seams", "bft-release"):
+        for kind in ("bft-map", "bft-story", "bft-adr", "bft-sysreq", "bft-seams", "bft-release", "bft-roadmap", "bft-risks"):
             mc = _meta_comment(d.body, kind)
             if mc:
                 d.meta = {**d.meta, "_kind": kind, **mc[0]}
@@ -1325,6 +1640,20 @@ def parse(root: Path) -> Project:
                     pr.seams_doc = d
                     pr.seams = parse_seams(pr, d)
                     pr.issues.extend(pr.seams.meta.pop("_issues"))
+                elif kind == "bft-risks":
+                    if pr.risks_doc:
+                        pr.err(d.rel, 1, "RK002", f"вторые «Риски исполнения» — уже есть {pr.risks_doc.rel}")
+                    d.meta = {**d.meta, **mc[0]}
+                    pr.risks_doc = d
+                    pr.risks = parse_risks(pr, d)
+                    pr.issues.extend(pr.risks.meta.pop("_issues"))
+                elif kind == "bft-roadmap":
+                    if pr.roadmap_doc:
+                        pr.err(d.rel, 1, "RM002", f"второй Roadmap — уже есть {pr.roadmap_doc.rel}")
+                    d.meta = {**d.meta, **mc[0]}
+                    pr.roadmap_doc = d
+                    pr.roadmap = parse_roadmap(pr, d)
+                    pr.issues.extend(pr.roadmap.meta.pop("_issues"))
                 elif kind == "bft-release":
                     if pr.release_doc:
                         pr.err(d.rel, 1, "RL002", f"второй план релиза — уже есть {pr.release_doc.rel}")
@@ -1352,6 +1681,17 @@ def parse(root: Path) -> Project:
         if not h1:
             pr.err(md.rel, md.off + 1, "BL002", "нет заголовка `# Карта: <инициатива>`")
         secs = bb._sections(lines)
+        if "Триггеры" in secs:
+            ln0, body = secs["Триггеры"]
+            found = bb.tables(body, first_lineno=md.off + ln0 + 1)
+            if not found or tuple(found[0][0]) != TRIGGERS_HEADER:
+                pr.err(md.rel, md.off + ln0, "BL049", f"«Триггеры»: таблица | {' | '.join(TRIGGERS_HEADER)} |")
+            else:
+                for ln, c in found[0][1]:
+                    if len(c) != 3 or not all(x.strip() for x in c):
+                        pr.err(md.rel, ln, "BL049", "триггер: нужны «Персонаж» (ID из «Истории»), «Триггер» — событие, «Этап» — ID этапа")
+                        continue
+                    pr.triggers.append(Trigger(c[0].strip(), c[1].strip(), c[2].strip().upper(), ln))
         for name, header in (("Команды", TEAMS_HEADER), ("Вопросы", QUESTIONS_HEADER)):
             if name not in secs:
                 pr.err(md.rel, md.off + 1, "BL004", f"нет раздела «## {name}»")
@@ -1363,6 +1703,8 @@ def parse(root: Path) -> Project:
                     pr.err(md.rel, md.off + ln0, "BL004", "«Команды»: нет таблицы")
                 continue
             hdr, rows = found[0]
+            if name == "Команды" and tuple(hdr) == TEAMS_HEADER_LEAD:
+                header = TEAMS_HEADER_LEAD
             if tuple(hdr) != header:
                 pr.err(md.rel, md.off + ln0, "BL004", f"«{name}»: заголовок таблицы — {' | '.join(header)}")
                 continue
@@ -1375,7 +1717,8 @@ def parse(root: Path) -> Project:
                     if not TEAM_RE.match(tid) or any(t.id == tid for t in pr.teams) or not c[1].strip():
                         pr.err(md.rel, ln, "BL004", f"команда: ID — латиница-слаг, уникален, название не пусто — «{tid}»")
                         continue
-                    pr.teams.append(Team(tid, c[1].strip(), ln))
+                    lead = c[2].strip() if len(c) > 2 and c[2].strip() not in bb.EMPTY else ""
+                    pr.teams.append(Team(tid, c[1].strip(), ln, lead))
                 else:
                     qid = bs.norm_question(c[0])
                     if not qid or any(q.id == qid for q in pr.questions):
@@ -1420,12 +1763,14 @@ def parse(root: Path) -> Project:
             continue
         t.stage = st[0].upper() if st[0].lower() != FINAL else FINAL
         t.layer = (_label(t, "layer") or [""])[0].lower()
-        (pr.cards if _label(t, "layer") else pr.tasks).append(t)
+        t.zone = (_label(t, "zone") or [""])[0]
+        (pr.cards if _label(t, "layer") else pr.subtasks if _label(t, "zone") else pr.tasks).append(t)
         if len(st) > 1:
             pr.err(t.rel, 1, "BL006", f"{t.id}: меток этапа {len(st)} — одна `stage:<этап>`")
     key = lambda t: (t.ordinal, [int(x) for x in re.findall(r"\d+", t.id)])  # noqa: E731
     pr.tasks.sort(key=key)
     pr.cards.sort(key=key)
+    pr.subtasks.sort(key=key)
 
     stages = ({s.id for s in pr.story.stages} if pr.story else set()) | {FINAL}
     team_ids = {t.id for t in pr.teams}
@@ -1435,6 +1780,9 @@ def parse(root: Path) -> Project:
         _check_task(pr, t, stages, team_ids)
     for c in pr.cards:
         _check_card(pr, c, stages, team_ids, task_ids, card_ids)
+    for z in pr.subtasks:
+        _check_subtask(pr, z, stages, team_ids, task_ids)
+    sub_ids = {z.id for z in pr.subtasks}
     seam_ids = {s.id for s in pr.seams.seams} if pr.seams else set()
     for q in pr.questions:
         adr_ids = set()
@@ -1442,13 +1790,13 @@ def parse(root: Path) -> Project:
             adr_ids = {o.id for o in pr.adr.options} | {c.id for c in pr.adr.compromises}
         if pr.sysreq:
             adr_ids |= {c.id for c in pr.sysreq.contracts}
-        if q.where not in task_ids | card_ids | adr_ids | seam_ids:
+        if q.where not in task_ids | card_ids | sub_ids | adr_ids | seam_ids:
             pr.err(pr.map_doc.rel, q.line, "BL010", f"{q.id}: «Где» — ID задачи, карточки карты ({pr.prefix}-12, {pr.prefix}-12.1), стыка (S1) или этапа ADR (K1, V1, C1), а не «{q.where}»")
         if q.kind not in Q_TYPES:
             pr.err(pr.map_doc.rel, q.line, "BL010", f"{q.id}: тип «{q.kind}» — вопрос или блокер")
         if not q.to or not q.text:
             pr.err(pr.map_doc.rel, q.line, "BL010", f"{q.id}: нужны «Кому» и «Вопрос»")
-    for t in pr.tasks + pr.cards:
+    for t in pr.tasks + pr.cards + pr.subtasks:
         for d in t.docs:
             if re.match(r"^doc-\d+", str(d), re.I) and str(d).split()[0].lower() not in {k.lower() for k in pr.docs}:
                 pr.err(t.rel, 1, "BL011", f"{t.id}: документа {d} нет в backlog/docs")
@@ -1464,6 +1812,10 @@ def _check_task(pr: Project, t: BTask, stages: set, team_ids: set) -> None:
     if len(kinds) != 1:
         pr.err(rel, 1, "BL006", f"{t.id}: вид — одна метка из {', '.join(KINDS)}")
     t.kind = kinds[0].lower() if kinds else ""
+    prio = [x.lower() for x in _label(t, "moscow")]
+    if len(prio) > 1 or (prio and prio[0] not in MOSCOW):
+        pr.err(rel, 1, "BL006", f"{t.id}: приоритет — одна метка moscow: из {', '.join(MOSCOW)}")
+    t.prio = prio[0] if len(prio) == 1 and prio[0] in MOSCOW else ""
     who = [str(a).lstrip("@") for a in (t.fm.get("assignee") or [])]
     cand = _label(t, "кандидат")
     if len(who) > 1:
@@ -1510,6 +1862,61 @@ def _check_task(pr: Project, t: BTask, stages: set, team_ids: set) -> None:
         pr.err(rel, secs["HowToDemo"][0], "BL007", f"{t.id}: HowToDemo — нумерованный сценарий хотя бы из двух шагов «1. …»")
     if not t.ac:
         pr.err(rel, 1, "BL007", f"{t.id}: нет критериев приемки (Acceptance Criteria) — `backlog task edit {t.id} --ac …`")
+
+
+def _check_subtask(pr: Project, z: BTask, stages: set, team_ids: set, task_ids: set) -> None:
+    """Подзадача истории по зоне: родитель — история, одна зона из ZONES, этап истории,
+    исполнитель — команда зоны (неизвестна — метки кандидат:, как у истории), описание — что сделать."""
+    rel = z.rel
+    zones = _label(z, "zone")
+    canon = {x.lower(): x for x in ZONES}
+    if len(zones) != 1 or zones[0].lower() not in canon:
+        pr.err(rel, 1, "BL043", f"{z.id}: зона — одна метка zone: из {', '.join(ZONES)}")
+    else:
+        z.zone = canon[zones[0].lower()]
+    if z.parent not in task_ids:
+        pr.err(rel, 1, "BL043", f"{z.id}: родитель — история «Что делаем» (`backlog task create -p {pr.prefix}-12 …`), а не «{z.parent or '—'}»")
+    par = pr.task(z.parent)
+    z.prio = par.prio if par else ""
+    if pr.story and z.stage not in stages:
+        pr.err(rel, 1, "BL043", f"{z.id}: этап «{z.stage}» — ID этапа истории или `стало`")
+    elif par and z.stage != par.stage:
+        pr.err(rel, 1, "BL043", f"{z.id}: этап {z.stage}, а у истории {par.id} — {par.stage}: подзадача живёт на этапе своей истории")
+    who = [str(a).lstrip("@") for a in (z.fm.get("assignee") or [])]
+    cand = _label(z, "кандидат")
+    if len(who) > 1:
+        pr.err(rel, 1, "BL043", f"{z.id}: исполнителей {len(who)} — одна команда на подзадачу")
+    if who:
+        z.team = who[0]
+        if z.team not in team_ids:
+            pr.err(rel, 1, "BL043", f"{z.id}: команды @{z.team} нет в «Командах»")
+    else:
+        z.team = "?"
+        names = {x.id: x.name for x in pr.teams}
+        z.cand = " или ".join(names.get(c, c) for c in cand)
+    for c in cand:
+        if c not in team_ids:
+            pr.err(rel, 1, "BL043", f"{z.id}: кандидата {c} нет в «Командах»")
+    if not z.desc.strip():
+        pr.err(rel, z.off or 1, "BL043", f"{z.id}: описание — что сделать в своей зоне, одна-две фразы")
+    pre, secs, order = _subsections(z.desc, z.off)
+    z.sections = secs
+    lead = []
+    for ln in pre:
+        if REQS_LINE.match(ln.strip()):
+            pr.err(rel, z.off or 1, "BL047", f"{z.id}: требования БФТ — у истории {z.parent}, в подзадаче — исполнитель, постановка зоны и чеклист")
+        else:
+            lead.append(ln)
+    z.lead = "\n".join(lead).strip()
+    need = ZONE_SECTIONS.get(z.zone, ())
+    for n, name in order:
+        if name not in need:
+            pr.err(rel, n, "BL047", f"{z.id}: раздел «{name}» — у зоны {z.zone or '?'} " + (f"разделы {', '.join(need)}" if need else "только описание и чеклист приемки"))
+    for name in need:
+        if name not in secs or not secs[name][1].strip():
+            pr.err(rel, secs.get(name, (z.off or 1,))[0], "BL047", f"{z.id}: зона {z.zone} — нужен раздел `### {name}`")
+    if z.zone in ZONE_CHECKLIST and not z.ac:
+        pr.err(rel, 1, "BL047", f"{z.id}: зона {z.zone} — чеклист приемки: " + ZONE_CHECK_HINT.get(z.zone, "что проверить"))
 
 
 VAGUE_LANE = re.compile(r"^(система|сервис|приложение|бэкенд|backend|фронтенд|frontend|платформа|модуль)$", re.I)
