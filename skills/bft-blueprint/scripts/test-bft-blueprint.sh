@@ -262,7 +262,7 @@ assert 'id="exec"' in page and "data-extask" in page
 # HowToDemo раскадровкой: шаг с ID экрана «(F3)» — кадр этого экрана, даже если он не в documentation задачи
 T = {t["id"]: t for t in d["tasks"]}
 assert T["BP-16"]["brief"]["HowToDemo"].count("(F3)") == 3 and "(F1)" in T["BP-15"]["brief"]["HowToDemo"]
-assert 'class="demo"' in page and "function demoHTML" in page
+assert 'class="demo"' in page and "function demoHTML" in page and "function howShow" in page
 PY
 EX="$tmp/bad/exec" && cp -r "$BGOLD" "$EX" && python3 - "$EX" <<'PY'
 import re, sys

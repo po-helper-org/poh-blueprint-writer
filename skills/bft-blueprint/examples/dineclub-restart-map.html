@@ -225,7 +225,7 @@ body.showing .show{display:flex}body.showing{overflow:hidden}
 /* справа сверху: «Уточнить» и «Замечания» — иконки со счётчиком, не отвлекают от карты */
 .tr{position:fixed;top:12px;right:16px;z-index:8;display:flex;gap:8px;transition:right .22s}
 body.open .tr{right:calc(min(500px,100%) + 12px)}body.open.wide .tr{right:calc(min(820px,100%) + 12px)}
-body.open.exec .tr{right:calc(min(500px,100%) + 352px)}
+body.open.side2 .tr{right:calc(min(500px,100%) + 352px)}
 .ib{position:relative;width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.08);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;color:#55524c}
 .ib:hover{color:var(--ink);border-color:#cfcac0}.ib svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .ib b{position:absolute;top:-5px;right:-6px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;border:2px solid #fff;background:var(--red);color:#fff;font-size:10.5px;font-weight:800;line-height:13px;text-align:center;box-sizing:border-box}
@@ -383,7 +383,7 @@ body[data-view="rel"] .rel{display:block}
 }
 /* «Исполнение» — вторая панель слева от экрана: задачи «Что делаем» по командам; узкий экран — список внизу панели экрана */
 .execp{position:fixed;top:0;right:min(500px,100%);height:100%;width:340px;background:#fbfaf7;border-right:1px solid #eeebe5;box-shadow:-8px 0 24px rgba(0,0,0,.12);overflow-y:auto;z-index:9;opacity:0;visibility:hidden;transform:translateX(24px);transition:opacity .2s,transform .22s,visibility .2s}
-body.open.exec .execp{opacity:1;visibility:visible;transform:none}
+body.open.side2 .execp{opacity:1;visibility:visible;transform:none}
 .execp .snbar{background:#fbfaf7}.excnt{font-size:12.5px;color:var(--muted);padding-right:6px;white-space:nowrap}
 .exg{margin:0 0 14px}.exg h4,.exh{display:flex;align-items:center;gap:7px;margin:4px 0 6px;font-size:12.5px;font-weight:650;color:var(--ink)}
 .exg h4 i{width:9px;height:9px;border-radius:3px;background:var(--c)}.exg h4 b{margin-left:auto;font-size:11.5px;font-weight:600;color:#8a857c}
@@ -393,17 +393,24 @@ body.open.exec .execp{opacity:1;visibility:visible;transform:none}
 .exl li.on{background:#f2f0ec}.exl li.on::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:2px;background:var(--ink)}.exl li{padding-left:10px}
 .exno{font-size:13.5px;line-height:1.5;color:var(--muted);margin:0}.exno code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}
 .exin{display:none;margin-top:22px}.exh{font-size:15px;margin:0 0 10px}
-@media(max-width:980px){.execp{display:none}.exin{display:block}body.open.exec .tr{right:calc(min(500px,100%) + 12px)}}
+@media(max-width:980px){.execp{display:none}.exin{display:block}body.open.side2 .tr{right:calc(min(500px,100%) + 12px)}}
 @media print{.execp{display:none}}
-/* HowToDemo раскадровкой: кадры шагов проверки слева направо, лента листается */
-.demo{list-style:none;display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;margin:4px 0 0!important;padding:2px 0 10px!important}
-.dm{flex:0 0 172px;width:172px;min-width:0;scroll-snap-align:start;display:flex;flex-direction:column;gap:6px;margin:0!important;position:relative}
-.dm:not(:last-child)::after{content:"›";position:absolute;right:-9px;top:118px;color:#b9b3a8;font-size:18px}
-.dmh{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#8a857c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.dmh b{flex:none;width:20px;height:20px;border-radius:50%;background:var(--ink);color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center}
-.dmpic{display:flex;justify-content:center;background:#f4f2ee;border-radius:10px;padding:10px 0}.dmpic img{height:190px;width:auto;cursor:zoom-in}
-.dmt{font-size:13px;line-height:1.4}.dmt i{display:block;font-style:normal;font-size:10.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#8a857c}
-.dmt.see i{color:#2f6b2a}
+/* HowToDemo: раскадровка раскрывается вниз — список «картинка + краткое название» */
+.dmd{margin-top:8px}.dmd summary{cursor:pointer;font-size:13px;font-weight:600;color:#55524c;padding:4px 0}.dmd summary:hover{color:var(--ink)}
+.demo{list-style:none;padding:0!important;margin:6px 0 0!important;border-top:1px solid #eeebe5}
+.dm{display:flex;gap:12px;align-items:flex-start;margin:0!important;padding:10px 0;border-bottom:1px solid #eeebe5}
+.dmpic{flex:none;width:76px;display:flex;justify-content:center;background:#f4f2ee;border-radius:8px;padding:6px 0}.dmpic img{height:110px;width:auto;cursor:zoom-in}
+.dmx{display:flex;flex-direction:column;gap:3px;min-width:0;font-size:13.5px;line-height:1.4}.dmx b{font-weight:600}
+.dmn{display:inline-flex;width:18px;height:18px;margin-right:6px;border-radius:50%;background:var(--ink);color:#fff;font-size:10.5px;align-items:center;justify-content:center;vertical-align:1px}
+.dmt{color:#2f6b2a}.dmx small{font-size:11.5px;color:#8a857c}
+/* «Как это работает» задачи — та же вторая панель, шире: JobStory и схема процесса карточки */
+body.how .execp{width:440px}body.open.how .tr{right:calc(min(500px,100%) + 452px)}
+.hwc{border:1px solid #eeebe5;border-radius:12px;background:#fff;padding:10px 12px;margin:0 0 12px;cursor:pointer}.hwc:hover{border-color:#cfcac0}
+.hwm{display:block;font-size:11.5px;color:#8a857c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hwm .lay{font-weight:600;color:var(--c)}
+.hwc>b{display:block;margin:4px 0 2px;font-size:14px;font-weight:600;line-height:1.4}.hwmore{font-size:12px;color:#8a857c}
+.hwc .bpmnw{margin-top:8px;max-height:260px;overflow:hidden;pointer-events:none}.hwc .bpmnw pre{font-size:11px;white-space:pre-wrap;max-height:120px;overflow:hidden}
+@media(max-width:980px){body.open.how .tr{right:calc(min(500px,100%) + 12px)}}
+.hwc .bpmnw svg{width:100%!important;max-width:100%!important;min-width:0!important;height:auto}
 </style></head>
 <body>
 <h1 class="ptitle">Перезапуск акции DineClub — «билет Acme Tickets = скидка 10%»</h1>
@@ -970,16 +977,17 @@ const BPK = (function () {
   function execShow(sids, from, cur) {
     if (from) { execPrep(sids); exFrom = from }
     if (!exScr.length) return execHide();
+    body.classList.remove("how"); ex.dataset.task = "";
     ex.innerHTML = `<div class="snbar"><h3>Исполнение</h3><span class="excnt">${nTasks(exIds.length)}</span></div><div class="tkmeta">Экран ${esc(exScr.join(", "))} · задачи «Что делаем» по командам</div><div class="snbody">${execList(cur || "")}</div>`;
-    body.classList.add("exec");
+    body.classList.add("side2");
   }
-  function execHide() { body.classList.remove("exec"); exFrom = "" }
+  function execHide() { body.classList.remove("side2", "how"); exFrom = ""; ex.dataset.task = "" }
   /* назад из постановки — к экрану или этапу, откуда её открыли */
   function execBack() {
     const [kind, id] = exFrom.split(/:(.*)/);
     return kind === "seen" ? openSeen(id) : openScreen(kind === "screen" ? id : snCur);
   }
-  /* ---------- HowToDemo раскадровкой: шаг проверки — кадр экрана, «делаю» и «вижу» ----------
+  /* ---------- HowToDemo: шаги списком, под ними — раскадровка, раскрывается вниз: картинка и краткое название ----------
      Экраны — те, на которые ведёт documentation задачи или карточки. Экран шага: ID в тексте шага «(F3)»,
      иначе экран, чьё название ближе к тексту шага, иначе экран прошлого шага. «Делаю — вижу» делит
      первое «→» или «—». Шаги не списком или экранов нет — HowToDemo текстом, как раньше. */
@@ -1000,12 +1008,27 @@ const BPK = (function () {
       }
       sid = sid || prev || sids[0]; prev = sid;
       const m = text.match(/^(.+?)\s+[→—]\s+(.+)$/);
-      return { sid, act: m ? m[1] : text, see: m ? m[2] : "" };
+      return { sid, text, act: m ? m[1] : text, see: m ? m[2] : "" };
     });
     gallery = steps.map((st, i) => ({ alt: `Шаг ${i + 1} · ${st.sid} · ${scrName(st.sid)}`, src: screenImg(st.sid) }));
-    return `<ol class="demo">${steps.map((st, i) => `<li class="dm"><span class="dmh" title="${esc(st.sid)} · ${esc(scrName(st.sid))}"><b>${i + 1}</b>${esc(st.sid)} · ${esc(scrName(st.sid))}</span>
+    return `<ol>${steps.map(st => `<li>${mdInline(st.text)}</li>`).join("")}</ol><details class="dmd"><summary>Раскадровка · ${steps.length} ${plural(steps.length, "шаг", "шага", "шагов")}</summary><ol class="demo">${steps.map((st, i) => `<li class="dm">
       <span class="dmpic"><img src="${esc(screenImg(st.sid))}" alt="${esc(scrName(st.sid))}" data-zoom="${i}" loading="lazy" draggable="false"></span>
-      <span class="dmt"><i>Делаю</i>${mdInline(st.act)}</span>${st.see ? `<span class="dmt see"><i>Вижу</i>${mdInline(st.see)}</span>` : ""}</li>`).join("")}</ol>`;
+      <span class="dmx"><b><span class="dmn">${i + 1}</span>${mdInline(st.act)}</b>${st.see ? `<span class="dmt">${mdInline(st.see)}</span>` : ""}<small>${esc(st.sid)} · ${esc(scrName(st.sid))}</small></span></li>`).join("")}</ol></details>`;
+  }
+  /* ---------- «Как это работает» задачи: вторая панель слева от постановки ----------
+     Карточка-превью: JobStory заголовком (нет — название карточки), под ней схема процесса (mermaid),
+     панель листается. Клик — карточка целиком. Пришли из «Исполнения» экрана — слева остаётся оно. */
+  function howShow(id) {
+    const cards = D.cards.filter(c => c.task === id);
+    if (!cards.length) return execHide();
+    if (ex.dataset.task === id && body.classList.contains("how")) return;
+    ex.dataset.task = id;
+    ex.innerHTML = `<div class="snbar"><h3>Как это работает</h3><span class="excnt">${cards.length} ${plural(cards.length, "карточка", "карточки", "карточек")}</span></div><div class="tkmeta">Задача ${esc(id)} · процессы её карточек</div><div class="snbody">${cards.map(c => { const L = LAYER[c.layer];
+      return `<section class="hwc" data-proc="${esc(c.id)}" tabindex="0"><span class="hwm"><span class="lay" style="--c:${L[2]}">${L[0]}</span> · ${esc(c.id)} · ${esc(c.text)}</span>
+        <b>${mdInline((c.js || [])[0] || c.us || c.text)}</b>${(c.js || []).length > 1 ? `<span class="hwmore">ещё ${c.js.length - 1} ${plural(c.js.length - 1, "ситуация", "ситуации", "ситуаций")}</span>` : ""}
+        ${c.bpmn ? `<div class="bpmnw"><pre>${esc(c.bpmn)}</pre></div>` : ""}</section>` }).join("")}</div>`;
+    body.classList.add("side2", "how"); ex.scrollTop = 0;
+    ex.querySelectorAll(".bpmnw").forEach(drawMermaid);
   }
   function execOpen(id) {
     openTask(id, 0, true); execShow(null, "", id);
@@ -1089,7 +1112,6 @@ const BPK = (function () {
   function openTask(id, tab, fromExec) {
     if (tab != null) taskTab = tab;
     const back = fromExec || (exFrom && side.dataset.ctx === "task:" + id);
-    if (!back) execHide();
     const t = TASK[id], br = t.brief || {}, cards = D.cards.filter(c => c.task === id);
     let done = {}; try { done = JSON.parse(localStorage.getItem(dodKey(id)) || "{}") } catch (e) { }
     const ac = t.ac.map(([d, x], k) => `<label class="dod"><input type="checkbox" data-dod="${id}:${k}"${(done[k] != null ? done[k] : d) ? " checked" : ""}><span>${mdInline(x)}</span></label>`).join("");
@@ -1101,6 +1123,7 @@ const BPK = (function () {
     side.innerHTML = head(t.text, `<span class="pteam" style="--c:${teamC(t)}"><i></i>${esc(t.team === "?" && t.cand ? "Команда? " + t.cand : teamN(t))}</span> · ${esc(COLS[colOf(t.stage)].name)} · ${esc(id)} · ${esc(t.status)}`, back) + `<div class="snbody">${tabs}${taskTab ? execHTML(t) : html}</div>`;
     body.classList.remove("wide"); body.classList.add("open"); side.scrollTop = 0;
     side.dataset.ctx = "task:" + id; side.dataset.note = "";
+    if (!back) { exFrom = ""; howShow(id) }
   }
 
   /* карточка «Как это работает» — техническая задача: UserStory, JobStory, процесс и его схема BPMN,

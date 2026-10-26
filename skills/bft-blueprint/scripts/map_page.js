@@ -474,16 +474,17 @@
   function execShow(sids, from, cur) {
     if (from) { execPrep(sids); exFrom = from }
     if (!exScr.length) return execHide();
+    body.classList.remove("how"); ex.dataset.task = "";
     ex.innerHTML = `<div class="snbar"><h3>Исполнение</h3><span class="excnt">${nTasks(exIds.length)}</span></div><div class="tkmeta">Экран ${esc(exScr.join(", "))} · задачи «Что делаем» по командам</div><div class="snbody">${execList(cur || "")}</div>`;
-    body.classList.add("exec");
+    body.classList.add("side2");
   }
-  function execHide() { body.classList.remove("exec"); exFrom = "" }
+  function execHide() { body.classList.remove("side2", "how"); exFrom = ""; ex.dataset.task = "" }
   /* назад из постановки — к экрану или этапу, откуда её открыли */
   function execBack() {
     const [kind, id] = exFrom.split(/:(.*)/);
     return kind === "seen" ? openSeen(id) : openScreen(kind === "screen" ? id : snCur);
   }
-  /* ---------- HowToDemo раскадровкой: шаг проверки — кадр экрана, «делаю» и «вижу» ----------
+  /* ---------- HowToDemo: шаги списком, под ними — раскадровка, раскрывается вниз: картинка и краткое название ----------
      Экраны — те, на которые ведёт documentation задачи или карточки. Экран шага: ID в тексте шага «(F3)»,
      иначе экран, чьё название ближе к тексту шага, иначе экран прошлого шага. «Делаю — вижу» делит
      первое «→» или «—». Шаги не списком или экранов нет — HowToDemo текстом, как раньше. */
@@ -504,12 +505,27 @@
       }
       sid = sid || prev || sids[0]; prev = sid;
       const m = text.match(/^(.+?)\s+[→—]\s+(.+)$/);
-      return { sid, act: m ? m[1] : text, see: m ? m[2] : "" };
+      return { sid, text, act: m ? m[1] : text, see: m ? m[2] : "" };
     });
     gallery = steps.map((st, i) => ({ alt: `Шаг ${i + 1} · ${st.sid} · ${scrName(st.sid)}`, src: screenImg(st.sid) }));
-    return `<ol class="demo">${steps.map((st, i) => `<li class="dm"><span class="dmh" title="${esc(st.sid)} · ${esc(scrName(st.sid))}"><b>${i + 1}</b>${esc(st.sid)} · ${esc(scrName(st.sid))}</span>
+    return `<ol>${steps.map(st => `<li>${mdInline(st.text)}</li>`).join("")}</ol><details class="dmd"><summary>Раскадровка · ${steps.length} ${plural(steps.length, "шаг", "шага", "шагов")}</summary><ol class="demo">${steps.map((st, i) => `<li class="dm">
       <span class="dmpic"><img src="${esc(screenImg(st.sid))}" alt="${esc(scrName(st.sid))}" data-zoom="${i}" loading="lazy" draggable="false"></span>
-      <span class="dmt"><i>Делаю</i>${mdInline(st.act)}</span>${st.see ? `<span class="dmt see"><i>Вижу</i>${mdInline(st.see)}</span>` : ""}</li>`).join("")}</ol>`;
+      <span class="dmx"><b><span class="dmn">${i + 1}</span>${mdInline(st.act)}</b>${st.see ? `<span class="dmt">${mdInline(st.see)}</span>` : ""}<small>${esc(st.sid)} · ${esc(scrName(st.sid))}</small></span></li>`).join("")}</ol></details>`;
+  }
+  /* ---------- «Как это работает» задачи: вторая панель слева от постановки ----------
+     Карточка-превью: JobStory заголовком (нет — название карточки), под ней схема процесса (mermaid),
+     панель листается. Клик — карточка целиком. Пришли из «Исполнения» экрана — слева остаётся оно. */
+  function howShow(id) {
+    const cards = D.cards.filter(c => c.task === id);
+    if (!cards.length) return execHide();
+    if (ex.dataset.task === id && body.classList.contains("how")) return;
+    ex.dataset.task = id;
+    ex.innerHTML = `<div class="snbar"><h3>Как это работает</h3><span class="excnt">${cards.length} ${plural(cards.length, "карточка", "карточки", "карточек")}</span></div><div class="tkmeta">Задача ${esc(id)} · процессы её карточек</div><div class="snbody">${cards.map(c => { const L = LAYER[c.layer];
+      return `<section class="hwc" data-proc="${esc(c.id)}" tabindex="0"><span class="hwm"><span class="lay" style="--c:${L[2]}">${L[0]}</span> · ${esc(c.id)} · ${esc(c.text)}</span>
+        <b>${mdInline((c.js || [])[0] || c.us || c.text)}</b>${(c.js || []).length > 1 ? `<span class="hwmore">ещё ${c.js.length - 1} ${plural(c.js.length - 1, "ситуация", "ситуации", "ситуаций")}</span>` : ""}
+        ${c.bpmn ? `<div class="bpmnw"><pre>${esc(c.bpmn)}</pre></div>` : ""}</section>` }).join("")}</div>`;
+    body.classList.add("side2", "how"); ex.scrollTop = 0;
+    ex.querySelectorAll(".bpmnw").forEach(drawMermaid);
   }
   function execOpen(id) {
     openTask(id, 0, true); execShow(null, "", id);
@@ -593,7 +609,6 @@
   function openTask(id, tab, fromExec) {
     if (tab != null) taskTab = tab;
     const back = fromExec || (exFrom && side.dataset.ctx === "task:" + id);
-    if (!back) execHide();
     const t = TASK[id], br = t.brief || {}, cards = D.cards.filter(c => c.task === id);
     let done = {}; try { done = JSON.parse(localStorage.getItem(dodKey(id)) || "{}") } catch (e) { }
     const ac = t.ac.map(([d, x], k) => `<label class="dod"><input type="checkbox" data-dod="${id}:${k}"${(done[k] != null ? done[k] : d) ? " checked" : ""}><span>${mdInline(x)}</span></label>`).join("");
@@ -605,6 +620,7 @@
     side.innerHTML = head(t.text, `<span class="pteam" style="--c:${teamC(t)}"><i></i>${esc(t.team === "?" && t.cand ? "Команда? " + t.cand : teamN(t))}</span> · ${esc(COLS[colOf(t.stage)].name)} · ${esc(id)} · ${esc(t.status)}`, back) + `<div class="snbody">${tabs}${taskTab ? execHTML(t) : html}</div>`;
     body.classList.remove("wide"); body.classList.add("open"); side.scrollTop = 0;
     side.dataset.ctx = "task:" + id; side.dataset.note = "";
+    if (!back) { exFrom = ""; howShow(id) }
   }
 
   /* карточка «Как это работает» — техническая задача: UserStory, JobStory, процесс и его схема BPMN,
