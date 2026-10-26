@@ -388,6 +388,13 @@ RB="$tmp/bad/regular" && cp -r "$BGOLD" "$RB" && f="$(ls "$RB/backlog/tasks/"bp-
 out="$(python3 "$BLINT" "$RB" --no-source 2>&1)"; rc=$?
 [ "$rc" -eq 1 ] && grep -q "ERROR BL053 BP-16.1: в Backstage участвует команда «TeamA»" <<<"$out" && grep -q "WARN BL053 BP-7.1: «переключает» — разовая задача команды" <<<"$out" \
   && ok "карта · регулярный процесс: команда в Backstage — BL053 ошибка, «переключает» — BL053 предупреждение" || fail "карта · BL053 — $out"
+# BL054: «Как это работает» без команд; два описания одного экрана в одном этапе и слое — дубль
+NB="$tmp/bad/noteam" && cp -r "$BGOLD" "$NB" && f="$(ls "$NB/backlog/tasks/"bp-5.1*.md)" \
+  && sed -i 's/^assignee: \[\]$/assignee:\n  - "@vit"/' "$f" && cp "$f" "$NB/backlog/tasks/bp-5.6 - x.md" \
+  && sed -i 's/^id: BP-5.1$/id: BP-5.6/; s/^title: .*/title: Гость видит доработанный блок акции на странице после покупки/; s/^ordinal: .*/ordinal: 99000/' "$NB/backlog/tasks/bp-5.6 - x.md"
+out="$(python3 "$BLINT" "$NB" --no-source 2>&1)"
+grep -q "BL054 BP-5.1: у карточки «Как это работает» есть команда" <<<"$out" && grep -q "BL054 BP-5.6: тот же экран, этап и слой, что у BP-5.1" <<<"$out" && grep -q "BL053 BP-5.6: «доработанный»" <<<"$out" \
+  && ok "карта · без команд: команда у карточки и дубль по экрану — BL054, «доработанный» — BL053" || fail "карта · BL054 — $out"
 # BL043: подзадача — зона из списка, родитель — история
 ZB="$tmp/bad/zone" && cp -r "$BGOLD" "$ZB" && python3 - "$ZB" <<'PY'
 import sys

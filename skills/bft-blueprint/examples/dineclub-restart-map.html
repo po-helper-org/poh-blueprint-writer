@@ -726,7 +726,7 @@ const BPK = (function () {
   /* фильтр по команде: подсветить её работу, на кнопке меню — чип с крестиком */
   function teamFilter(id) {
     document.querySelectorAll(".tchip").forEach(x => x.classList.toggle("on", x.dataset.tf === id));
-    document.querySelectorAll(".ui-story,.hw,.ui-card[data-sub]").forEach(x => x.classList.toggle("dim", !!id && !(x.dataset.teams || x.dataset.team).split(" ").includes(id)));
+    document.querySelectorAll(".ui-story,.ui-card[data-sub]").forEach(x => x.classList.toggle("dim", !!id && !(x.dataset.teams || x.dataset.team).split(" ").includes(id)));
     const t = id && (id === "?" ? { name: "Команда не определена", c: "var(--red)" } : TEAM[id]);
     document.getElementById("fchip").innerHTML = t ? `<button class="fchip" data-tf-clear style="--c:${t.c}" aria-label="Снять фильтр"><i></i>${esc(t.name)}<span aria-hidden="true">×</span></button>` : "";
   }
@@ -757,9 +757,10 @@ const BPK = (function () {
       : `<button class="ui-card ui-own${blocks(t.id).length ? " blk" : ""}" data-task="${t.id}"><span class="ui-top">${uiTeam(t)}${uiTags(t.id, "", t.prio)}</span></button>`;
     return `<div class="ui-story${oos(t) ? " oos" : ""}" data-teams="${teams}">${head}${body}</div>`;
   }
+  /* карточка «Как это работает» — без команды: целевая картинка глазами пользователя, команд исполнения тут ещё нет */
   function procHTML(p) {
     const b = blocks(p.id).length + blocks(p.task).length;
-    return `<button class="hw ${p.layer}${b ? " blk" : ""}${oos(TASK[p.task]) ? " oos" : ""}" data-proc="${p.id}" data-team="${p.team}" style="--c:${teamC(p)}"><span>${esc(p.text)}</span><i title="${esc(teamN(p))}"></i></button>`;
+    return `<button class="hw ${p.layer}${b ? " blk" : ""}${oos(TASK[p.task]) ? " oos" : ""}" data-proc="${p.id}"><span>${esc(p.text)}</span></button>`;
   }
 
   /* ---------- холст ---------- */
@@ -1646,14 +1647,14 @@ const BPK = (function () {
       : (P.in || []).map(it => [it.t, it.r.map(r => PROC[r] ? teamN(PROC[r]) : "").filter(Boolean).join(", ") || "—", it.r]);
     const dataHTML = dataRows.length ? `<table class="dtab"><thead><tr><th>Что</th><th>Откуда</th></tr></thead><tbody>${dataRows.map(([w, s, r]) => `<tr><td>${mdInline(w)}</td><td>${mdInline(s)}${r.length ? " " + r.map(idChip).join(" ") : ""}</td></tr>`).join("")}</tbody></table>` : "";
     if (c.layer === "backstage") {
-      side.innerHTML = head(c.text, `<span class="lay" style="--c:${L[2]}">${L[0]}</span> · <span class="pteam" style="--c:${teamC(c)}"><i></i>${esc(teamN(c))}</span> · ${esc(COLS[colOf(c.stage)].name)} · ${esc(id)} · ${esc(c.status)}`, !!t) + `<div class="snbody">
+      side.innerHTML = head(c.text, `<span class="lay" style="--c:${L[2]}">${L[0]}</span> · ${esc(COLS[colOf(c.stage)].name)} · ${esc(id)} · ${esc(c.status)}`, !!t) + `<div class="snbody">
       ${sec("Процесс", proc)}${sec("Данные", dataHTML)}${sec("Вопросы", qList(qsOf([id, c.task])))}${sec("Ссылки", lnk)}</div>`;
       body.classList.add("wide", "open"); side.scrollTop = 0;
       side.dataset.ctx = "proc:" + id; side.dataset.note = "";
       const box = side.querySelector(".bpmnw"); if (box) drawMermaid(box);
       return;
     }
-    side.innerHTML = head(c.text, `<span class="lay" style="--c:${L[2]}">${L[0]}</span> · <span class="pteam" style="--c:${teamC(c)}"><i></i>${esc(teamN(c))}</span> · ${esc(COLS[colOf(c.stage)].name)} · ${esc(id)} · ${esc(c.status)}`, !!t) + `<div class="snbody">
+    side.innerHTML = head(c.text, `<span class="lay" style="--c:${L[2]}">${L[0]}</span> · ${esc(COLS[colOf(c.stage)].name)} · ${esc(id)} · ${esc(c.status)}`, !!t) + `<div class="snbody">
       ${sec("UserStory", c.us ? `<p>${mdInline(c.us)}</p>` : "")}
       ${sec("JobStory", (c.js || []).length ? `<ul class="js">${c.js.map(x => `<li>${mdInline(x)}</li>`).join("")}</ul>` : "")}
       ${sec("Процесс", proc)}${sec("Параметры", ["in", "ctl", "out", "mech"].map(row).join(""))}
