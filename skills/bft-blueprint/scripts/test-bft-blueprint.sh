@@ -1195,11 +1195,11 @@ python3 "$BLINT" "$tmp/adr-plan" --no-source >/dev/null 2>&1 \
 # страница: слой «Архитектура» есть с документами и нет без них
 python3 "$BBUILD" "$tmp/adr-plan" --out-dir "$tmp/adr-out" --no-zip >/dev/null 2>&1
 PAGE=$(ls "$tmp/adr-out"/*-map.html | head -1)
-grep -q '<button data-view="adr">' "$PAGE" && grep -q 'data-adrmenu' "$PAGE" && grep -q '"adr":{' "$PAGE" && grep -q '"sysreq":{' "$PAGE" \
-  && ok "ADR · страница: слой «Архитектура», данные adr и sysreq" || fail "ADR · на странице нет слоя архитектуры"
+! grep -q '<button data-view="adr">' "$PAGE" && grep -q 'data-adrmenu' "$PAGE" && grep -q '"adr":{' "$PAGE" && grep -q '"sysreq":{' "$PAGE" \
+  && ok "ADR · страница: слой «Архитектура» — пунктом меню, не в переключателе; данные adr и sysreq" || fail "ADR · на странице нет слоя архитектуры"
 python3 "$BBUILD" "$tmp/adr-none" --out-dir "$tmp/adr-out2" --no-zip >/dev/null 2>&1
 PAGE2=$(ls "$tmp/adr-out2"/*-map.html | head -1)
-grep -q '<button data-view="adr">' "$PAGE2" || grep -q '"adr":{' "$PAGE2" \
+grep -q '<button class="mi" data-adrmenu>' "$PAGE2" || grep -q '"adr":{' "$PAGE2" \
   && fail "ADR · слой появился без документов" || ok "ADR · без документов слоя нет"
 
 echo

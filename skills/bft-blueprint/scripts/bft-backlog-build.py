@@ -78,7 +78,7 @@ PAGE = """<!doctype html>
 {css}</style></head>
 <body>
 <h1 class="ptitle">{h1}</h1>
-<div class="fab"><button class="burger" id="burger" aria-label="Меню карты" aria-expanded="false" aria-controls="menu"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg><span class="bdot" id="bdot"></span></button><nav class="views" aria-label="Слой карты"><button data-view="see" class="on">Что видят</button><button data-view="do">Что делаем</button><button data-view="how">Как это работает</button>{adr_btn}{rm_btn}{rel_btn}</nav><span id="fchip"></span></div>
+<div class="fab"><button class="burger" id="burger" aria-label="Меню карты" aria-expanded="false" aria-controls="menu"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg><span class="bdot" id="bdot"></span></button><nav class="views" aria-label="Слой карты"><button data-view="see" class="on">Что видят</button><button data-view="how">Как это работает</button><button data-view="do">Что делаем</button>{rm_btn}{rel_btn}</nav><span id="fchip"></span></div>
 <div class="tr"><button class="ib iq" data-qpanel title="Уточнить: ответить на открытые вопросы" aria-label="Уточнить"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M6.2 6.1a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.6"/><circle cx="8" cy="11.6" r=".4"/></svg><span id="iq"></span></button><button class="ib icm" data-cmpanel title="Замечания" aria-label="Замечания"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7.5H7l-3 2.5V11H2.5z"/></svg><span id="icm"></span></button></div>
 <div class="mscrim"></div>
 <nav class="menu" id="menu" aria-label="Меню карты"><div class="mtop"><div><span class="draft{status_cls}">{status}</span><h1>{h1}</h1></div><button class="x" data-menu="close" aria-label="Закрыть">×</button></div>
@@ -275,7 +275,6 @@ def render(pr: bl.Project, base: str = "") -> str:
     data = json.dumps(m, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     status = pr.meta.get("status", "")
     has_adr = m.get("adr") is not None or m.get("sysreq") is not None
-    adr_btn = '<button data-view="adr">Архитектура</button>' if has_adr else ""
     adr_menu = ('<button class="mi" data-adrmenu><svg viewBox="0 0 16 16" aria-hidden="true">'
                 '<path d="M2 13.5L8 2l6 11.5M4.6 9h6.8" fill="none"/></svg>ADR и системные требования</button>') if has_adr else ""
     has_rm = pr.roadmap is not None and pr.roadmap_doc is not None
@@ -289,7 +288,7 @@ def render(pr: bl.Project, base: str = "") -> str:
     return PAGE.format(
         title_tag=html.escape(f"Карта · {pr.meta.get('epic_slug', '')}"), h1=html.escape(pr.title),
         status=html.escape(status), status_cls=" ok" if status.lower() == "согласован" else "",
-        adr_btn=adr_btn, adr_menu=adr_menu, rm_btn=rm_btn, rm_menu=rm_menu, rel_btn=rel_btn, rel_menu=rel_menu,
+        adr_menu=adr_menu, rm_btn=rm_btn, rm_menu=rm_menu, rel_btn=rel_btn, rel_menu=rel_menu,
         css=(HERE / "map_page.css").read_text(encoding="utf-8"),
         kit=(HERE / "page_kit.js").read_text(encoding="utf-8"),
         js=(HERE / "map_page.js").read_text(encoding="utf-8"), data=data)
