@@ -369,6 +369,13 @@ BS="$tmp/bad/backstage" && cp -r "$BGOLD" "$BS" && f="$(ls "$BS/backlog/tasks/"b
 out="$(python3 "$BLINT" "$BS" --no-source 2>&1)"
 grep -q "BL052 BP-16.1: Backstage — процесс и данные; UserStory здесь не нужны" <<<"$out" && grep -q "BL052 BP-16.1: Данные — строка «- что — откуда»" <<<"$out" \
   && ok "карта · Backstage: UserStory лишняя, «Данные» без источника — BL052" || fail "карта · BL052 — $out"
+# BL053: «Как это работает» — регулярный процесс; разовая задача команды — предупреждение, команда в Backstage — ошибка
+RB="$tmp/bad/regular" && cp -r "$BGOLD" "$RB" && f="$(ls "$RB/backlog/tasks/"bp-16.1*.md)" \
+  && sed -i 's/^- Сервис проверки билетов: Проверяет: активен/- TeamA: Проверяет: активен/' "$f" \
+  && f2="$(ls "$RB/backlog/tasks/"bp-7.1*.md)" && sed -i 's/^title: .*/title: Сервис писем переключает отправку на нового рассыльщика/' "$f2"
+out="$(python3 "$BLINT" "$RB" --no-source 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && grep -q "ERROR BL053 BP-16.1: в Backstage участвует команда «TeamA»" <<<"$out" && grep -q "WARN BL053 BP-7.1: «переключает» — разовая задача команды" <<<"$out" \
+  && ok "карта · регулярный процесс: команда в Backstage — BL053 ошибка, «переключает» — BL053 предупреждение" || fail "карта · BL053 — $out"
 # BL043: подзадача — зона из списка, родитель — история
 ZB="$tmp/bad/zone" && cp -r "$BGOLD" "$ZB" && python3 - "$ZB" <<'PY'
 import sys
@@ -437,7 +444,7 @@ PY
   && $E python3 blueprint.py build >/dev/null 2>&1 && cmp -s blueprint.html dineclub-restart-map.html \
   && $E python3 backlog.py task list -l stage:F --plain | grep -q "BP-16 - " \
   && $E python3 backlog.py task create "Учесть часовой пояс площадки" -p BP-16 -a "" -l "stage:F,layer:backstage" --no-dod-defaults \
-       -d $'TeamA учитывает часовой пояс.\n\n### UserStory\nКак официант, я хочу верную проверку в полночь, чтобы не спорить с гостем.\n\n### JobStory\n- Когда гость пришёл в последний день, хочу верный ответ, чтобы дать скидку.\n\n### Параметры\n- **Вход:** Штрихкод (BP-16.1)\n- **Управление:** Окно 7 дней (ФТ-1)\n- **Выход:** Ответ (BP-15.1)\n- **Механизм:** TeamA\n\n### Процесс\n- TeamA: Берёт часовой пояс площадки\n- TeamA: Считает окно\n\n### HowToDemo\n1. Сканирую в 23:59\n2. Проверка проходит' >/dev/null \
+       -d $'Сервис проверки билетов учитывает часовой пояс.\n\n### UserStory\nКак официант, я хочу верную проверку в полночь, чтобы не спорить с гостем.\n\n### JobStory\n- Когда гость пришёл в последний день, хочу верный ответ, чтобы дать скидку.\n\n### Параметры\n- **Вход:** Штрихкод (BP-16.1)\n- **Управление:** Окно 7 дней (ФТ-1)\n- **Выход:** Ответ (BP-15.1)\n- **Механизм:** Сервис проверки билетов\n\n### Процесс\n- Сервис проверки билетов: Берёт часовой пояс площадки\n- Сервис проверки билетов: Считает окно\n\n### HowToDemo\n1. Сканирую в 23:59\n2. Проверка проходит' >/dev/null \
   && $E python3 backlog.py task edit BP-16 --check-ac 1 --add-ref https://jira.example.com/browse/DEMO-16 >/dev/null \
   && $E python3 blueprint.py build >/dev/null 2>&1 && $E python3 blueprint.py check >/dev/null 2>&1 \
   && grep -q "Берёт часовой пояс площадки" "$(ls backlog/tasks/bp-16.2*)" && grep -q 'N1\["Берёт часовой пояс площадки"\]' "$(ls backlog/tasks/bp-16.2*)" \
@@ -450,7 +457,7 @@ python3 - "$GOLD" <<'PY'
 import sys
 from pathlib import Path
 f = next(Path(sys.argv[1]).glob("backlog/tasks/bp-16.1 - *.md")); t = f.read_text(encoding="utf-8")
-f.write_text(t.replace("- Приложение-сканер: Показывает ответ официанту", "- Приложение-сканер: Показывает ответ официанту\n- TeamA: Пишет журнал проверок"), encoding="utf-8")
+f.write_text(t.replace("- Приложение-сканер: Показывает ответ официанту", "- Приложение-сканер: Показывает ответ официанту\n- Сервис проверки билетов: Пишет журнал проверок"), encoding="utf-8")
 PY
 python3 "$BBUILD" "$GOLD" --check >/dev/null 2>&1; rc=$?
 python3 "$BBUILD" "$GOLD" --out-dir "$tmp/bout2" --no-zip >/dev/null 2>&1 \
@@ -679,7 +686,7 @@ PY
 cp -r "$PL/g" "$PL/qual" && python3 - "$PL/qual/plan/map.md" <<'PY'
 import sys
 p = sys.argv[1]; t = open(p, encoding="utf-8").read()
-t = t.replace("- TeamA: Проверяет: активен, не использован, ≤7 дней", "- СА: Проверяет: активен, не использован, ≤7 дней", 1)
+t = t.replace("- Сервис проверки билетов: Проверяет: активен, не использован, ≤7 дней", "- СА: Проверяет: активен, не использован, ≤7 дней", 1)
 t = t.replace("команда: vit", "кандидаты: vit", 1)
 t = t.replace("- Когда гость показывает билет", "- Когда Гость показывает билет", 1)
 open(p, "w", encoding="utf-8").write(t)
