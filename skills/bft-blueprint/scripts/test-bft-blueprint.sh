@@ -357,6 +357,8 @@ assert "const MORE = 3" in page and "data-more" in page and ".sc:not(.open) .xtr
 # шаг User Actions: мини-схема «До → Сейчас → После», клик по шагу схемы открывает его панель (#31)
 # замечание по правому клику на шаг CJM, экран Evidence, старт — к ним, а не ко всей карте (#32)
 assert 'key: "step:" + st.id' in page and 'Экран ${sid} «${scrTitle(sid)}» · Evidence' in page and 'key: "trg:" + tg.dataset.persona' in page
+# карточки — в подстолбце своей группы касания, подстолбец не уже карточки (#33)
+assert "const SUBW = 264" in page and "const groupOf = (p, c)" in page and "cards.filter(p => groupOf(p, c) === gi)" in page
 assert "function seenFlow" in page and '<div class="snbody">${seenFlow(s)}' in page and 't.closest(".fn[data-seen]")' in page
 PY
 # Evidence: группы касания — путь экранов в контуре; альтернативный экран — в группе основного; шаг CJM — в группе первого экрана

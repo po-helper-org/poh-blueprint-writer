@@ -607,6 +607,9 @@ body[data-view="do"] .how.l-ev,body[data-view="do"] .how.l-user{display:none}
 .fn.st{cursor:default;border-color:#cfe0cb;background:#f3f8f1}.fn.st em{color:#2f6b2a;font-weight:700}
 .fn.na{cursor:default;color:#b0aba1;text-align:center;background:none;border-style:dashed}
 .fa{height:1px;background:#aca79d;position:relative}.fa::after{content:"";position:absolute;right:-1px;top:-3px;border:3.5px solid transparent;border-left:5px solid #aca79d}
+/* карточки в подстолбцах групп касания (#33): колонки Evidence продолжаются вниз через все слои */
+.mc.how:not(.l-ev):not(.l-user)>.sub{flex:1;align-items:center}
+.mc.how:not(.l-ev):not(.l-user) .sc{gap:16px;align-items:flex-start;justify-content:center;height:100%}
 </style></head>
 <body>
 <h1 class="ptitle">Перезапуск акции DineClub — «билет Acme Tickets = скидка 10%»</h1>
@@ -839,7 +842,7 @@ const BPK = (function () {
   /* номер шага в пути персонажа: читать слева направо 1 → 2 → 3, старт — перед первым */
   const STEP_NO = {}, stepC = {};
   STEPS.forEach(ss => ss.forEach(st => STEP_NO[st.id] = stepC[st.persona] = (stepC[st.persona] || 0) + 1));
-  const SUBW = 210, wOf = c => Math.max(272, Math.max(1, GROUPS[c].length) * SUBW);
+  const SUBW = 264, wOf = c => Math.max(272, Math.max(1, GROUPS[c].length) * SUBW);
   grid.className = "map";
   grid.style.gridTemplateColumns = `112px ${COLS.map((_, c) => `minmax(${wOf(c)}px, ${Math.max(1, GROUPS[c].length)}fr)`).join(" ")}`;
   grid.style.minWidth = `${112 + COLS.reduce((s, _, c) => s + wOf(c) + 12, 0)}px`;
@@ -868,8 +871,19 @@ const BPK = (function () {
       return `<div class="sc">${mine.map(trgHTML).join("")}${fold(g.steps, stepHTML)}</div>`;
     })}${GROUPS[c].length ? "" : tgs.map(trgHTML).join("")}</div>`;
   }).join("");
+  /* карточка — в подстолбце своей группы касания: по своему экрану; без экрана — по связанной стрелкой
+     карточке этого этапа, у которой экран есть; иначе в первом подстолбце */
+  const scrOfDoc = d => (D.docs[String(d).toLowerCase().split(" ")[0]] || {}).screen;
+  const ownGroup = (p, c) => { for (const d of p.docs) { const sid = scrOfDoc(d), gi = GROUPS[c].findIndex(g => g.screens.includes(sid)); if (gi >= 0) return gi } return -1 };
+  const groupOf = (p, c) => { const own = ownGroup(p, c); if (own >= 0) return own;
+    for (const l of D.links) { const o = l.src === p.id ? l.dst : l.dst === p.id ? l.src : null; const q = o && PROC[o];
+      if (q && colOf(q.stage) === c) { const gi = ownGroup(q, c); if (gi >= 0) return gi } }
+    return 0 };
   Object.keys(LAYER).forEach(l => {
-    h += `<div class="ml hrow how l-${l}">${LAYER[l][0]}<small>${LAYER[l][1]}</small></div>` + COLS.map(col => `<div class="mc how l-${l}">${D.cards.filter(p => p.layer === l && p.stage === col.id).map(procHTML).join("")}</div>`).join("");
+    h += `<div class="ml hrow how l-${l}">${LAYER[l][0]}<small>${LAYER[l][1]}</small></div>` + COLS.map((col, c) => {
+      const cards = D.cards.filter(p => p.layer === l && p.stage === col.id);
+      return `<div class="mc how l-${l}">${GROUPS[c].length > 1 ? sub(c, (g, gi) => `<div class="sc">${cards.filter(p => groupOf(p, c) === gi).map(procHTML).join("")}</div>`) : cards.map(procHTML).join("")}</div>`;
+    }).join("");
   });
   grid.innerHTML = h;
 
