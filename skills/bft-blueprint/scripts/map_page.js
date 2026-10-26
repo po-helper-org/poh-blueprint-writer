@@ -133,13 +133,16 @@
     const seenSid = new Set();
     return per.filter(e => (e.first || !(e.contour in firsts) || firsts[e.contour] === e.persona) && !seenSid.has(e.sid) && seenSid.add(e.sid));
   });
+  /* номер точки в пути персонажа: читать слева направо 1 → 2 → 3, старт — перед первой */
+  const STEP_NO = new Map(), stepC = {};
+  ENTRY.forEach(es => es.forEach(e => STEP_NO.set(e, stepC[e.persona] = (stepC[e.persona] || 0) + 1)));
   const scrTitle = sid => { const d = Object.values(D.docs).find(x => x.screen === sid); return d ? d.title.replace(/^[^·]*·\s*/, "") : sid };
   const entryHTML = e => { const p = D.personas.find(x => x.id === e.persona) || { name: "" };
-    return `<button class="ua" data-entry="${esc(e.sid)}" data-persona="${esc(e.persona)}" title="${esc(p.name)}: ${esc(scrTitle(e.sid))}"><i></i><span><b>${esc(e.sid)} · ${esc(scrTitle(e.sid))}</b><small>${esc(e.contour)} · ${esc(p.name.split(/[\s-]+/)[0])}</small></span></button>` };
+    return `<button class="ua" data-entry="${esc(e.sid)}" data-persona="${esc(e.persona)}" title="${esc(p.name)}: шаг ${STEP_NO.get(e)} — ${esc(scrTitle(e.sid))}"><i>${STEP_NO.get(e)}</i><span><b>${esc(e.sid)} · ${esc(scrTitle(e.sid))}</b><small>${esc(e.contour)} · ${esc(p.name.split(/[\s-]+/)[0])}</small></span></button>` };
   /* триггер — событие старта пути персонажа («Гость купил билет»): с него начинается чтение диаграммы */
   const trgHTML = tg => { const p = D.personas.find(x => x.id === tg.persona) || { name: tg.persona };
     return `<div class="uat" data-persona="${esc(tg.persona)}" title="Старт пути: ${esc(p.name)}"><i></i><span><em>Старт</em><b>${esc(tg.text)}</b><small>${esc(p.name.split(/[\s-]+/)[0])}</small></span></div>` };
-  h += `<div class="ml hrow how l-user">User Actions<small>старт и точки входа клиента</small></div>` + COLS.map((col, c) => `<div class="mc how l-user">${(D.triggers || []).filter(tg => tg.stage === col.id).map(trgHTML).join("")}${ENTRY[c].map(entryHTML).join("")}</div>`).join("");
+  h += `<div class="ml hrow how l-user">User Actions<small>старт и шаги клиента по порядку</small></div>` + COLS.map((col, c) => `<div class="mc how l-user">${(D.triggers || []).filter(tg => tg.stage === col.id).map(trgHTML).join("")}${ENTRY[c].map(entryHTML).join("")}</div>`).join("");
   Object.keys(LAYER).forEach(l => {
     h += `<div class="ml hrow how l-${l}">${LAYER[l][0]}<small>${LAYER[l][1]}</small></div>` + COLS.map(col => `<div class="mc how l-${l}">${D.cards.filter(p => p.layer === l && p.stage === col.id).map(procHTML).join("")}</div>`).join("");
   });
@@ -194,7 +197,7 @@
       const A = R(dot.querySelector("i")), B = R(card);
       s += vert(A.cx, A, B, "ua:" + sid, card.dataset.proc, [card.dataset.proc]);
     });
-    /* путь персонажа: старт → точки входа по этапам слева направо — по низу ряда User Actions (своя дорожка на персонажа), в точку — слева */
+    /* путь персонажа: старт → точки входа по этапам слева направо — по низу ряда User Actions (своя дорожка на персонажа), в точку — слева; видна при наведении, без него порядок держат номера точек */
     const urow = [...grid.querySelectorAll(".mc.l-user")], ub = Math.max(...urow.map(c => R(c).b));
     [...new Set([...grid.querySelectorAll(".l-user [data-persona]")].map(x => x.dataset.persona))].forEach((pid, k) => {
       const seq = urow.flatMap(c => [...c.querySelectorAll(`[data-persona="${pid}"]`)]), Y = ub - 9 - 10 * k;

@@ -535,3 +535,12 @@ svg.hwl .jr .ar{stroke:#2f6b2a;stroke-dasharray:6 4;marker-end:url(#mhj)}
 .dtab{width:100%;border-collapse:collapse;font-size:13.5px;line-height:1.4}
 .dtab th{text-align:left;font-size:11.5px;font-weight:600;color:var(--muted);padding:0 10px 6px 0;border-bottom:1px solid var(--line)}
 .dtab td{padding:7px 10px 7px 0;border-bottom:1px solid var(--line);vertical-align:top}.dtab td:first-child{width:52%}
+/* дизайн-проход: меньше шума, ничего не перекрывается */
+body.open .tr{display:none}                                  /* панель открыта — кнопки «?» и замечаний не наезжают на переключатель */
+.snbar h3{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}  /* длинный заголовок — в две строки, не обрезан */
+.ui-story,.rkst-g{border:1.5px dashed #dcd7ce;border-radius:14px}
+.ui-chip{background:#f1eee8;color:#7a766e;letter-spacing:.4px;font-weight:700}
+svg.hwl .jr .ar{stroke-dasharray:none;stroke:#3f7a38;stroke-width:1.6}
+.l-employee,.l-backstage{border-top-color:#bdb8ae}.l-support{border-top-color:#bdb8ae}
+.ua i{width:18px;height:18px;margin-top:0;display:flex;align-items:center;justify-content:center;color:#fff;font-style:normal;font-size:10.5px;font-weight:700;line-height:1}
+svg.hwl .jr{opacity:0}.map.hot svg.hwl .jr.on{opacity:1}
