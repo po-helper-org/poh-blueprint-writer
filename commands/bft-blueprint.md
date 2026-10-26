@@ -58,7 +58,7 @@ description: 'Service Blueprint по БФТ в два согласуемых э�
 
 ## Инструкция для LLM
 
-Навык — `../skills/bft-blueprint/SKILL.md`. Порядок — этапы оттуда: resolve → **story** со своим STOP → **map** → STOP. С `--auto` — без остановок, строго по `resources/autopilot.md`, шаги 1–7. Стандарты — `resources/story_line.md`, `resources/story_interview.md`, `resources/backlog_rules.md`; эталоны — `examples/golden_story.md`, проект `examples/dineclub-restart-blueprint/`.
+Навык — `../skills/bft-blueprint/SKILL.md`. Порядок — этапы оттуда: resolve → **story** со своим STOP → **map** → STOP. Каждый STOP и итог автопилота кончаются блоком «Следующий шаг» — командой, которую PO отправит в чат дальше (правило 6 навыка). С `--auto` — без остановок, строго по `resources/autopilot.md`, шаги 1–7. Стандарты — `resources/story_line.md`, `resources/story_interview.md`, `resources/backlog_rules.md`; эталоны — `examples/golden_story.md`, проект `examples/dineclub-restart-blueprint/`.
 
 ### Гейт перед показом PO (обязателен)
 
@@ -96,6 +96,7 @@ python3 <skills_path>/bft-blueprint/scripts/bft-blueprint-verify.py <docs_path>/
 4. У каждого шага и экрана есть источник (нет `ST016`)?
 5. Вопросы PO заданы одним раундом, с вариантами из БФТ; без ответа — красная точка?
 6. На STOP показаны путь к `-story.html`, «было → стало» и вопросы «кому — что»; карта не начата, пока PO не согласовал историю?
+7. Сообщение кончается блоком «Следующий шаг» с командой `/bft-blueprint <epic_slug> --map` (настоящий слаг) в блоке кода?
 
 ### САМОПРОВЕРКА КАРТЫ
 
@@ -110,3 +111,4 @@ python3 <skills_path>/bft-blueprint/scripts/bft-blueprint-verify.py <docs_path>/
 9. Задачи и документы созданы `./backlog.py`, у карточек есть UserStory, JobStory и «Процесс», сборка дала `<epic_slug>-map.html` и `<epic_slug>-blueprint.zip`?
 10. `bft-blueprint-verify.py` дал 0, в папке нет лишних `.html` (кроме `-story.html` и `-map.html`)?
 11. На STOP показаны пути к странице и архиву, задачи по командам, блокеры и вопросы «кому — что»?
+12. Сообщение кончается блоком «Следующий шаг» с командой `/bft-blueprint <epic_slug> --prototype` (настоящий слаг) в блоке кода?
