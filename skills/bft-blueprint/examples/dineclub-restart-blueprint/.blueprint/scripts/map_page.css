@@ -528,7 +528,7 @@ body[data-view="risk"] .risk{display:block}
 svg.hwl .halo{fill:none;stroke:#fff;stroke-width:6;stroke-linejoin:round;opacity:.9}
 svg.hwl .ar{fill:none;stroke:#4d4a44;stroke-width:1.8;stroke-linejoin:round}
 .map.hot svg.hwl .ln{opacity:.12}.map.hot svg.hwl .ln.on{opacity:1}.map.hot svg.hwl .ln.on .ar{stroke:#1f6fd1;stroke-width:2.4;marker-end:url(#mho)}
-.map.hot .hw[data-proc]:not(.on),.map.hot .ua[data-entry]:not(.on),.map.hot .uat:not(.on){opacity:.35}
+.map.hot .hw[data-proc]:not(.on),.map.hot .ua[data-step]:not(.on),.map.hot .ev:not(.on),.map.hot .uat:not(.on){opacity:.35}
 .mc.how.l-user{padding-bottom:34px!important}
 svg.hwl .jr .ar{stroke:#2f6b2a;stroke-dasharray:6 4;marker-end:url(#mhj)}
 /* Backstage: данные процесса — что и откуда */
@@ -544,3 +544,21 @@ svg.hwl .jr .ar{stroke-dasharray:none;stroke:#3f7a38;stroke-width:1.6}
 .l-employee,.l-backstage{border-top-color:#bdb8ae}.l-support{border-top-color:#bdb8ae}
 .ua i{width:18px;height:18px;margin-top:0;display:flex;align-items:center;justify-content:center;color:#fff;font-style:normal;font-size:10.5px;font-weight:700;line-height:1}
 svg.hwl .jr{opacity:0}.map.hot svg.hwl .jr.on{opacity:1}
+/* Evidence и User Actions: подстолбцы этапа — группы касания (одна группа — один столбец) */
+.mc.how.l-ev,.mc.how.l-user{display:block;padding:12px 8px 14px!important}
+.mc.how.l-user{padding-bottom:34px!important}
+.sub{display:grid;gap:0 14px;width:100%;align-items:start}
+.sc{display:flex;flex-direction:column;gap:10px;min-width:0}
+.l-ev .sc{gap:6px}
+.evh{font-size:11px;font-weight:600;color:#8a857c;line-height:1.35;padding:0 0 5px;border-bottom:1px solid #ece8e1;margin-bottom:2px;overflow-wrap:anywhere}
+.ev{position:relative;z-index:2;display:flex;gap:7px;align-items:baseline;width:100%;text-align:left;border:1px solid #e7e3dc;background:#fff;border-radius:8px;padding:6px 9px;font:inherit;font-size:12.5px;line-height:1.3;color:var(--ink);cursor:pointer}
+.ev b{flex:none;font-size:11px;font-weight:700;color:#8a857c}.ev:hover{border-color:#cfc8bb;box-shadow:0 3px 10px rgba(0,0,0,.06)}
+.l-ev{background:#fcfbf8!important}
+.ua small{overflow-wrap:anywhere}
+/* стрелки — фон для карточек: тонкие и светлые; наведение делает цепочку акцентной (#22) */
+svg.hwl .halo{stroke-width:3;opacity:.85}
+svg.hwl .ar{stroke:#aca79d;stroke-width:1.1}
+.map.hot svg.hwl .ln{opacity:.1}.map.hot svg.hwl .ln.on .ar{stroke:#2f6fd0;stroke-width:1.6}
+svg.hwl .jr .ar{stroke:#3f7a38;stroke-width:1.3}
+.mc.how{gap:16px}
+.map.hot svg.hwl .jr.on .ar{stroke:#3f7a38;stroke-width:1.2;stroke-dasharray:4 3;marker-end:url(#mhj)}

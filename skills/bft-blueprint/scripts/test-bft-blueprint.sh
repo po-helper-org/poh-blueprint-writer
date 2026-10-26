@@ -343,14 +343,27 @@ out="$(python3 "$BLINT" "$RW" --no-source --strict 2>&1)"; rc=$?
 [ "$rc" -eq 1 ] && grep -q "RK005 BP-6: риск «интеграция» по данным карты не записан" <<<"$out" && grep -q "RK003 X5: истории BP-99 на карте нет" <<<"$out" \
   && ok "риски исполнения · не записан — RK005, история мимо карты — RK003" || fail "риски исполнения · RK005/RK003 не пойманы — $out"
 # User Actions: старт пути персонажа (триггер) и точки входа — из «Карты» и согласованной истории; без триггера — BL050
-python3 - "$tmp/bout" <<'PY' && ok "карта · User Actions: два триггера, точки входа из истории" || fail "карта · User Actions не дошёл до страницы"
+python3 - "$tmp/bout" <<'PY' && ok "карта · Evidence и User Actions: два триггера, шаги CJM и группы касания из истории" || fail "карта · User Actions не дошёл до страницы"
 import json, re, sys
 from pathlib import Path
 page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf-8")
 d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
 assert d["triggers"] == [{"persona": "rest", "text": "Ресторан подаёт заявку на участие", "stage": "A"}, {"persona": "guest", "text": "Гость купил билет на оффлайн-мероприятие", "stage": "B"}]
-assert "l-user" in page and "const ENTRY" in page and "trgHTML" in page
+assert "l-user" in page and "l-ev" in page and "const GROUPS" in page and "trgHTML" in page and "stepHTML" in page
 PY
+# Evidence: группы касания — путь экранов в контуре; альтернативный экран — в группе основного; шаг CJM — в группе первого экрана
+node - "$tmp/bout/dineclub-restart-map.html" <<'JS' && ok "карта · Evidence: D2 — в группе «Витрина → Все рестораны», F4 — рядом с F3, шаг Ш4 — в группе своего первого экрана" || fail "карта · Evidence и CJM не те"
+const fs = require('fs'), page = fs.readFileSync(process.argv[2], 'utf8');
+const d = JSON.parse(page.match(/id="map-data">([\s\S]*?)<\/script>/)[1]);
+const src = page.match(/function touchGroups\(steps, screens, title\) \{[\s\S]*?\n  \}\n/)[0];
+const touchGroups = new Function(src + '; return touchGroups')();
+const title = sid => { const x = Object.values(d.docs).find(v => v.screen === sid); return x ? x.title.replace(/^[^·]*·\s*/, '') : sid };
+const col = c => d.seen.filter(s => s.col === c && !s.final).flatMap(s => s.steps.map(st => ({ ...st, persona: s.persona })));
+const D4 = touchGroups(col(3), d.screens, title), F = touchGroups(col(5), d.screens, title);
+const ok = D4.map(g => g.path).join('|') === 'Витрина|Витрина → Все рестораны' && D4[1].screens.join() === 'D2' && D4[0].steps.map(s => s.id).join() === 'Ш4'
+  && F.some(g => g.screens.includes('F3') && g.screens.includes('F4'));
+process.exit(ok ? 0 : 1);
+JS
 TG="$tmp/bad/trg" && cp -r "$BGOLD" "$TG" && sed -i '/^| guest | Гость купил билет/d; s/^| rest | Ресторан подаёт заявку на участие | A |$/| rest | Ресторан подаёт заявку на участие | Z |/' "$TG/backlog/docs/doc-1 - "*.md
 out="$(python3 "$BLINT" "$TG" --no-source --strict 2>&1)"; rc=$?
 [ "$rc" -eq 1 ] && grep -q "BL050 у персонажа guest нет триггера" <<<"$out" && grep -q "BL049 триггер «Ресторан подаёт заявку на участие»" <<<"$out" \
@@ -369,6 +382,20 @@ BS="$tmp/bad/backstage" && cp -r "$BGOLD" "$BS" && f="$(ls "$BS/backlog/tasks/"b
 out="$(python3 "$BLINT" "$BS" --no-source 2>&1)"
 grep -q "BL052 BP-16.1: Backstage — процесс и данные; UserStory здесь не нужны" <<<"$out" && grep -q "BL052 BP-16.1: Данные — строка «- что — откуда»" <<<"$out" \
   && ok "карта · Backstage: UserStory лишняя, «Данные» без источника — BL052" || fail "карта · BL052 — $out"
+# BL053: «Как это работает» — регулярный процесс; разовая задача команды — предупреждение, команда в Backstage — ошибка
+RB="$tmp/bad/regular" && cp -r "$BGOLD" "$RB" && f="$(ls "$RB/backlog/tasks/"bp-16.1*.md)" \
+  && sed -i 's/^- Сервис проверки билетов: Проверяет: активен/- TeamA: Проверяет: активен/' "$f" \
+  && f2="$(ls "$RB/backlog/tasks/"bp-7.1*.md)" && sed -i 's/^title: .*/title: Сервис писем переключает отправку на нового рассыльщика/' "$f2"
+out="$(python3 "$BLINT" "$RB" --no-source 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && grep -q "ERROR BL053 BP-16.1: в Backstage участвует команда «TeamA»" <<<"$out" && grep -q "WARN BL053 BP-7.1: «переключает» — разовая задача команды" <<<"$out" \
+  && ok "карта · регулярный процесс: команда в Backstage — BL053 ошибка, «переключает» — BL053 предупреждение" || fail "карта · BL053 — $out"
+# BL054: «Как это работает» без команд; два описания одного экрана в одном этапе и слое — дубль
+NB="$tmp/bad/noteam" && cp -r "$BGOLD" "$NB" && f="$(ls "$NB/backlog/tasks/"bp-5.1*.md)" \
+  && sed -i 's/^assignee: \[\]$/assignee:\n  - "@vit"/' "$f" && cp "$f" "$NB/backlog/tasks/bp-5.6 - x.md" \
+  && sed -i 's/^id: BP-5.1$/id: BP-5.6/; s/^title: .*/title: Гость видит доработанный блок акции на странице после покупки/; s/^ordinal: .*/ordinal: 99000/' "$NB/backlog/tasks/bp-5.6 - x.md"
+out="$(python3 "$BLINT" "$NB" --no-source 2>&1)"
+grep -q "BL054 BP-5.1: у карточки «Как это работает» есть команда" <<<"$out" && grep -q "BL054 BP-5.6: тот же экран, этап и слой, что у BP-5.1" <<<"$out" && grep -q "BL053 BP-5.6: «доработанный»" <<<"$out" \
+  && ok "карта · без команд: команда у карточки и дубль по экрану — BL054, «доработанный» — BL053" || fail "карта · BL054 — $out"
 # BL043: подзадача — зона из списка, родитель — история
 ZB="$tmp/bad/zone" && cp -r "$BGOLD" "$ZB" && python3 - "$ZB" <<'PY'
 import sys
@@ -437,7 +464,7 @@ PY
   && $E python3 blueprint.py build >/dev/null 2>&1 && cmp -s blueprint.html dineclub-restart-map.html \
   && $E python3 backlog.py task list -l stage:F --plain | grep -q "BP-16 - " \
   && $E python3 backlog.py task create "Учесть часовой пояс площадки" -p BP-16 -a "" -l "stage:F,layer:backstage" --no-dod-defaults \
-       -d $'TeamA учитывает часовой пояс.\n\n### UserStory\nКак официант, я хочу верную проверку в полночь, чтобы не спорить с гостем.\n\n### JobStory\n- Когда гость пришёл в последний день, хочу верный ответ, чтобы дать скидку.\n\n### Параметры\n- **Вход:** Штрихкод (BP-16.1)\n- **Управление:** Окно 7 дней (ФТ-1)\n- **Выход:** Ответ (BP-15.1)\n- **Механизм:** TeamA\n\n### Процесс\n- TeamA: Берёт часовой пояс площадки\n- TeamA: Считает окно\n\n### HowToDemo\n1. Сканирую в 23:59\n2. Проверка проходит' >/dev/null \
+       -d $'Сервис проверки билетов учитывает часовой пояс.\n\n### UserStory\nКак официант, я хочу верную проверку в полночь, чтобы не спорить с гостем.\n\n### JobStory\n- Когда гость пришёл в последний день, хочу верный ответ, чтобы дать скидку.\n\n### Параметры\n- **Вход:** Штрихкод (BP-16.1)\n- **Управление:** Окно 7 дней (ФТ-1)\n- **Выход:** Ответ (BP-15.1)\n- **Механизм:** Сервис проверки билетов\n\n### Процесс\n- Сервис проверки билетов: Берёт часовой пояс площадки\n- Сервис проверки билетов: Считает окно\n\n### HowToDemo\n1. Сканирую в 23:59\n2. Проверка проходит' >/dev/null \
   && $E python3 backlog.py task edit BP-16 --check-ac 1 --add-ref https://jira.example.com/browse/DEMO-16 >/dev/null \
   && $E python3 blueprint.py build >/dev/null 2>&1 && $E python3 blueprint.py check >/dev/null 2>&1 \
   && grep -q "Берёт часовой пояс площадки" "$(ls backlog/tasks/bp-16.2*)" && grep -q 'N1\["Берёт часовой пояс площадки"\]' "$(ls backlog/tasks/bp-16.2*)" \
@@ -450,7 +477,7 @@ python3 - "$GOLD" <<'PY'
 import sys
 from pathlib import Path
 f = next(Path(sys.argv[1]).glob("backlog/tasks/bp-16.1 - *.md")); t = f.read_text(encoding="utf-8")
-f.write_text(t.replace("- Приложение-сканер: Показывает ответ официанту", "- Приложение-сканер: Показывает ответ официанту\n- TeamA: Пишет журнал проверок"), encoding="utf-8")
+f.write_text(t.replace("- Приложение-сканер: Показывает ответ официанту", "- Приложение-сканер: Показывает ответ официанту\n- Сервис проверки билетов: Пишет журнал проверок"), encoding="utf-8")
 PY
 python3 "$BBUILD" "$GOLD" --check >/dev/null 2>&1; rc=$?
 python3 "$BBUILD" "$GOLD" --out-dir "$tmp/bout2" --no-zip >/dev/null 2>&1 \
@@ -679,7 +706,7 @@ PY
 cp -r "$PL/g" "$PL/qual" && python3 - "$PL/qual/plan/map.md" <<'PY'
 import sys
 p = sys.argv[1]; t = open(p, encoding="utf-8").read()
-t = t.replace("- TeamA: Проверяет: активен, не использован, ≤7 дней", "- СА: Проверяет: активен, не использован, ≤7 дней", 1)
+t = t.replace("- Сервис проверки билетов: Проверяет: активен, не использован, ≤7 дней", "- СА: Проверяет: активен, не использован, ≤7 дней", 1)
 t = t.replace("команда: vit", "кандидаты: vit", 1)
 t = t.replace("- Когда гость показывает билет", "- Когда Гость показывает билет", 1)
 open(p, "w", encoding="utf-8").write(t)
