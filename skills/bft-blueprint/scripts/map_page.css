@@ -406,3 +406,22 @@ body.open.side2 .tr{display:none}
 .hwc>b{display:block;margin:4px 0 0;font-size:14px;font-weight:600;line-height:1.4}
 .hwc .bpmnw{margin-top:10px;max-height:260px;overflow:hidden;pointer-events:none;border:0;background:#faf9f6;padding:8px}.hwc .bpmnw pre{font-size:11px;white-space:pre-wrap;max-height:120px;overflow:hidden}
 .hwc .bpmnw svg{width:100%!important;max-width:100%!important;min-width:0!important;height:auto}
+/* C4 L3 в ADR: легенда изменений и контуров, схема компонентов, панель компонента */
+/* схема шире колонки ADR: на весь экран, иначе mermaid ужимает подписи до нечитаемых */
+.c4{margin:0 0 26px;width:calc(100vw - 48px);max-width:1680px;position:relative;left:50%;transform:translateX(-50%)}.c4 h4{margin:0 0 8px}
+.c4lg{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:0 0 10px;font-size:12.5px}
+.c4k{display:inline-flex;align-items:center;gap:6px;color:#55524c}.c4k::before{content:"";width:14px;height:10px;border-radius:3px;border:2px solid}
+.c4k.nw::before{background:#e8f4ea;border-color:#2f6b2a}.c4k.md::before{background:#fff3e3;border:2px dashed #d06a12}.c4k.kp::before{background:#f4f2ee;border-color:#b9b3a8}
+.c4k.as::before{width:18px;height:0;border:0;border-top:2px dashed #8c877d;border-radius:0}
+.c4sep{width:1px;height:16px;background:#e2ded6;margin:0 4px}
+.c4t{display:inline-flex;align-items:center;gap:6px;border:1px solid #e2ded6;background:#fff;border-radius:999px;padding:4px 10px;font:inherit;font-size:12.5px;cursor:pointer;color:var(--ink)}
+.c4t i{width:9px;height:9px;border-radius:3px;background:var(--c)}.c4t b{font-size:11px;color:#8a857c;font-weight:600}.c4t.on{border-color:var(--c);box-shadow:0 0 0 1px var(--c) inset}
+.c4box{padding:12px}.c4box.ok svg{min-width:1100px}
+.c4list{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:4px 24px}
+.c4list li{display:flex;gap:8px;align-items:baseline;padding:5px 0;border-bottom:1px solid #f0ede7;font-size:13px;line-height:1.4}
+.c4list li>b{flex:none;width:20px;height:20px;border-radius:50%;background:#f2f0ec;font-size:11px;display:inline-flex;align-items:center;justify-content:center}
+.c4list em{display:block;font-style:normal;color:#55524c}.c4list small{display:block;font-size:11.5px;color:#8a857c}.c4box g.node[data-c4]{cursor:pointer}.c4box g.node[data-c4]:hover>*:first-child{filter:brightness(.96)}
+.c4box g.node.dim{opacity:.22}.c4box small{font-size:10.5px;color:#8a857c}
+.c4fl{list-style:none;margin:0;padding:0!important}.c4fl li{display:flex;gap:8px;align-items:baseline;padding:4px 0;font-size:13.5px}
+.c4fl li>b{flex:none;width:20px;height:20px;border-radius:50%;background:#f2f0ec;font-size:11px;display:inline-flex;align-items:center;justify-content:center}
+.c4fl em{display:block;font-style:normal;color:var(--ink)}.c4fl small{display:block;font-size:12px;color:#8a857c}

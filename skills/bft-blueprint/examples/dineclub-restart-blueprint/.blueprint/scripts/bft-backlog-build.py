@@ -178,6 +178,9 @@ def model(pr: bl.Project, base: str = "") -> dict:
                                      "risk": n.risk, "probe": n.probe} for n in pr.adr.bottlenecks],
                     "compromises": [{"id": c.id, "text": c.text, "rel": c.reliability, "speed": c.speed,
                                      "fit": c.fit, "cost": c.cost} for c in pr.adr.compromises],
+                    "components": [{"id": c.id, "name": c.name, "ctx": c.context, "team": c.team, "kind": c.kind,
+                                    "change": c.change, "tasks": c.tasks} for c in pr.adr.components],
+                    "flows": [{"src": f.src, "dst": f.dst, "data": f.data, "how": f.how, "contract": f.contract} for f in pr.adr.flows],
                     "asis": pr.adr.asis, "context": pr.adr.context,
                     "diagram": re.sub(r"^```mermaid\n|\n?```$", "", pr.adr.diagram.strip()),
                     "file": pr.adr_doc.rel}}

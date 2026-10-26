@@ -973,6 +973,50 @@ PY
 out="$(python3 "$BLINT" "$tmp/adr-sense" --no-source 2>&1)"; rc=$?
 [ "$rc" -eq 1 ] && grep -q " AR003 " <<<"$out" \
   && ok "ADR · смысл: AR003 (выбор мимо вариантов, пустое «Почему нет»)" || fail "ADR · смысл не пойман"
+# C4 L3 (AR006): контур не из «Команд», задачи нет на карте, поток мимо компонентов, контракт не из решения
+cp -r "$BGOLD" "$tmp/adr-c4"
+python3 - "$tmp/adr-c4/backlog/docs/doc-15 - ADR.md" << 'PY'
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+t = p.read_text(encoding="utf-8")
+for a, b in [("| Платформа TeamA | teama | сервис | новый | BP-16 |", "| Платформа TeamA | nobody | сервис | новый | BP-99 |"),
+             ("| M8 | M9 | Отметка «использован» | запись | ticket-validation |", "| M8 | M99 | Отметка «использован» | запись | ticket-checks |")]:
+    assert a in t, a; t = t.replace(a, b)
+p.write_text(t, encoding="utf-8")
+PY
+out="$(python3 "$BLINT" "$tmp/adr-c4" --no-source 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && [ "$(grep -c " AR006 " <<<"$out")" -eq 4 ] \
+  && ok "ADR · C4 L3: AR006 (контур, задача, поток, контракт)" || fail "ADR · C4 L3: AR006 не пойман — $out"
+# C4 L3 (AR007): меняемый компонент без задачи, компонент без потока, контракт TO-BE без потока
+cp -r "$BGOLD" "$tmp/adr-c4w"
+python3 - "$tmp/adr-c4w/backlog/docs/doc-15 - ADR.md" << 'PY'
+import re, sys
+from pathlib import Path
+p = Path(sys.argv[1])
+t = p.read_text(encoding="utf-8")
+t = t.replace("| Каталог UnitB | unitb | хранилище | новый | BP-6 |", "| Каталог UnitB | unitb | хранилище | новый | — |")
+t = re.sub(r"^\| M8 \| M9 \|.*\n", "", t, flags=re.M)
+t = re.sub(r"^\| (M3|M4|M7) \| M[67] \|.*\n", "", t, flags=re.M)
+p.write_text(t, encoding="utf-8")
+PY
+out="$(python3 "$BLINT" "$tmp/adr-c4w" --no-source --strict 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && grep -q "AR007 M7 «Кеш каталога 10 минут»: новый, а задачи нет" <<<"$out" && grep -q "AR007 M9 «Реестр использований»: ни одного потока" <<<"$out" \
+  && grep -q "AR007 контракт «restaurant-shelf» решён, но ни один поток" <<<"$out" \
+  && ok "ADR · C4 L3: AR007 (без задачи, без потока, контракт без потока)" || fail "ADR · C4 L3: AR007 не пойман — $out"
+# C4 L3 на странице: таблицы ADR — в данных, схему рисует страница
+python3 - "$tmp/bout" <<'PY' && ok "ADR · C4 L3 на странице: 14 компонентов, 15 потоков, схема и панель компонента" || fail "ADR · C4 L3 не дошёл до страницы"
+import json, re, sys
+from pathlib import Path
+page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf-8")
+d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
+c, f = d["adr"]["components"], d["adr"]["flows"]
+assert len(c) == 14 and len(f) == 15, (len(c), len(f))
+assert {x["team"] for x in c} >= {"vit", "unitb", "teama", "dine", "ext", "?", "—"}
+assert next(x for x in c if x["id"] == "M8")["tasks"] == ["BP-16"]
+assert {x["contract"] for x in f} == {"—", "restaurant-shelf", "ticket-validation"}
+assert "function c4Code" in page and "function openC4" in page and "data-c4team" in page
+PY
 # AR002: второй ADR в проекте
 cp -r "$BGOLD" "$tmp/adr-dup"
 cp "$BGOLD/backlog/docs/doc-15 - ADR.md" "$tmp/adr-dup/backlog/docs/doc-50 - второй ADR.md"
@@ -1033,7 +1077,7 @@ block = """## Решение TO-BE
 
 """
 # план эталона уже несёт секции этапа — заменим их на тестовые (одна секция каждого вида)
-t = re.sub(r"^## (?:Решение TO-BE|Варианты|Узкие места|Компромиссы|Контракты)\n.*?(?=^## )", "", t, flags=re.S | re.M)
+t = re.sub(r"^## (?:Решение TO-BE|Варианты|Узкие места|Компромиссы|Компоненты|Потоки|Контракты)\n.*?(?=^## )", "", t, flags=re.S | re.M)
 find = re.search(r"^## BP-1 ", t, re.M)   # позиция заново: секции выше уже вырезаны
 t = t[:find.start()] + block + t[find.start():]
 p.write_text(t, encoding="utf-8")

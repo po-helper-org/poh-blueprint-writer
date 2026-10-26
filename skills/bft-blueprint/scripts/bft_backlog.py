@@ -148,6 +148,21 @@ BOTTLENECK_ID = re.compile(r"^N-?(?P<num>\d+)$", re.I)
 
 COMPROMISE_ID = re.compile(r"^C-?(?P<num>\d+)$", re.I)
 
+# C4 L3 в ADR: компоненты и потоки данных между ними. Компонент живёт в контексте (система —
+# граница C4) и в контуре ответственности (команда из «Команд»); «Задачи» — где на карте
+# запланированы работы над ним. Схему страница рисует сама из этих двух таблиц.
+C4_COMPONENT_HEADER = ("ID", "Компонент", "Контекст", "Контур", "Тип", "Изменение", "Задачи")
+
+C4_FLOW_HEADER = ("От", "К", "Данные", "Способ", "Контракт")
+
+COMPONENT_ID = re.compile(r"^M-?(?P<num>\d+)$", re.I)
+
+C4_KINDS = ("человек", "интерфейс", "сервис", "хранилище", "очередь", "внешняя система")
+
+C4_CHANGES = ("новый", "доработка", "без изменений")
+
+EMPTY_CELL = ("", "—", "-", "–")
+
 # Системные требования: три вопроса на КАЖДЫЙ контракт — (1) какие данные нужны контракту,
 # (2) источник каждого параметра (система/сервис/поле/справочник), (3) какие преобразования
 # над данными нужны для контрактов и бизнес-логики.
@@ -393,6 +408,28 @@ class Compromise:
     line: int
 
 @dataclass
+class Component:
+    """Компонент C4 L3: где живёт (контекст), чей (контур — команда), что это и что с ним делаем."""
+    id: str
+    name: str
+    context: str          # система / граница C4: «Витрина Acme Tickets»
+    team: str             # контур ответственности — ID команды; «—» у человека, «?» — не определён
+    kind: str             # C4_KINDS
+    change: str           # C4_CHANGES
+    tasks: list           # ID задач и карточек карты, где запланированы работы
+    line: int
+
+@dataclass
+class Flow:
+    """Поток данных C4 L3: от компонента к компоненту — что передаётся, как и по какому контракту."""
+    src: str
+    dst: str
+    data: str
+    how: str              # способ: «HTTP, синхронно», «событие», «интерфейс»
+    contract: str         # контракт из «Решения TO-BE» или «—»
+    line: int
+
+@dataclass
 class ADR:
     """Документ «ADR» (<!-- bft-adr … -->): этап «ADR и Системные требования», часть системного дизайна.
 
@@ -411,6 +448,8 @@ class ADR:
     bottlenecks: list = field(default_factory=list)       # [Bottleneck]
     compromises: list = field(default_factory=list)       # [Compromise]
     diagram: str = ""                                     # mermaid-диаграмма AS-IS/TO-BE
+    components: list = field(default_factory=list)        # [Component] — C4 L3
+    flows: list = field(default_factory=list)             # [Flow] — потоки данных C4 L3
     doc: Doc | None = None
 
     def by_id(self, vid: str) -> Option | None:
@@ -782,6 +821,35 @@ def parse_adr(pr: Project, d: Doc) -> ADR:
                 err(ln, "AR001", f"{cid}: нужны «Компромисс», оценки по трём осям и «Чем платим»")
                 continue
             a.compromises.append(Compromise(cid, c[1].strip(), c[2].strip(), c[3].strip(), c[4].strip(), c[5].strip(), ln))
+    # C4 L3 — условные разделы: нет — AR007 в check_adr подскажет; форма — если раздел есть
+    if "Компоненты" in secs:
+        for ln, c in _table(d, secs, "Компоненты", C4_COMPONENT_HEADER, err):
+            mid = _norm_id(c[0], COMPONENT_ID, "M")
+            if not mid or mid in {x.id for x in a.components}:
+                err(ln, "AR001", f"компонент: ID вида M1…, уникален — «{c[0]}»")
+                continue
+            name, ctx, team, kind, change = (x.strip() for x in c[1:6])
+            if not (name and ctx and team and kind and change):
+                err(ln, "AR001", f"{mid}: нужны «Компонент», «Контекст», «Контур», «Тип», «Изменение»")
+                continue
+            if kind.lower() not in C4_KINDS:
+                err(ln, "AR001", f"{mid}: тип «{kind}» — один из: {', '.join(C4_KINDS)}")
+                continue
+            if change.lower() not in C4_CHANGES:
+                err(ln, "AR001", f"{mid}: изменение «{change}» — одно из: {', '.join(C4_CHANGES)}")
+                continue
+            tasks = [] if c[6].strip() in EMPTY_CELL else [x.strip().upper() for x in re.split(r"[,;\s]+", c[6]) if x.strip()]
+            a.components.append(Component(mid, name, ctx, team, kind.lower(), change.lower(), tasks, ln))
+    if "Потоки" in secs:
+        for ln, c in _table(d, secs, "Потоки", C4_FLOW_HEADER, err):
+            src, dst = _norm_id(c[0], COMPONENT_ID, "M"), _norm_id(c[1], COMPONENT_ID, "M")
+            if not src or not dst:
+                err(ln, "AR001", f"поток: «От» и «К» — ID компонентов M1…, а не «{c[0]}» → «{c[1]}»")
+                continue
+            if not (c[2].strip() and c[3].strip()):
+                err(ln, "AR001", f"поток {src} → {dst}: нужны «Данные» и «Способ»")
+                continue
+            a.flows.append(Flow(src, dst, c[2].strip(), c[3].strip(), c[4].strip(), ln))
     if "Диаграмма AS-IS/TO-BE" in secs:
         mm = MERMAID.search("\n".join(secs["Диаграмма AS-IS/TO-BE"][1]))
         a.diagram = f"```mermaid\n{mm.group(1)}\n```" if mm else ""

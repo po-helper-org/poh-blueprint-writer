@@ -416,11 +416,11 @@
     if (!mr) return;
     {
       arCur = "adr";
-      mr.innerHTML = `<div class="arwrap"><div class="arnav">${AR ? `<button data-artab="adr" class="on">ADR</button>` : ""}${SR ? `<button data-artab="sys">Системные требования</button>` : ""}</div>${AR ? adrOpen() : ""}${SR ? sysOpen() : ""}</div>`;
+      mr.innerHTML = `<div class="arwrap"><div class="arnav">${AR ? `<button data-artab="adr" class="on">ADR</button>` : ""}${SR ? `<button data-artab="sys">Системные требования</button>` : ""}</div>${AR ? adrOpen(true) : ""}${SR ? sysOpen() : ""}</div>`;
       mr.querySelectorAll("[data-artab]").forEach(b => b.addEventListener("click", () => {
         arCur = b.dataset.artab;
         mr.querySelectorAll("[data-artab]").forEach(x => x.classList.toggle("on", x === b));
-        mr.innerHTML = `<div class="arwrap"><div class="arnav">${AR ? `<button data-artab="adr"${arCur === "adr" ? ' class="on"' : ""}>ADR</button>` : ""}${SR ? `<button data-artab="sys"${arCur === "sys" ? ' class="on"' : ""}>Системные требования</button>` : ""}</div>${arCur === "adr" && AR ? adrOpen() : ""}${arCur === "sys" && SR ? sysOpen() : ""}</div>`;
+        mr.innerHTML = `<div class="arwrap"><div class="arnav">${AR ? `<button data-artab="adr"${arCur === "adr" ? ' class="on"' : ""}>ADR</button>` : ""}${SR ? `<button data-artab="sys"${arCur === "sys" ? ' class="on"' : ""}>Системные требования</button>` : ""}</div>${arCur === "adr" && AR ? adrOpen(true) : ""}${arCur === "sys" && SR ? sysOpen() : ""}</div>`;
       }));
     }
   }
@@ -661,6 +661,8 @@
     if ((AR.decisions || []).length) parts.push(arTable("Решение TO-BE", AR.decisions.map(d => tr([d.id + " ✓", d.contract, d.text, d.why])), ["ID", "Контракт", "Суть решения", "Обоснование"]));
     if ((AR.options || []).length) parts.push(arTable("Варианты", AR.options.map(opt), ["ID", "Вариант", "Надёжность", "Скорость", "Соответствие", "Почему нет"]));
     if ((AR.bottlenecks || []).length) parts.push(arTable("Узкие места", AR.bottlenecks.map(n => tr([n.id, n.text, AR_KIND[n.kind] || n.kind, n.load, n.risk, n.probe])), ["ID", "Узкое место", "Тип", "Нагрузка", "Риск", "Прощупывание"]));
+    if ((AR.components || []).length) parts.push(arTable("Компоненты", AR.components.map(c => tr([c.id, c.name, c.ctx, c.kind === "человек" ? "—" : c4TeamName(c.team), c.kind, c.change, c.tasks.join(", ") || "—"])), ["ID", "Компонент", "Контекст", "Контур", "Тип", "Изменение", "Задачи"]));
+    if (d && (AR.flows || []).length) parts.push(arTable("Потоки", AR.flows.map((f, i) => tr([i + 1, `${f.src} → ${f.dst}`, f.data, f.how, f.contract || "—"])), ["№", "От → К", "Данные", "Способ", "Контракт"]));
     if ((AR.compromises || []).length) parts.push(arTable("Компромиссы", AR.compromises.map(c => tr([c.id, c.text, c.rel, c.speed, c.fit, c.cost])), ["ID", "Компромисс", "Надёжность", "Скорость", "Соответствие", "Чем платим"]));
     const openQ = (D.questions || []).filter(q => q.open && /^(?:V|C)\d+/.test(q.where));
     return parts.join("") + (openQ.length ? `<div class="qdiv">Открытые вопросы ADR · ${openQ.length}</div><ul class="qul">${openQ.map(qItem).join("")}</ul>` : "");
@@ -684,9 +686,77 @@
     adrGrid.innerHTML = `<div class="arwrap"><div class="arhead"><span class="arst">${esc(status)}</span><h2>ADR и Системные требования</h2>
       <p>Как реализуем работу на карте: варианты и выбор TO-BE, узкие места и компромиссы; по каждому контракту — данные, источники, преобразования.</p>
       <nav class="arnav">${AR ? tab("adr", arCur === "adr", "ADR", nA) : ""}${SR ? tab("sys", arCur === "sys", "Системные требования", nS) : ""}</nav></div>
-      ${diag}${arCur === "adr" && AR ? adrOpen() : ""}${arCur === "sys" && SR ? sysOpen() : ""}</div>`;
-    const box = adrGrid.querySelector(".bpmnw");
+      ${arCur === "adr" ? c4Block() : ""}${diag}${arCur === "adr" && AR ? adrOpen() : ""}${arCur === "sys" && SR ? sysOpen() : ""}</div>`;
+    const c4b = adrGrid.querySelector(".c4box"); if (c4b) c4Draw(c4b);
+    const box = adrGrid.querySelector(".bpmnw:not(.c4box)");
     if (box) drawMermaid(box);
+  }
+  /* ---------- C4 L3: компоненты по контурам и контекстам, потоки данных ----------
+     Данные — таблицы «Компоненты» и «Потоки» ADR. Контур (команда) — цветная рамка, контекст (система) —
+     пунктирная рамка внутри; форма узла — тип, заливка — изменение; поток — номер и данные, асинхронный —
+     пунктиром. Клик по компоненту — панель: задачи, входящие и исходящие потоки; клик по контуру
+     в легенде — подсветить его компоненты. На стрелке — только номер потока: подписи с данными
+     раздвигают схему вдвое; данные — нумерованным списком под схемой. */
+  const C4 = AR && (AR.components || []).length ? AR : null;
+  const C4_SHAPE = { "человек": ['(["', '"])'], "интерфейс": ['("', '")'], "сервис": ['["', '"]'], "хранилище": ['[("', '")]'], "очередь": ['>"', '"]'], "внешняя система": ['[["', '"]]'] };
+  const C4_CHG = { "новый": "nw", "доработка": "md", "без изменений": "kp" };
+  const C4_ASYNC = /асинхрон|событ|очеред/i;
+  const c4Comp = id => C4.components.find(c => c.id === id);
+  const c4TeamName = tm => tm === "?" ? "Контур не определён" : TEAM[tm] ? TEAM[tm].name : tm;
+  const cssVar = v => { const m = String(v).match(/var\((--[\w-]+)\)/); return m ? getComputedStyle(document.documentElement).getPropertyValue(m[1]).trim() || "#888" : v };
+  const c4Color = tm => cssVar(tm === "?" ? "var(--red)" : TEAM[tm] ? TEAM[tm].c : "#888");
+  function c4Code() {
+    const q = x => String(x).replace(/"/g, "'").replace(/[<>]/g, " ");
+    const node = c => { const [a, b] = C4_SHAPE[c.kind] || C4_SHAPE["сервис"];
+      return `${c.id}${a}${q(c.name)}<br/><small>${q(c.kind)}${c.tasks.length ? " · " + c.tasks.join(", ") : ""}</small>${b}:::${c.kind === "человек" ? "pp" : C4_CHG[c.change] || "kp"}` };
+    const L = ["flowchart LR", "classDef nw fill:#e8f4ea,stroke:#2f6b2a,stroke-width:2px,color:#1d1d1b", "classDef md fill:#fff3e3,stroke:#d06a12,stroke-width:2px,stroke-dasharray:6 3,color:#1d1d1b",
+      "classDef kp fill:#f4f2ee,stroke:#b9b3a8,color:#55524c", "classDef pp fill:#ffffff,stroke:#55524c,color:#1d1d1b"];
+    C4.components.filter(c => c.kind === "человек").forEach(c => L.push("  " + node(c)));
+    const teams = [...new Set(C4.components.filter(c => c.kind !== "человек").map(c => c.team))];
+    teams.forEach((tm, ti) => {
+      L.push(`  subgraph T${ti}["${q(c4TeamName(tm))}"]`);
+      const ctxs = [...new Set(C4.components.filter(c => c.kind !== "человек" && c.team === tm).map(c => c.ctx))];
+      ctxs.forEach((cx, xi) => {
+        L.push(`    subgraph T${ti}X${xi}["${q(cx)}"]`);
+        C4.components.filter(c => c.kind !== "человек" && c.team === tm && c.ctx === cx).forEach(c => L.push("      " + node(c)));
+        L.push("    end", `    style T${ti}X${xi} fill:#fbfaf8,stroke:#cfcac0,stroke-dasharray:4 3,color:#55524c`);
+      });
+      const col = c4Color(tm);
+      L.push("  end", `  style T${ti} fill:transparent,stroke:${col},stroke-width:2px,color:${col}`);
+    });
+    C4.flows.forEach((f, i) => L.push(`  ${f.src} ${C4_ASYNC.test(f.how) ? "-.->" : "-->"}|"${i + 1}"| ${f.dst}`));
+    return L.join("\n");
+  }
+  function c4Draw(box) {
+    mermaidLib().then(m => m.render(`c4${++mmN}`, c4Code())).then(r => {
+      if (!box.isConnected) return;
+      box.innerHTML = r.svg; box.classList.add("ok");
+      box.querySelectorAll("g.node").forEach(g => { const m = (g.id || "").match(/flowchart-(M\d+)-\d+$/); if (m) { g.dataset.c4 = m[1]; g.setAttribute("tabindex", "0") } });
+    }).catch(() => { box.classList.add("raw"); box.innerHTML = `<pre>${esc(c4Code())}</pre>` });
+  }
+  function c4Block() {
+    if (!C4) return "";
+    const teams = [...new Set(C4.components.filter(c => c.kind !== "человек").map(c => c.team))];
+    const work = tm => C4.components.filter(c => c.team === tm && c.change !== "без изменений").length;
+    return `<div class="c4"><h4>Компоненты и потоки данных · C4 L3</h4>
+      <div class="c4lg"><span class="c4k nw">новый</span><span class="c4k md">доработка</span><span class="c4k kp">без изменений</span><span class="c4k as">асинхронно</span>
+      <span class="c4sep"></span>${teams.map(tm => `<button class="c4t" data-c4team="${esc(tm)}" style="--c:${c4Color(tm)}"><i></i>${esc(c4TeamName(tm))}${work(tm) ? `<b>${work(tm)}</b>` : ""}</button>`).join("")}</div>
+      <div class="bpmnw c4box"><pre>${esc(c4Code())}</pre></div>
+      <ol class="c4list">${C4.flows.map((f, i) => `<li><b>${i + 1}</b><span>${esc(c4Comp(f.src) ? c4Comp(f.src).name : f.src)} → ${esc(c4Comp(f.dst) ? c4Comp(f.dst).name : f.dst)}<em>${esc(f.data)}</em><small>${esc(f.how)}${/^[—–-]?$/.test(f.contract || "") ? "" : " · " + esc(f.contract)}</small></span></li>`).join("")}</ol></div>`;
+  }
+  function c4Focus(tm) {
+    const on = adrGrid.querySelector(`[data-c4team="${tm}"].on`) ? "" : tm;
+    adrGrid.querySelectorAll("[data-c4team]").forEach(b => b.classList.toggle("on", b.dataset.c4team === on));
+    adrGrid.querySelectorAll(".c4box g.node[data-c4]").forEach(g => g.classList.toggle("dim", !!on && c4Comp(g.dataset.c4).team !== on));
+  }
+  function openC4(id) {
+    const c = c4Comp(id), name = x => { const k = c4Comp(x); return k ? k.name : x };
+    const fl = (list, dir) => list.length ? `<ul class="c4fl">${list.map(f => `<li><b>${C4.flows.indexOf(f) + 1}</b><span>${esc(dir === "in" ? name(f.src) + " →" : "→ " + name(f.dst))} <em>${esc(f.data)}</em><small>${esc(f.how)}${f.contract && !/^[—–-]?$/.test(f.contract) ? " · " + esc(f.contract) : ""}</small></span></li>`).join("")}</ul>` : "";
+    const tasks = c.tasks.length ? refList(c.tasks.map(t => `${idChip(t)} ${esc((TASK[t] || PROC[t] || {}).text || "")}`)) : "";
+    side.innerHTML = head(c.name, `${c.kind === "человек" ? "" : `<span class="pteam" style="--c:${c4Color(c.team)}"><i></i>${esc(c4TeamName(c.team))}</span> · `}${esc(c.ctx)} · ${esc(c.kind)} · ${esc(c.change)} · ${esc(c.id)}`) + `<div class="snbody">
+      ${sec("Задачи", tasks)}${sec("Входящие потоки", fl(C4.flows.filter(f => f.dst === id), "in"))}${sec("Исходящие потоки", fl(C4.flows.filter(f => f.src === id), "out"))}</div>`;
+    execHide(); body.classList.remove("wide"); body.classList.add("open"); side.scrollTop = 0;
+    side.dataset.ctx = "c4:" + id; side.dataset.note = "";
   }
   function setArTab(t) { arCur = t; adrBoard(); adrGrid.scrollIntoView({ block: "start" }) }
 
@@ -785,6 +855,8 @@
     if (t.closest("[data-tf-clear]")) return teamFilter("");
     /* слой «Архитектура»: вкладки ADR / Системные требования, пункт меню */
     const at = t.closest("[data-artab]"); if (at) return setArTab(at.dataset.artab);
+    const c4t = t.closest("[data-c4team]"); if (c4t) return c4Focus(c4t.dataset.c4team);
+    const c4n = t.closest("[data-c4]"); if (c4n) return openC4(c4n.dataset.c4);
     if (t.closest("[data-adrmenu]")) { menu(false); if (AR || SR) return setView("adr") }
     /* слой «Релиз»: шаг, ворота, статусы, дорожки, команда для бэклога */
     const rgo = t.closest("[data-rlgo]"); if (rgo) return rlGo(rgo.dataset.rlgo);
@@ -821,6 +893,7 @@
     if (e.key === "Escape") { if (body.classList.contains("mopen")) { menu(false); burger.focus() } else if (side.querySelector("[data-snback]")) side.dataset.ctx.startsWith("task:") && exFrom ? execBack() : openScreen(snCur); else closeSide() }
     if (e.key === "Enter" && e.target.matches && e.target.matches("[data-snnote]")) openNote(+e.target.dataset.snnote);
     if (e.key === "Enter" && e.target.matches && e.target.matches("[data-extask]")) execOpen(e.target.dataset.extask);
+    if (e.key === "Enter" && e.target.matches && e.target.matches("[data-c4]")) openC4(e.target.dataset.c4);
     if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches("[data-seen]")) { e.preventDefault(); openSeen(e.target.dataset.seen) }
   });
   /* ---------- замечания и уточнения → промпт для ИИ-агента ----------
