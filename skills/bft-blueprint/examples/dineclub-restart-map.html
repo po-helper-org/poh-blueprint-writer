@@ -1014,10 +1014,11 @@ const BPK = (function () {
     body.classList.add("side2");
   }
   function execHide() { body.classList.remove("side2", "how"); exFrom = ""; ex.dataset.task = "" }
-  /* «←»: из подзадачи — к истории, из постановки — к экрану или этапу, откуда её открыли, иначе — к экрану */
+  /* «←»: из подзадачи и карточки «Как это работает» — к истории, из постановки — к экрану или этапу, откуда её открыли, иначе — к экрану */
   function goBack() {
     const [kind, id] = (side.dataset.ctx || ":").split(":");
     if (kind === "sub") return openTask(SUB[id].task, 0);
+    if (kind === "proc" && TASK[PROC[id].task]) return openTask(PROC[id].task, 0);
     return kind === "task" && exFrom ? execBack() : openScreen(snCur);
   }
   /* назад из постановки — к экрану или этапу, откуда её открыли */
@@ -1316,7 +1317,7 @@ const BPK = (function () {
     const row = k => (P[k] || []).length ? `<div class="pp"><span>${PNAME[k]}</span><ul>${P[k].map(it => `<li>${mdInline(it.t)}${it.r.length ? " " + it.r.map(idChip).join(" ") : ""}</li>`).join("")}</ul></div>` : "";
     const lnk = refList([t ? `<span class="lk">Задача</span> ${idChip(t.id)} ${esc(t.text)}` : "", ...c.docs.map(refItem), ...c.refs.map(refItem)].filter(Boolean));
     const proc = (c.lead ? `<p class="tklead">${mdInline(c.lead)}</p>` : "") + (c.bpmn ? `<div class="bpmnw"><pre>${esc(c.bpmn)}</pre></div><details class="mmcode"><summary>Текст схемы</summary><pre>${esc(c.bpmn)}</pre></details>` : "");
-    side.innerHTML = head(c.text, `<span class="lay" style="--c:${L[2]}">${L[0]}</span> · <span class="pteam" style="--c:${teamC(c)}"><i></i>${esc(teamN(c))}</span> · ${esc(COLS[colOf(c.stage)].name)} · ${esc(id)} · ${esc(c.status)}`) + `<div class="snbody">
+    side.innerHTML = head(c.text, `<span class="lay" style="--c:${L[2]}">${L[0]}</span> · <span class="pteam" style="--c:${teamC(c)}"><i></i>${esc(teamN(c))}</span> · ${esc(COLS[colOf(c.stage)].name)} · ${esc(id)} · ${esc(c.status)}`, !!t) + `<div class="snbody">
       ${sec("UserStory", c.us ? `<p>${mdInline(c.us)}</p>` : "")}
       ${sec("JobStory", (c.js || []).length ? `<ul class="js">${c.js.map(x => `<li>${mdInline(x)}</li>`).join("")}</ul>` : "")}
       ${sec("Процесс", proc)}${sec("Параметры", ["in", "ctl", "out", "mech"].map(row).join(""))}
