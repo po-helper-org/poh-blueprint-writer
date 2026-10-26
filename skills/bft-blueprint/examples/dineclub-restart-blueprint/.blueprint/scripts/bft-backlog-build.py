@@ -95,7 +95,7 @@ PAGE = """<!doctype html>
 <section class="adrscr" id="adr" aria-label="ADR и Системные требования — как реализуем работу"></section>
 <section class="rel" id="rel" aria-label="План релиза — дорожки DEV, STAGE, PROD"></section>
 <div class="mstack" id="mstack"></div>
-<div class="scrim"></div><aside class="side" id="side" aria-label="Подробности"></aside><div class="zoombox" id="lb" hidden></div>
+<div class="scrim"></div><aside class="execp" id="exec" aria-label="Исполнение: задачи команд по экрану"></aside><aside class="side" id="side" aria-label="Подробности"></aside><div class="zoombox" id="lb" hidden></div>
 <div class="show" id="show" role="dialog" aria-label="История по шагам"><div class="sbar"><div class="whos"></div><button class="x" aria-label="Закрыть">×</button></div>
 <div class="stage"></div><div class="snav"><button class="prev">← Назад</button><button class="next">Дальше →</button></div></div>
 <script type="application/json" id="map-data">{data}</script>

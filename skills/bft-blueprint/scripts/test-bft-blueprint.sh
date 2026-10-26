@@ -244,6 +244,33 @@ assert all(c["params"].get("out") and c["demo"] and c["us"] and c["js"] and c["b
 assert all(t["brief"].get("ASIS") and t["ac"] for t in d["tasks"])
 assert len(d["links"]) >= 20 and len(d["notes"]) == 12
 PY
+# «Исполнение»: у каждого экрана с требованиями — задача, чей documentation (или её карточки) ведёт на документ экрана
+python3 - "$tmp/bout" <<'PY' && ok "карта · исполнение: у каждого экрана есть задачи, F1 → BP-16, панель #exec, HowToDemo раскадровкой" || fail "карта · связь экран → задачи исполнения не та"
+import json, re, sys
+from pathlib import Path
+page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf-8")
+d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
+scr = {k: v["screen"] for k, v in d["docs"].items() if v["screen"]}
+of = {}
+for t in d["tasks"]:
+    for x in t["docs"]: of.setdefault(scr.get(x.split()[0].lower()), set()).add(t["id"])
+for c in d["cards"]:
+    for x in c["docs"]: of.setdefault(scr.get(x.split()[0].lower()), set()).add(c["task"])
+assert all(of.get(s) for s in d["notes"]), [s for s in d["notes"] if not of.get(s)]
+assert of["F1"] == {"BP-16"} and of["F2"] == {"BP-15"}, of
+assert 'id="exec"' in page and "data-extask" in page
+# HowToDemo раскадровкой: шаг с ID экрана «(F3)» — кадр этого экрана, даже если он не в documentation задачи
+T = {t["id"]: t for t in d["tasks"]}
+assert T["BP-16"]["brief"]["HowToDemo"].count("(F3)") == 3 and "(F1)" in T["BP-15"]["brief"]["HowToDemo"]
+assert 'class="demo"' in page and "function demoHTML" in page and "function howShow" in page
+PY
+EX="$tmp/bad/exec" && cp -r "$BGOLD" "$EX" && python3 - "$EX" <<'PY'
+import re, sys
+from pathlib import Path
+for f in Path(sys.argv[1], "backlog/tasks").glob("bp-17*.md"):
+    f.write_text(re.sub(r"documentation:\n  - doc-13\n", "", f.read_text(encoding="utf-8")), encoding="utf-8")
+PY
+expect_bl "экран без задачи исполнения"   1 "$EX" "BL042" --no-source --strict
 # картинки и mermaid — файлы проекта: страница ссылается на них, а не несёт в себе
 python3 - "$tmp/bout" <<'PY' && ok "карта · картинки экранов и mermaid — файлы проекта, схема BPMN — текст карточки" || fail "карта · страница несёт картинки или mermaid в себе"
 import json, re, sys

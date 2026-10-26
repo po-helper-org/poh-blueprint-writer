@@ -157,12 +157,14 @@
   const snHead = (title, back) => head(title, "", back);
   function openScreen(id, tab) {
     snCur = NOTE_OF[id]; if (tab != null) snTab = tab; const d = SCR[snCur], t = d.tabs[snTab] || d.tabs[0];
+    const sids = Object.keys(NOTE_OF).filter(s => NOTE_OF[s] === snCur); execPrep(sids);
     gallery = d.images.map(im => ({ alt: im.alt, src: imgSrc(im.src) }));
     side.innerHTML = snHead(d.title) + `<div class="snbody">${gallery.length ? `<div class="sngal${gallery.length > 1 ? " many" : ""}">${gallery.map((im, i) => `<img src="${esc(im.src)}" alt="${esc(im.alt)}" data-zoom="${i}">`).join("")}</div>` : ""}
       <nav class="snseg">${d.tabs.map((x, i) => `<button data-sntab="${i}"${x === t ? ' class="on"' : ""}>${esc(x.name)}</button>`).join("")}</nav>
-      <ul class="snstack">${(t ? t.notes : []).map((n, i) => `<li data-snnote="${i}" tabindex="0"><b>${esc(n.title)}</b><span>${esc(notePreview(n))}</span>${n.md.includes(MARK) ? '<i class="q"></i>' : ""}</li>`).join("")}</ul></div>`;
+      <ul class="snstack">${(t ? t.notes : []).map((n, i) => `<li data-snnote="${i}" tabindex="0"><b>${esc(n.title)}</b><span>${esc(notePreview(n))}</span>${n.md.includes(MARK) ? '<i class="q"></i>' : ""}</li>`).join("")}</ul>${execInline()}</div>`;
     body.classList.remove("wide"); body.classList.add("open"); side.scrollTop = 0;
     side.dataset.ctx = "screen:" + snCur; side.dataset.note = "";
+    execShow(sids, "screen:" + snCur);
   }
   function openNote(i) {
     const d = SCR[snCur], n = d.tabs[snTab].notes[i];
@@ -312,6 +314,7 @@
   /* панель шага: поля шага, статусы, зависимости, ворота дорожки, кнопка с командой для бэклога */
   function openRelease(id, added) {
     if (!RL) return;
+    execHide();
     const s = rlStep(id), track = RL.tracks.find(t => t.id === s.track), gate = RL.gates.find(g => g.frm === s.track);
     const st = RL_STATUS[rlV(id, "status")] || "todo";
     const all = RL.steps.map(x => x.id);
@@ -335,6 +338,7 @@
     side.dataset.ctx = "release:" + id; side.dataset.note = "";
   }
   function rlOpenAdd() {
+    execHide();
     const nid = rlNextId();
     const html = `<div class="rlform">
       <label>ID<input value="${esc(nid)}" readonly></label>
@@ -424,20 +428,107 @@
   /* ---------- боковая панель ---------- */
   const side = document.getElementById("side");
   function openSide(tag, color, title, meta, html, wide) {
-    side.dataset.ctx = ""; side.dataset.note = "";
+    side.dataset.ctx = ""; side.dataset.note = ""; execHide();
     side.innerHTML = `<div class="stop"><span class="tag" style="--c:${color}">${esc(tag)}</span><h3>${esc(title)}</h3><div class="meta">${meta}</div><button class="x" aria-label="Закрыть">×</button></div><div class="sin">${html}</div>`;
     body.classList.toggle("wide", !!wide); body.classList.add("open"); side.scrollTop = 0;
   }
-  const closeSide = () => body.classList.remove("open", "wide");
+  const closeSide = () => { body.classList.remove("open", "wide"); execHide() };
 
   function openSeen(key) {
     const s = D.seen.find(x => x.key === key), p = D.personas.find(x => x.id === s.persona), col = COLS[s.col];
     const html = s.steps.map(st => `<div class="stp">${st.screens.length ? `<div class="chips2">${[...new Set(st.screens.map(id => D.screens[id].contour))].map(chip).join("")}</div><div class="vis">${st.screens.map(id => mock(id, 170)).join("")}</div>` : ""}
       <h5>${esc(st.title)}</h5><p>${esc(st.text)}</p>${st.was ? `<div class="was"><b>Раньше</b>${esc(st.was)}</div>` : ""}
       ${qList(qsOf([st.id, ...st.screens]))}<div class="src">Источник: ${esc(st.source)}</div></div>`).join("");
-    side.innerHTML = head(col.name, `<span class="pteam" style="--c:#2f6b2a"><i></i>${esc(p.name)}</span> · ${esc(p.lane)} · ${s.steps.length} ${plural(s.steps.length, "шаг", "шага", "шагов")}`) + `<div class="snbody">${html}</div>`;
+    execPrep(s.steps.flatMap(st => st.screens));
+    side.innerHTML = head(col.name, `<span class="pteam" style="--c:#2f6b2a"><i></i>${esc(p.name)}</span> · ${esc(p.lane)} · ${s.steps.length} ${plural(s.steps.length, "шаг", "шага", "шагов")}`) + `<div class="snbody">${html}${execInline()}</div>`;
     body.classList.remove("wide"); body.classList.add("open"); side.scrollTop = 0;
     side.dataset.ctx = "seen:" + key; side.dataset.note = "";
+    execShow(s.steps.flatMap(st => st.screens), "seen:" + key);
+  }
+
+  /* ---------- «Исполнение»: вторая панель рядом с экраном — задачи «Что делаем», которые его делают ----------
+     Связь — из проекта Backlog.md: documentation задачи или её карточки ссылается на документ экрана
+     (строка «экраны: F3» плана, `./backlog.py task edit BP-16 --doc doc-12`). Задачи — по командам,
+     клик открывает постановку, «←» возвращает к экрану. Узкий экран — тот же список внизу панели экрана. */
+  const ex = document.getElementById("exec");
+  const DOC_SCR = {}, SCR_DOC = {}, SCR_TASKS = {};
+  Object.keys(D.docs).forEach(k => { const sid = D.docs[k].screen; if (sid) { DOC_SCR[k] = sid; SCR_DOC[sid] = SCR_DOC[sid] || k } });
+  const docKey = x => String(x).toLowerCase().split(" ")[0];
+  const linkScr = (doc, tid) => { const sid = DOC_SCR[docKey(doc)]; if (!sid || !TASK[tid]) return; const l = SCR_TASKS[sid] = SCR_TASKS[sid] || []; if (!l.includes(tid)) l.push(tid) };
+  D.tasks.forEach(t => t.docs.forEach(d => linkScr(d, t.id)));
+  D.cards.forEach(c => c.docs.forEach(d => linkScr(d, c.task)));
+  let exFrom = "", exIds = [], exScr = [];
+  function execPrep(sids) {
+    exScr = [...new Set(sids)];
+    exIds = [...new Set(exScr.flatMap(s => SCR_TASKS[s] || []))].sort((a, b) => colOf(TASK[a].stage) - colOf(TASK[b].stage));
+  }
+  function execList(cur) {
+    const groups = [...D.teams.map(t => t.id), "?"].map(tm => [tm, exIds.filter(id => (TASK[id].team in TEAM ? TASK[id].team : "?") === tm)]).filter(g => g[1].length);
+    const item = id => { const t = TASK[id], b = blocks(id).length;
+      return `<li data-extask="${esc(id)}" tabindex="0"${id === cur ? ' class="on"' : ""}><b>${esc(t.text)}</b><span>${esc(id)} · ${esc(t.status)}</span>${b ? '<i class="q" title="Блокер"></i>' : ""}</li>` };
+    const empty = `<p class="exno">Задач для экрана нет. Свяжите задачу с ним строкой «экраны: ${esc(exScr.join(", "))}» в плане.</p>`;
+    return groups.length ? groups.map(([tm, ids]) => { const t = TASK[ids[0]];
+      return `<section class="exg"><h4 style="--c:${teamC(t)}"><i></i>${esc(tm === "?" ? "Команда не определена" : teamN(t))}</h4><ul class="snstack exl">${ids.map(item).join("")}</ul></section>` }).join("") : empty;
+  }
+  const execInline = () => exScr.length ? `<div class="exin"><h4 class="exh">Исполнение · ${exIds.length}</h4>${execList("")}</div>` : "";
+  function execShow(sids, from, cur) {
+    if (from) { execPrep(sids); exFrom = from }
+    if (!exScr.length) return execHide();
+    body.classList.remove("how"); ex.dataset.task = "";
+    ex.innerHTML = `<div class="snbar"><h3>Исполнение</h3><span class="excnt">${nTasks(exIds.length)}</span></div><div class="snbody">${execList(cur || "")}</div>`;
+    body.classList.add("side2");
+  }
+  function execHide() { body.classList.remove("side2", "how"); exFrom = ""; ex.dataset.task = "" }
+  /* назад из постановки — к экрану или этапу, откуда её открыли */
+  function execBack() {
+    const [kind, id] = exFrom.split(/:(.*)/);
+    return kind === "seen" ? openSeen(id) : openScreen(kind === "screen" ? id : snCur);
+  }
+  /* ---------- HowToDemo: шаги списком, под ними — раскадровка, раскрывается вниз: картинка и краткое название ----------
+     Экраны — те, на которые ведёт documentation задачи или карточки. Экран шага: ID в тексте шага «(F3)»,
+     иначе экран, чьё название ближе к тексту шага, иначе экран прошлого шага. «Делаю — вижу» делит
+     первое «→» или «—». Шаги не списком или экранов нет — HowToDemo текстом, как раньше. */
+  const scrName = sid => SCR_DOC[sid] ? D.docs[SCR_DOC[sid]].title.replace(/^[^·]*·\s*/, "") : sid;
+  const stems = x => new Set((String(x).toLowerCase().match(/[a-zа-яё0-9]{4,}/g) || []).map(w => w.slice(0, 5)));
+  const SID_RE = /\s*\(([A-ZА-Я]\d{1,2}(?:\s*,\s*[A-ZА-Я]\d{1,2})*)\)/g;
+  function demoHTML(md, docs) {
+    const lines = String(md || "").trim().split("\n").filter(l => l.trim());
+    const sids = [...new Set(docs.map(d => DOC_SCR[docKey(d)]).filter(Boolean))];
+    if (!lines.length || !sids.length || !lines.every(l => /^\d+\.\s/.test(l))) return mdHTML(md || "");
+    let prev = "";
+    const steps = lines.map(l => {
+      let text = l.replace(/^\d+\.\s+/, ""), sid = "";
+      text = text.replace(SID_RE, (m, ids) => { sid = sid || ids.split(/\s*,\s*/).find(x => D.screens[x]) || ""; return sid ? "" : m });
+      if (!sid) {
+        const w = stems(text); let best = 0;
+        sids.forEach(x => { const n = [...stems(scrName(x))].filter(y => w.has(y)).length; if (n > best || (n === best && n && x === prev)) { best = n; sid = x } });
+      }
+      sid = sid || prev || sids[0]; prev = sid;
+      const m = text.match(/^(.+?)\s+[→—]\s+(.+)$/);
+      return { sid, text, act: m ? m[1] : text, see: m ? m[2] : "" };
+    });
+    gallery = steps.map((st, i) => ({ alt: `Шаг ${i + 1} · ${st.sid} · ${scrName(st.sid)}`, src: screenImg(st.sid) }));
+    return `<ol>${steps.map(st => `<li>${mdInline(st.text)}</li>`).join("")}</ol><details class="dmd"><summary>Раскадровка · ${steps.length} ${plural(steps.length, "шаг", "шага", "шагов")}</summary><ol class="demo">${steps.map((st, i) => `<li class="dm">
+      <span class="dmpic"><img src="${esc(screenImg(st.sid))}" alt="${esc(scrName(st.sid))}" data-zoom="${i}" loading="lazy" draggable="false"></span>
+      <span class="dmx"><b><span class="dmn">${i + 1}</span>${mdInline(st.act)}</b><small>${esc(st.sid)} · ${esc(scrName(st.sid))}</small></span></li>`).join("")}</ol></details>`;
+  }
+  /* ---------- «Как это работает» задачи: вторая панель слева от постановки ----------
+     Карточка-превью: JobStory заголовком (нет — название карточки), под ней схема процесса (mermaid),
+     панель листается. Клик — карточка целиком. Пришли из «Исполнения» экрана — слева остаётся оно. */
+  function howShow(id) {
+    const cards = D.cards.filter(c => c.task === id);
+    if (!cards.length) return execHide();
+    if (ex.dataset.task === id && body.classList.contains("how")) return;
+    ex.dataset.task = id;
+    ex.innerHTML = `<div class="snbar"><h3>Как это работает</h3><span class="excnt">${cards.length} ${plural(cards.length, "карточка", "карточки", "карточек")}</span></div><div class="snbody">${cards.map(c => { const L = LAYER[c.layer];
+      return `<section class="hwc" data-proc="${esc(c.id)}" tabindex="0"><span class="hwm"><span class="lay" style="--c:${L[2]}">${L[0]}</span> · ${esc(c.id)}</span>
+        <b>${mdInline((c.js || [])[0] || c.us || c.text)}</b>
+        ${c.bpmn ? `<div class="bpmnw"><pre>${esc(c.bpmn)}</pre></div>` : ""}</section>` }).join("")}</div>`;
+    body.classList.add("side2", "how"); ex.scrollTop = 0;
+    ex.querySelectorAll(".bpmnw").forEach(drawMermaid);
+  }
+  function execOpen(id) {
+    openTask(id, 0, true); execShow(null, "", id);
   }
 
   /* задача «Что делаем» — постановка для техлида, задача Backlog.md. «Требования»: зачем, ASIS, GAP, TOBE,
@@ -515,19 +606,21 @@
   const refList = items => items.length ? `<ul class="lnks">${items.map(x => `<li>${x}</li>`).join("")}</ul>` : "";
   /* шапка панели: заголовок, «!» — файлы проекта, откуда всё это, крестик; ниже — одна строка сведений */
   const head = (title, meta, back) => `<div class="snbar">${back ? '<button class="snback" data-snback aria-label="Назад">←</button>' : ""}<h3 title="${esc(title)}">${esc(title)}</h3><button class="srcb" data-src aria-label="Откуда это: файлы проекта" title="Откуда это: файлы проекта">!</button><button class="x" aria-label="Закрыть">×</button></div>${meta ? `<div class="tkmeta">${meta}</div>` : ""}`;
-  function openTask(id, tab) {
+  function openTask(id, tab, fromExec) {
     if (tab != null) taskTab = tab;
+    const back = fromExec || (exFrom && side.dataset.ctx === "task:" + id);
     const t = TASK[id], br = t.brief || {}, cards = D.cards.filter(c => c.task === id);
     let done = {}; try { done = JSON.parse(localStorage.getItem(dodKey(id)) || "{}") } catch (e) { }
     const ac = t.ac.map(([d, x], k) => `<label class="dod"><input type="checkbox" data-dod="${id}:${k}"${(done[k] != null ? done[k] : d) ? " checked" : ""}><span>${mdInline(x)}</span></label>`).join("");
     const links = refList([...(t.reqs.length ? [`<span class="lk">Требования БФТ</span> ${t.reqs.map(esc).join(", ")}`] : []), ...t.docs.map(refItem), ...t.refs.filter(r => !/^https?:\/\//.test(r)).map(refItem)]);
     const html = (t.why ? `<p class="tklead">${mdInline(t.why)}</p>` : "") + sec("ASIS", mdHTML(br.ASIS || "")) + sec("GAP", mdHTML(br.GAP || "")) + sec("TOBE", mdHTML(br.TOBE || "")) +
-      sec("HowToDemo", mdHTML(br.HowToDemo || "")) + sec("Чеклист приемки", ac) + sec("Дополнительно", mdHTML(br["Дополнительно"] || "")) +
+      sec("HowToDemo", demoHTML(br.HowToDemo, [...t.docs, ...cards.flatMap(c => c.docs)])) + sec("Чеклист приемки", ac) + sec("Дополнительно", mdHTML(br["Дополнительно"] || "")) +
       sec("Как это работает", refList(cards.map(c => `${idChip(c.id)} ${esc(c.text)}`))) + sec("Вопросы", qList(qsOf([id, ...cards.map(c => c.id)]))) + sec("Ссылки", links);
     const tabs = `<nav class="snseg tktabs">${["Требования", "Исполнение"].map((n, i) => `<button data-tktab="${i}"${i === taskTab ? ' class="on"' : ""}>${n}</button>`).join("")}</nav>`;
-    side.innerHTML = head(t.text, `<span class="pteam" style="--c:${teamC(t)}"><i></i>${esc(t.team === "?" && t.cand ? "Команда? " + t.cand : teamN(t))}</span> · ${esc(COLS[colOf(t.stage)].name)} · ${esc(id)} · ${esc(t.status)}`) + `<div class="snbody">${tabs}${taskTab ? execHTML(t) : html}</div>`;
+    side.innerHTML = head(t.text, `<span class="pteam" style="--c:${teamC(t)}"><i></i>${esc(t.team === "?" && t.cand ? "Команда? " + t.cand : teamN(t))}</span> · ${esc(COLS[colOf(t.stage)].name)} · ${esc(id)} · ${esc(t.status)}`, back) + `<div class="snbody">${tabs}${taskTab ? execHTML(t) : html}</div>`;
     body.classList.remove("wide"); body.classList.add("open"); side.scrollTop = 0;
     side.dataset.ctx = "task:" + id; side.dataset.note = "";
+    if (!back) { exFrom = ""; howShow(id) }
   }
 
   /* карточка «Как это работает» — техническая задача: UserStory, JobStory, процесс и его схема BPMN,
@@ -598,6 +691,7 @@
   function setArTab(t) { arCur = t; adrBoard(); adrGrid.scrollIntoView({ block: "start" }) }
 
   function openProc(id) {
+    execHide();
     const c = PROC[id], t = TASK[c.task], L = LAYER[c.layer], P = c.params || {};
     const row = k => (P[k] || []).length ? `<div class="pp"><span>${PNAME[k]}</span><ul>${P[k].map(it => `<li>${mdInline(it.t)}${it.r.length ? " " + it.r.map(idChip).join(" ") : ""}</li>`).join("")}</ul></div>` : "";
     const lnk = refList([t ? `<span class="lk">Задача</span> ${idChip(t.id)} ${esc(t.text)}` : "", ...c.docs.map(refItem), ...c.refs.map(refItem)].filter(Boolean));
@@ -606,7 +700,7 @@
       ${sec("UserStory", c.us ? `<p>${mdInline(c.us)}</p>` : "")}
       ${sec("JobStory", (c.js || []).length ? `<ul class="js">${c.js.map(x => `<li>${mdInline(x)}</li>`).join("")}</ul>` : "")}
       ${sec("Процесс", proc)}${sec("Параметры", ["in", "ctl", "out", "mech"].map(row).join(""))}
-      ${sec("HowToDemo", mdHTML(c.demo || ""))}${sec("Вопросы", qList(qsOf([id, c.task])))}${sec("Ссылки", lnk)}</div>`;
+      ${sec("HowToDemo", demoHTML(c.demo, [...c.docs, ...(t ? t.docs : [])]))}${sec("Вопросы", qList(qsOf([id, c.task])))}${sec("Ссылки", lnk)}</div>`;
     body.classList.add("wide", "open"); side.scrollTop = 0;
     side.dataset.ctx = "proc:" + id; side.dataset.note = "";
     const box = side.querySelector(".bpmnw"); if (box) drawMermaid(box);
@@ -683,7 +777,8 @@
     const zm = t.closest("[data-zoom]"); if (zm) return zoom(+zm.dataset.zoom);
     const st = t.closest("[data-sntab]"); if (st) return openScreen(snCur, +st.dataset.sntab);
     const nt = t.closest("[data-snnote]"); if (nt) return openNote(+nt.dataset.snnote);
-    if (t.closest("[data-snback]")) return openScreen(snCur);
+    if (t.closest("[data-snback]")) return side.dataset.ctx.startsWith("task:") && exFrom ? execBack() : openScreen(snCur);
+    const et = t.closest("[data-extask]"); if (et) return execOpen(et.dataset.extask);
     if (t.closest("#burger")) return menu(!body.classList.contains("mopen"));
     const vw = t.closest("button[data-view]"); if (vw) return setView(vw.dataset.view);
     if (t.closest('[data-menu="close"]') || t.closest(".mscrim")) return menu(false);
@@ -723,8 +818,9 @@
   document.addEventListener("keydown", e => {
     if (body.classList.contains("showing")) { if (e.key === "ArrowRight") stepShow(1); else if (e.key === "ArrowLeft") stepShow(-1); else if (e.key === "Escape") body.classList.remove("showing"); return }
     if (!LB.hidden) { if (e.key === "Escape") LB.hidden = true; else if (gallery.length > 1 && e.key === "ArrowRight") zoom(lbI + 1); else if (gallery.length > 1 && e.key === "ArrowLeft") zoom(lbI - 1); return }
-    if (e.key === "Escape") { if (body.classList.contains("mopen")) { menu(false); burger.focus() } else if (side.querySelector("[data-snback]")) openScreen(snCur); else closeSide() }
+    if (e.key === "Escape") { if (body.classList.contains("mopen")) { menu(false); burger.focus() } else if (side.querySelector("[data-snback]")) side.dataset.ctx.startsWith("task:") && exFrom ? execBack() : openScreen(snCur); else closeSide() }
     if (e.key === "Enter" && e.target.matches && e.target.matches("[data-snnote]")) openNote(+e.target.dataset.snnote);
+    if (e.key === "Enter" && e.target.matches && e.target.matches("[data-extask]")) execOpen(e.target.dataset.extask);
     if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches("[data-seen]")) { e.preventDefault(); openSeen(e.target.dataset.seen) }
   });
   /* ---------- замечания и уточнения → промпт для ИИ-агента ----------
@@ -828,6 +924,7 @@
   const copyBar = () => { const n = cmOpen().length, a = ansOpen().length;
     return n || a ? `<div class="cpbar"><span>В промпт: ${[n ? `замечаний ${n}` : "", a ? `ответов ${a}` : ""].filter(Boolean).join(", ")}</span><button class="tool pri" data-cmcopy>Скопировать промпт</button></div>` : "" };
   function panel(title, html, ctx) {
+    execHide();
     side.innerHTML = `<div class="snbar"><h3>${title}</h3><button class="x" aria-label="Закрыть">×</button></div><div class="snbody">${html}</div>${copyBar()}`;
     side.dataset.ctx = ctx; side.dataset.note = ""; body.classList.remove("wide"); body.classList.add("open");
   }
