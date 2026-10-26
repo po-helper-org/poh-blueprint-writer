@@ -115,3 +115,7 @@ prototype/
 
 Всё, кроме `spec.md`, собирает `./blueprint.py prototype build` — руками не правь: правь план показа,
 «Историю» или контракты и собери снова.
+
+Итог прототипа кончается блоком «Следующий шаг»: как открыть показ и команда
+`./blueprint.py prototype review review.json` — после замечаний заказчика; нужен план релиза —
+`/release-plan --project <epic>-blueprint`.
