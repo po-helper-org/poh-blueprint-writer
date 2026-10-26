@@ -996,9 +996,14 @@
     /* Backstage — работа за кадром: процесс со схемой и данные, которые ему нужны, — без историй и показа.
        «Данные» — из раздела карточки; нет раздела — из «Входа»: что приходит и от какой карточки */
     const REF = /\s*\(((?:[A-ZА-Я]+-\d+(?:\.\d+)?(?:,\s*)?)+)\)\s*$/;
-    const dataRows = (c.data || []).length ? c.data.map(([what, src]) => { const m = src.match(REF); return [what, m ? src.replace(REF, "") : src, m ? m[1].split(/,\s*/) : []] })
-      : (P.in || []).map(it => [it.t, it.r.map(r => PROC[r] ? teamN(PROC[r]) : "").filter(Boolean).join(", ") || "—", it.r]);
-    const dataHTML = dataRows.length ? `<table class="dtab"><thead><tr><th>Что</th><th>Откуда</th></tr></thead><tbody>${dataRows.map(([w, s, r]) => `<tr><td>${mdInline(w)}</td><td>${mdInline(s)}${r.length ? " " + r.map(idChip).join(" ") : ""}</td></tr>`).join("")}</tbody></table>` : "";
+    /* «Откуда» — компонент-источник, не команда: «Механизм» карточки, на которую ссылается строка */
+    const srcOf = r => PROC[r] ? (((PROC[r].params || {}).mech || [])[0] || {}).t || "" : "";
+    const dataRows = (c.data || []).length ? c.data.map(([what, src, why]) => { const m = src.match(REF); return [what, m ? src.replace(REF, "") : src, m ? m[1].split(/,\s*/) : [], why || ""] })
+      : (P.in || []).map(it => [it.t, it.r.map(srcOf).filter(Boolean).join(", "), it.r, ""]);
+    const cap = s => s ? s[0].toUpperCase() + s.slice(1) : s;
+    const dataHTML = dataRows.length ? `<ul class="dlist">${dataRows.map(([w, s, r, why]) => `<li><b>${mdInline(cap(w))}</b>
+      <span class="dm"><em>Откуда</em><span>${s ? mdInline(cap(s)) : '<i class="na">не указано</i>'}${r.length ? " " + r.map(idChip).join(" ") : ""}</span></span>
+      <span class="dm"><em>Для чего</em><span>${why ? mdInline(cap(why)) : '<i class="na">не указано</i>'}</span></span></li>`).join("")}</ul>` : "";
     if (c.layer === "backstage") {
       side.innerHTML = head(c.text, `<span class="lay" style="--c:${L[2]}">${L[0]}</span> · ${esc(COLS[colOf(c.stage)].name)} · ${esc(id)} · ${esc(c.status)}`, !!t) + `<div class="snbody">
       ${sec("Процесс", proc)}${sec("Данные", dataHTML)}${sec("Вопросы", qList(qsOf([id, c.task])))}${sec("Ссылки", lnk)}</div>`;
