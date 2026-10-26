@@ -509,7 +509,7 @@ def seams(pr: bl.Project) -> list[tuple[str, str, str]]:
     """Стыки карты — связи карточек, по которым ходят данные между системами:
     экран (Technology) ↔ то, что за кадром (Backstage), даже если обе у одной команды;
     Backstage ↔ карточка другой команды; любая связь с внешней системой.
-    Support (макеты, правила, каналы) передаёт договорённости, а не данные — не стык."""
+    Support — сценарий поддержки: стык, только если его ведёт внешняя команда другой стороне."""
     by_id = {x.id: x for x in pr.cards}
     ext = {t.id for t in pr.teams if re.search(r"внешн|^ext$", f"{t.id} {t.name}", re.I)}
     out = []
@@ -517,7 +517,7 @@ def seams(pr: bl.Project) -> list[tuple[str, str, str]]:
         ca, cb = by_id[a], by_id[b]
         layers = {ca.layer, cb.layer}
         if "support" in layers:
-            # Support — общий ресурс или чужая система; договорённость (макет, правило) — не стык, а внешняя система в момент сервиса — стык
+            # Support — поддержка в нештатной ситуации; стык — только если её ведёт внешняя команда (внешние системы — backstage, их стыки ловит ext ниже)
             sup = ca if ca.layer == "support" else cb
             if sup.team in ext and (ca.team != cb.team):
                 out.append((a, b, what))

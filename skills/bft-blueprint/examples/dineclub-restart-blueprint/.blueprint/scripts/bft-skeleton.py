@@ -218,11 +218,11 @@ class Skeleton:
                     self.tasks.append({"anchor": rid, "atoms": [rid], "cards": [{"layer": layer, "atoms": [rid], "rules": []}]})
                     task_of[rid] = self.tasks[-1]
                     anchors.add(rid)
-        # НФТ: «Управление» карточек связанных требований; без связи — карточка support первой задачи
+        # НФТ: «Управление» карточек связанных требований; без связи — карточка backstage первой задачи (Support — только поддержка)
         for a in g.by_kind("НФТ"):
             cards = [c for t in self.tasks for c in t["cards"] if set(c["atoms"]) & set(g.neighbours(a.id) + a.related)]
             if not cards and self.tasks:
-                self.tasks[0]["cards"].append({"layer": "support", "atoms": [], "rules": []})
+                self.tasks[0]["cards"].append({"layer": "backstage", "atoms": [], "rules": []})
                 cards = [self.tasks[0]["cards"][-1]]
             for c in cards[:3]:
                 c["rules"].append(a.id)

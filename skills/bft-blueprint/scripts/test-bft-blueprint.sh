@@ -234,11 +234,11 @@ GOLD="$tmp/bout/dineclub-restart-blueprint"; mkdir -p "$tmp/bout" && cp -r "$BGO
   && cmp -s "$tmp/bout/dineclub-restart-map.html" "$DIR/examples/dineclub-restart-map.html" \
   && ok "карта · html: совпадает с examples/dineclub-restart-map.html" \
   || fail "карта · html разошёлся с эталоном — пересобери: python3 $BBUILD $BGOLD --out-dir $DIR/examples --no-zip"
-python3 - "$tmp/bout" <<'PY' && ok "карта · страница: 19 задач, 20 карточек в четырёх слоях, стрелки, заметки экранов" || fail "карта · данные страницы не те"
+python3 - "$tmp/bout" <<'PY' && ok "карта · страница: 18 задач, 20 карточек в четырёх слоях, стрелки, заметки экранов" || fail "карта · данные страницы не те"
 import json, re, sys
 from pathlib import Path
 d = json.loads(re.search(r'id="map-data">(.*?)</script>', (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf-8"), re.S).group(1))
-assert len(d["tasks"]) == 19 and len(d["cards"]) == 20, (len(d["tasks"]), len(d["cards"]))
+assert len(d["tasks"]) == 18 and len(d["cards"]) == 20, (len(d["tasks"]), len(d["cards"]))
 assert {c["layer"] for c in d["cards"]} == {"employee", "technology", "backstage", "support"}
 assert all(c["params"].get("out") and c["demo"] and c["us"] and c["js"] and c["bpmn"].startswith("flowchart LR") for c in d["cards"])
 assert all(t["brief"].get("ASIS") and t["ac"] for t in d["tasks"])
@@ -279,16 +279,16 @@ page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf
 d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
 assert [(z["id"], z["task"], z["zone"], z["team"]) for z in d["subs"]] == [("BP-5.2", "BP-5", "Design", "des"), ("BP-5.3", "BP-5", "FE", "?"), ("BP-5.4", "BP-5", "BE", "unitb"), ("BP-5.5", "BP-5", "QA", "?")], d["subs"]
 assert next(z for z in d["subs"] if z["id"] == "BP-5.3")["cand"] == "Витрина или TeamA"
-assert len(d["tasks"]) == 19 and "function openSub" in page and "data-teams" in page and "ui-story" in page and "const uiCard" in page
+assert len(d["tasks"]) == 18 and "function openSub" in page and "data-teams" in page and "ui-story" in page and "const uiCard" in page
 PY
 # MoSCoW: приоритет у каждой истории, Would — за линией Out of scope; без приоритета — BL046, чужое значение — BL006
-python3 - "$tmp/bout" <<'PY' && ok "карта · MoSCoW: 9 Must, 8 Should, 2 Would за линией Out of scope" || fail "карта · приоритеты MoSCoW не дошли до страницы"
+python3 - "$tmp/bout" <<'PY' && ok "карта · MoSCoW: 9 Must, 7 Should, 2 Would за линией Out of scope" || fail "карта · приоритеты MoSCoW не дошли до страницы"
 import json, re, sys
 from collections import Counter
 from pathlib import Path
 page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf-8")
 d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
-assert Counter(t["prio"] for t in d["tasks"]) == {"must": 9, "should": 8, "would": 2}
+assert Counter(t["prio"] for t in d["tasks"]) == {"must": 9, "should": 7, "would": 2}
 assert {t["id"] for t in d["tasks"] if t["prio"] == "would"} == {"BP-11", "BP-14"}
 assert all(z["prio"] == "must" for z in d["subs"]) and 'class="oosl do"' in page
 PY
@@ -352,6 +352,14 @@ TG="$tmp/bad/trg" && cp -r "$BGOLD" "$TG" && sed -i '/^| guest | Гость ку
 out="$(python3 "$BLINT" "$TG" --no-source --strict 2>&1)"; rc=$?
 [ "$rc" -eq 1 ] && grep -q "BL050 у персонажа guest нет триггера" <<<"$out" && grep -q "BL049 триггер «Ресторан подаёт заявку на участие»" <<<"$out" \
   && ok "карта · триггеры: без триггера — BL050, этап мимо истории — BL049" || fail "карта · триггеры не проверяются — $out"
+# BL051: Support — поддержка работающего сервиса в нештатной ситуации; проектная работа и внешний канал — не сюда
+SB="$tmp/bad/support" && cp -r "$BGOLD" "$SB" && f="$(ls "$SB/backlog/tasks/"bp-15.2*.md)" \
+  && sed -i 's/^title: .*/title: Дизайнер готовит макет письма с билетом/' "$f" && cp "$f" "$SB/backlog/tasks/bp-15.3 - x.md" \
+  && sed -i 's/^id: BP-15.2$/id: BP-15.3/; s/^title: .*/title: Письма уходят гостю через внешний канал/; s/^ordinal: .*/ordinal: 35600/; s/^Сканер отказал, а гость .*/Внешний канал доставляет письмо с билетом гостю./' "$SB/backlog/tasks/bp-15.3 - x.md"
+out="$(python3 "$BLINT" "$SB" --no-source 2>&1)"
+grep -q "BL051 BP-15.2: в Support — проектная работа («Дизайнер»)" <<<"$out" && grep -q "BL051 BP-15.3: Support — поддержка в нештатной ситуации" <<<"$out" \
+  && ! grep -q BL051 <<<"$(python3 "$BLINT" "$BGOLD" --no-source --strict 2>&1)" \
+  && ok "карта · Support: макет дизайнера и канал рассылки — BL051, разбор обращения — норма" || fail "карта · BL051 не ловит не-Support — $out"
 # BL043: подзадача — зона из списка, родитель — история
 ZB="$tmp/bad/zone" && cp -r "$BGOLD" "$ZB" && python3 - "$ZB" <<'PY'
 import sys
@@ -957,7 +965,7 @@ tm() { awk -v h="^## $1 " '$0 ~ h {f=1; next} f && /^команда: / {print $2
 # контракты стыков (Design First): эталон строго чист, на сломанной копии — каждый код CT
 CTL="$DIR/scripts/bft-contracts.py"
 python3 "$CTL" lint "$BGOLD" --strict >/dev/null 2>&1 \
-  && ok "контракты · эталон DineClub: 7 контрактов, 0 ошибок и предупреждений" || fail "контракты · эталон не проходит --strict"
+  && ok "контракты · эталон DineClub: 8 контрактов, 0 ошибок и предупреждений" || fail "контракты · эталон не проходит --strict"
 ( cd "$BGOLD" && ./blueprint.py contracts >/dev/null 2>&1 ) && ok "контракты · ./blueprint.py contracts" || fail "контракты · ./blueprint.py contracts"
 CB="$tmp/ct" && cp -r "$BGOLD" "$CB" && C="$CB/contracts"
 sed -i 's/^boundary: external/boundary: outer/; s/| barcode | string | да | path | ФТ-1, извне: штрихкод с билета Acme Tickets |/| bar code | string | да | path | |/; s/"discount": 10, //; /TeamA --> Приложение-сканер/d; s/| 1 | Acme Tickets | barcode |/| 1 | Acme Tickets | ticket_no |/' "$C/C-3.md"
@@ -971,16 +979,16 @@ cp "$C/C-1.md" "$C/C-7.md"
 out="$(python3 "$CTL" lint "$CB" --source "$FIX/golden_deep_document.md" 2>&1)"; rc=$?
 miss=""; for c in CT001 CT002 CT003 CT004 CT005 CT006 CT007 CT008 CT009 CT010 CT012 CT014 CT015 CT020 CT021 CT022; do grep -q " $c " <<<"$out" || miss="$miss $c"; done
 [ "$rc" -eq 1 ] && [ -z "$miss" ] && ok "контракты · сломанная копия: CT001–CT015, CT020–CT022" || fail "контракты · нет в выводе:$miss (rc=$rc)"
-# каркас: стык без контракта (C-6 убран) → CT020; skeleton заводит C-8 на ту же пару карточек, незаполненный — только CT011
+# каркас: стык без контракта (C-6 убран) → CT020; skeleton заводит C-9 на ту же пару карточек, незаполненный — только CT011
 CS="$tmp/cts" && cp -r "$BGOLD" "$CS" && rm "$CS/contracts/C-6.md"
 out1="$(python3 "$CTL" lint "$CS" 2>&1)"; python3 "$CTL" skeleton "$CS" >/dev/null 2>&1; out2="$(python3 "$CTL" lint "$CS" 2>&1)"
-grep -q "WARN CT020 BP-1.1 → BP-2.1" <<<"$out1" && grep -q "^cards: BP-1.1, BP-2.1" "$CS/contracts/C-8.md" && grep -q "ERROR CT011 C-8" <<<"$out2" \
-  && [ "$(grep -c " ERROR " <<<"$out2")" -eq 1 ] && ! grep -q CT020 <<<"$out2" && [ "$(ls "$CS/contracts" | wc -l)" -eq 8 ] \
-  && ok "контракты · skeleton: стык без контракта → каркас C-8 с картой в шапке, незаполненный — только CT011" || fail "контракты · skeleton"
+grep -q "WARN CT020 BP-1.1 → BP-2.1" <<<"$out1" && grep -q "^cards: BP-1.1, BP-2.1" "$CS/contracts/C-9.md" && grep -q "ERROR CT011 C-9" <<<"$out2" \
+  && [ "$(grep -c " ERROR " <<<"$out2")" -eq 1 ] && ! grep -q CT020 <<<"$out2" && [ "$(ls "$CS/contracts" | wc -l)" -eq 9 ] \
+  && ok "контракты · skeleton: стык без контракта → каркас C-9 с картой в шапке, незаполненный — только CT011" || fail "контракты · skeleton"
 # внешний стык текстом («из внешней системы»), без карточки на той стороне: CT020 и external-каркас на эту карточку
 CX="$tmp/ctx" && cp -r "$BGOLD" "$CX" && sed -i '0,/^- \*\*Вход:\*\* /s//- **Вход:** Рейтинги из внешней системы; /' "$CX/backlog/tasks/bp-9.1 "*.md
 out1="$(python3 "$CTL" lint "$CX" 2>&1)"; python3 "$CTL" skeleton "$CX" >/dev/null 2>&1
-grep -q "WARN CT020 BP-9.1 «Рейтинги из внешней системы»: внешний стык" <<<"$out1" && grep -q "^boundary: external" "$CX/contracts/C-8.md" && grep -q "^cards: BP-9.1$" "$CX/contracts/C-8.md" \
+grep -q "WARN CT020 BP-9.1 «Рейтинги из внешней системы»: внешний стык" <<<"$out1" && grep -q "^boundary: external" "$CX/contracts/C-9.md" && grep -q "^cards: BP-9.1$" "$CX/contracts/C-9.md" \
   && ok "контракты · внешняя система текстом во «Входе» — внешний стык и external-каркас" || fail "контракты · внешний стык текстом"
 # not-seams.md: связь с причиной — не стык (CT020 молчит), строка без причины или не про стык — CT013
 CW="$tmp/ctw" && cp -r "$BGOLD" "$CW" && rm "$CW/contracts/C-6.md"
@@ -1000,7 +1008,7 @@ PB="$tmp/proto" && cp -r "$BGOLD" "$PB" && python3 "$PTL" build "$PB" >/dev/null
 pblk() { awk -v h="^## $1 " '$0 ~ h {f=1; print; next} f && /^## / {exit} f' "$PB/prototype/spec.md"; }
 python3 "$PTL" skeleton "$PB" --force >/dev/null 2>&1
 pblk Ш13 | grep -q "^вызов: C-3$" && pblk Ш13 | grep -q "^экраны: F2$" && pblk Ш13 | grep -q "^успех: F3$" && pblk Ш13 | grep -q "^отказ: F4 = TICKET_NOT_FOUND$" \
-  && pblk Ш4 | grep -q "^вызов: C-1, C-2$" && pblk Ш5 | grep -q "^вызов: —$" && pblk Ш14 | grep -q "^вызов: —$" \
+  && pblk Ш4 | grep -q "^вызов: C-1, C-2" && pblk Ш5 | grep -q "^вызов: —$" && pblk Ш14 | grep -q "^вызов: —$" \
   && pblk C-7 | grep -q "^приложение: backend$" && [ "$(grep -n '^## C-7 ' "$PB/prototype/spec.md" | cut -d: -f1)" -lt "$(grep -n '^## Ш5 ' "$PB/prototype/spec.md" | cut -d: -f1)" ] \
   && pblk Ш15 | grep -q "^вызов: C-4$" && pblk Ш15 | grep -q "^успех: F5$" \
   && [ -z "$(grep '{{' "$PB/prototype/spec.md" | grep -v '^ввод: ')" ] \
@@ -1119,13 +1127,13 @@ assert {x["contract"] for x in f} == {"—", "restaurant-shelf", "ticket-validat
 assert "function c4Code" in page and "function openC4" in page and "data-c4team" in page
 PY
 # Roadmap: форма (RM001), строки мимо карты (RM003), полнота и порядок (RM005), слой страницы
-python3 - "$tmp/bout" <<'PY' && ok "Roadmap · на странице: 22 работы за 6 недель, у BP-5 — подзадачи" || fail "Roadmap · не дошёл до страницы"
+python3 - "$tmp/bout" <<'PY' && ok "Roadmap · на странице: 21 работа за 6 недель, у BP-5 — подзадачи" || fail "Roadmap · не дошёл до страницы"
 import json, re, sys
 from pathlib import Path
 page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf-8")
 d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
 r = d["roadmap"]
-assert r["start"] == "2026-11-02" and r["sprintWeeks"] == 1 and r["weeks"] == 6 and len(r["items"]) == 22, r
+assert r["start"] == "2026-11-02" and r["sprintWeeks"] == 1 and r["weeks"] == 6 and len(r["items"]) == 21, r
 ids = {i["id"] for i in r["items"]}
 assert "BP-5" not in ids and {"BP-5.2", "BP-5.3", "BP-5.4", "BP-5.5"} <= ids
 assert 'data-view="road">Roadmap' in page and "function rmBoard" in page

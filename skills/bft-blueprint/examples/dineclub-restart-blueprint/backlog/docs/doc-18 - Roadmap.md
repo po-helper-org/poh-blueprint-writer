@@ -2,6 +2,7 @@
 id: doc-18
 title: Roadmap
 created_date: '2026-10-26 16:19'
+updated_date: '2026-10-26 17:55'
 type: specification
 ---
 <!-- bft-roadmap
@@ -25,7 +26,6 @@ sprint_weeks: 1
 | BP-1 | 1 | 2 |
 | BP-2 | 1 | 2 |
 | BP-3 | 1 | 1 |
-| BP-4 | 1 | 2 |
 | BP-5.2 | 2 | 2 |
 | BP-5.4 | 3 | 3 |
 | BP-5.3 | 3 | 4 |
