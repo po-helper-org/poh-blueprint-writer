@@ -411,6 +411,8 @@ def run(root: Path, source: str | None, no_source: bool) -> bl.Project:
     pr = bl.parse(root)
     if not pr.errors:
         check(pr, resolve_source(pr, source), no_source, explicit=bool(source))
+    else:
+        check_adr(pr)   # «документы этапа потеряны» не должно глохнуть от чужих ошибок разбора
     return pr
 
 # как исправить — по строке на код: печатается под отчётом (`--hints`, ./blueprint.py next и apply)
