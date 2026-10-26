@@ -174,7 +174,7 @@ def model(pr: bl.Project, base: str = "") -> dict:
         "teams": [{"id": t.id, "name": t.name, **({"lead": t.lead} if t.lead else {})} for t in pr.teams],
         "triggers": [{"persona": t.persona, "text": t.text, "stage": t.stage} for t in pr.triggers],
         "tasks": tasks, "cards": cards, "subs": subs,
-        "links": [{"src": a, "dst": b, "what": w} for a, b, w in pr.links()],
+        "links": [{"src": a, "dst": b, "what": w, "cond": (m.group("cond") if (m := bl.COND.match(w)) else "")} for a, b, w in pr.links()],
         "questions": [{"id": q.id, "to": q.to, "text": q.text, "where": q.where, "kind": q.kind,
                        "open": q.open, "answer": q.answer} for q in pr.questions],
         **({"adr": {"status": pr.adr.meta.get("status", ""), "version": pr.adr.meta.get("version", ""),

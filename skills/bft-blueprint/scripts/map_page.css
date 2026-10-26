@@ -586,3 +586,8 @@ body[data-view="do"] .how.l-ev,body[data-view="do"] .how.l-user{display:none}
 .dm .na{font-style:normal;color:#b0aba1}
 .dlist li .dm,.dlist li .dm span{border:0!important;margin:0!important;padding-top:0!important;padding-bottom:0!important}
 .dlist li{gap:5px;padding:10px 14px}
+/* развилка «если …» на условной стрелке (#30) */
+.cond{position:absolute;z-index:3;display:inline-flex;align-items:center;gap:4px;max-width:200px;white-space:nowrap;font-size:10.5px;font-weight:600;line-height:16px;color:#8a5a00;background:#fff8e6;border:1px solid #f0d8a8;border-radius:8px;padding:0 6px;pointer-events:auto;cursor:default}
+.cond i{width:7px;height:7px;flex:none;background:#b7791f;transform:rotate(45deg)}
+.map.hot .cond{opacity:.15}.map.hot .cond.on{opacity:1}
+.cond.h{transform:translateX(-100%)}

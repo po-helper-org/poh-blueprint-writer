@@ -177,7 +177,7 @@
      под стрелку; линия не проходит под чужой карточкой — обходит её по краю колонки. Наведение на
      старт, точку входа или карточку подсвечивает всю цепочку, остальное гаснет. */
   function drawLinks() {
-    grid.querySelector("svg.hwl")?.remove();
+    grid.querySelector("svg.hwl")?.remove(); grid.querySelectorAll(".cond").forEach(x => x.remove());
     if (body.dataset.view !== "how") return;
     const g = grid.getBoundingClientRect();
     const R = el => { const r = el.getBoundingClientRect(); return { l: r.left - g.left, r: r.right - g.left, t: r.top - g.top, b: r.bottom - g.top, cx: (r.left + r.right) / 2 - g.left, cy: (r.top + r.bottom) / 2 - g.top } };
@@ -195,7 +195,7 @@
       const x0 = Math.min(A.l, B.l), gx = x0 - 4 - 4 * Math.min(2, lane[x0] = (lane[x0] ?? -1) + 1);
       return path([[A.l, A.cy], [gx, A.cy], [gx, B.cy], [B.l, B.cy]], a, b);
     };
-    const seen = new Set(), lane = {};
+    const seen = new Set(), lane = {}, conds = [];
     D.links.forEach(l => {
       if (!PROC[l.src] || !PROC[l.dst]) return;
       // на карте — только соседние шаги; полная цепочка живёт в карточке процесса
@@ -203,6 +203,10 @@
       const key = [l.src, l.dst].sort().join(); if (seen.has(key)) return; seen.add(key);
       const ea = grid.querySelector(`[data-proc="${l.src}"]`), eb = grid.querySelector(`[data-proc="${l.dst}"]`); if (!ea || !eb) return;
       const A = R(ea), B = R(eb);
+      /* условная связь — подпись-ромб «если …» у выхода стрелки: развилку видно без открытия карточки */
+      // вертикальная стрелка — подпись рядом с её началом; горизонтальная — на нижнем крае исходной карточки, чтобы не лечь на соседнюю
+      if (l.cond) conds.push(Math.abs(A.cx - B.cx) < 40 ? { x: A.cx + 6, y: B.t > A.b ? A.b + 3 : A.t - 21, h: 0, t: l.cond, a: l.src, b: l.dst }
+        : { x: A.r - 8, y: A.b - 9, h: 1, t: l.cond, a: l.src, b: l.dst });
       if (Math.abs(A.cx - B.cx) < 40) s += vert(A.cx, A, B, l.src, l.dst, [l.src, l.dst]);
       else if (B.l > A.r) s += Math.abs(A.cy - B.cy) < 3 ? path([[A.r, A.cy], [B.l, B.cy]], l.src, l.dst) : path([[A.r, A.cy], [B.l - 8, A.cy], [B.l - 8, B.cy], [B.l, B.cy]], l.src, l.dst);
       else if (A.l > B.r) s += path([[A.l, A.cy], [B.r + 8, A.cy], [B.r + 8, B.cy], [B.r, B.cy]], l.src, l.dst);
@@ -247,7 +251,8 @@
         s += path([[A.cx, A.b], [A.cx, Y], [B.l - 12, Y], [B.l - 12, B.cy], [B.l, B.cy]], ia, ib).replace('class="ln"', 'class="ln jr"');
       });
     });
-    grid.insertAdjacentHTML("beforeend", s + "</svg>");
+    grid.querySelectorAll(".cond").forEach(x => x.remove());
+    grid.insertAdjacentHTML("beforeend", s + "</svg>" + conds.map(c => `<span class="cond${c.h ? " h" : ""}" data-a="${esc(c.a)}" data-b="${esc(c.b)}" style="left:${Math.round(c.x)}px;top:${Math.round(c.y)}px" title="Если ${esc(c.t)}"><i></i>если ${esc(c.t.length > 26 ? c.t.slice(0, 25) + "…" : c.t)}</span>`).join(""));
     grid.dataset.edges = JSON.stringify(edges);
   }
   /* цепочка узла: всё, что до него и после него по стрелкам */
@@ -262,6 +267,7 @@
     const on = chain(nodeId(el)); grid.dataset.hot = nodeId(el); grid.classList.add("hot");
     grid.querySelectorAll(".hw[data-proc],.ua[data-step],.ev,.uat").forEach(x => x.classList.toggle("on", on.has(nodeId(x))));
     grid.querySelectorAll("svg.hwl .ln").forEach(x => x.classList.toggle("on", on.has(x.dataset.a) && on.has(x.dataset.b)));
+    grid.querySelectorAll(".cond").forEach(x => x.classList.toggle("on", on.has(x.dataset.a) && on.has(x.dataset.b)));
   });
   grid.addEventListener("mouseleave", () => { grid.dataset.hot = ""; grid.classList.remove("hot") });
   grid.addEventListener("mouseout", e => { if (!e.relatedTarget || !e.relatedTarget.closest(".hw[data-proc],.ua[data-step],.ev,.uat")) { grid.dataset.hot = ""; grid.classList.remove("hot") } });

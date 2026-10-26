@@ -407,6 +407,19 @@ out="$(python3 "$BLINT" "$FB" --no-source 2>&1)"
 grep -q "WARN BL055 BP-16.1: «Проверка билета" <<<"$out" && ! grep -q "BL055" <<<"$(python3 "$BLINT" "$BGOLD" --no-source --strict 2>&1)" \
   && grep -q ".hw{width:248px;height:70px" "$tmp/bout/dineclub-restart-map.html" \
   && ok "карта · формулировка: «Проверка билета: …» — BL055; карточки 248×70 на всей диаграмме" || fail "карта · BL055 и размер карточек — $out"
+# BL056: развилка процесса на разные карточки — на карте условием «Если …»; страница подписывает стрелку
+CB2="$tmp/bad/fork" && cp -r "$BGOLD" "$CB2" && sed -i 's/Если билет действителен: билет «использован» (BP-18.1)/Билет «использован» (BP-18.1)/' "$(ls "$CB2/backlog/tasks/"bp-16.1*.md)"
+out="$(python3 "$BLINT" "$CB2" --no-source 2>&1)"
+python3 - "$tmp/bout" <<'PY' && grep -q "WARN BL056 BP-16.1: в «Процессе» развилка «Все условия выполнены?»" <<<"$out" \
+  && ok "карта · развилки: условная связь BP-16.1 → BP-18.1 «если билет действителен», без условия — BL056" || fail "карта · развилки «ЕСЛИ» — $out"
+import json, re, sys
+from pathlib import Path
+page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf-8")
+d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
+L = {(l["src"], l["dst"]): l["cond"] for l in d["links"]}
+assert L[("BP-16.1", "BP-18.1")] == "билет действителен" and L[("BP-12.2", "BP-14.1")] == "есть push-канал", L
+assert 'class="cond"' in page
+PY
 # BL043: подзадача — зона из списка, родитель — история
 ZB="$tmp/bad/zone" && cp -r "$BGOLD" "$ZB" && python3 - "$ZB" <<'PY'
 import sys
