@@ -450,6 +450,16 @@ def cmd_doc_create(a, root: Path, bdir: Path, *_):
     print(f"Created document {did}\nPath: {f.relative_to(root)}")
 
 
+def _keep_passport(old_body: str, new_content: str) -> str:
+    """Паспорт этапа <!-- bft-… … --> в начале тела: без него парсер теряет документ, поэтому при замене
+    тела через --content он переносится в новый текст, если там своего паспорта нет."""
+    pat = re.compile(r"\A\s*(<!--\s*bft-[a-z]+\s*\n.*?\n-->)[ \t]*\n", re.S)
+    m = pat.match(old_body)
+    if not m or pat.match(new_content):
+        return new_content
+    return m.group(1) + "\n\n" + new_content.lstrip("\n")
+
+
 def cmd_doc_update(a, root: Path, bdir: Path, *_):
     f, fm, body = find_doc(bdir, a.id)
     if a.title:
@@ -462,6 +472,8 @@ def cmd_doc_update(a, root: Path, bdir: Path, *_):
     order = ["id", "title", "type", "created_date", "updated_date", "tags"]
     fm = {k: fm[k] for k in order + [k for k in fm if k not in order] if k in fm}
     content = a.content if a.content is not None else body
+    if a.content is not None:
+        content = _keep_passport(body, content)
     f.write_text(dump_front(fm) + content.rstrip("\n") + "\n" if content.strip() else dump_front(fm), encoding="utf-8")
     print(f"Updated document {fm['id']}\nPath: {f.relative_to(root)}")
 

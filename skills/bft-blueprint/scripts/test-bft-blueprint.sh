@@ -960,6 +960,23 @@ python3 "$BLINT" "$tmp/adr-none" --no-source 2>&1 | grep -q " AR005 " \
   && ok "ADR · Technology без документов: AR005" || fail "ADR · условие включения не поймано"
 python3 "$BLINT" "$tmp/adr-none" --no-source >/dev/null 2>&1 && [ $? -eq 0 ] \
   && ok "ADR · без документов этапа не Strict-ошибка" || fail "ADR · AR005 не должен валить без --strict"
+# AR005 звучит и при ошибках разбора в другом месте проекта (раньше глох вместе со всеми проверками)
+cp -r "$tmp/adr-none" "$tmp/adr-none-err"
+python3 -I - "$tmp/adr-none-err" <<'PY'
+import sys, glob
+f = sorted(glob.glob(sys.argv[1] + "/backlog/tasks/*.md"))[0]
+open(f, "w", encoding="utf-8").write(open(f, encoding="utf-8").read().replace("\nid: ", "\nxid: ", 1))
+PY
+python3 "$BLINT" "$tmp/adr-none-err" --no-source 2>&1 | grep -q " AR005 " \
+  && ok "ADR · AR005 слышно и при ошибках разбора" || fail "ADR · AR005 заглох из-за ошибок разбора"
+# doc update --content не стирает паспорт <!-- bft-adr -->: документ этапа остаётся документом
+cp -r "$BGOLD" "$tmp/adr-upd"
+(cd "$tmp/adr-upd" && python3 "$OLDPWD/$DIR/scripts/backlog_cli.py" doc update doc-15 --content "## Контекст
+
+новый текст" >/dev/null 2>&1)
+grep -q "^<!-- bft-adr" "$tmp/adr-upd/backlog/docs/doc-15 - ADR.md" \
+  && ! python3 "$BLINT" "$tmp/adr-upd" --no-source 2>&1 | grep -q "а документов «ADR»" \
+  && ok "ADR · doc update --content сохраняет паспорт" || fail "ADR · doc update стёр паспорт этапа"
 # план: секции этапа → apply создаёт документы; рукописные разделы не переписываются
 cp -r "$PL/g" "$tmp/adr-plan" 2>/dev/null || { cp -r "$BGOLD" "$tmp/adr-plan"; }
 python3 - "$tmp/adr-plan" << 'PY'
