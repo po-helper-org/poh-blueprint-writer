@@ -354,6 +354,8 @@ assert d["triggers"] == [{"persona": "rest", "text": "Ресторан пода�
 assert "l-user" in page and "l-ev" in page and "const GROUPS" in page and "trgHTML" in page and "stepHTML" in page
 # длинная группа касания — первые три, остальное под «ещё N» (#26)
 assert "const MORE = 3" in page and "data-more" in page and ".sc:not(.open) .xtra{display:none}" in page
+# шаг User Actions: мини-схема «До → Сейчас → После», клик по шагу схемы открывает его панель (#31)
+assert "function seenFlow" in page and '<div class="snbody">${seenFlow(s)}' in page and 't.closest(".fn[data-seen]")' in page
 PY
 # Evidence: группы касания — путь экранов в контуре; альтернативный экран — в группе основного; шаг CJM — в группе первого экрана
 node - "$tmp/bout/dineclub-restart-map.html" <<'JS' && ok "карта · Evidence: D2 — в группе «Витрина → Все рестораны», F4 — рядом с F3, шаг Ш4 — в группе своего первого экрана" || fail "карта · Evidence и CJM не те"

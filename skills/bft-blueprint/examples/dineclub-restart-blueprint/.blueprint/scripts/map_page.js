@@ -649,13 +649,30 @@
   }
   const closeSide = () => { body.classList.remove("open", "wide"); execHide() };
 
+  /* мини-схема шага «До → сейчас → После»: соседние этапы пути персонажа и этапы, связанные стрелками карточек.
+     «До» отвечает, как пользователь оказался здесь (у первого этапа — старт пути), «После» — куда он может пойти */
+  function seenFlow(s) {
+    const cardsOf = x => { const keys = new Set(x.steps.flatMap(st => st.screens).map(sid => SCR_DOC[sid]).filter(Boolean));
+      return D.cards.filter(c => colOf(c.stage) === x.col && c.docs.some(d => keys.has(docKey(d)))).map(c => c.id) };
+    const mine = D.seen.filter(x => x.persona === s.persona).sort((a, b) => a.col - b.col), i = mine.indexOf(s), my = new Set(cardsOf(s));
+    const via = (from, to) => D.seen.filter(x => x !== s && cardsOf(x).some(c => D.links.some(l => from(l, c) && to(l, c))));
+    const uniq = xs => [...new Set(xs.filter(Boolean))];
+    const before = uniq([mine[i - 1], ...via((l, c) => l.src === c, l => my.has(l.dst))]).filter(x => !x.final && x.col <= s.col);
+    const after = uniq([mine[i + 1], ...via(l => my.has(l.src), (l, c) => l.dst === c)]).filter(x => x.col >= s.col);
+    const short = id => (D.personas.find(x => x.id === id) || { name: id }).name.split(/[\s-]+/)[0];
+    const node = x => `<button class="fn${x === s ? " on" : ""}" data-seen="${esc(x.key)}"><em>${x.final ? "Итог" : esc(COLS[x.col].name)}${x.persona !== s.persona ? " · " + esc(short(x.persona)) : ""}</em><b>${esc(x.steps[0].title)}</b>${x.steps.length > 1 ? `<small>и ещё ${x.steps.length - 1}</small>` : ""}</button>`;
+    const tg = (D.triggers || []).find(x => x.persona === s.persona);
+    const start = !before.length && tg ? `<span class="fn st"><em>Старт</em><b>${esc(tg.text)}</b></span>` : "";
+    const col = (name, xs, extra) => `<div class="fc"><small>${name}</small>${extra}${xs.map(node).join("")}${!xs.length && !extra ? '<span class="fn na">—</span>' : ""}</div>`;
+    return `<div class="flow">${col("До", before, start)}<i class="fa"></i>${col("Сейчас", [s], "")}<i class="fa"></i>${col("После", after, "")}</div>`;
+  }
   function openSeen(key) {
     const s = D.seen.find(x => x.key === key), p = D.personas.find(x => x.id === s.persona), col = COLS[s.col];
     const html = s.steps.map(st => `<div class="stp">${st.screens.length ? `<div class="chips2">${[...new Set(st.screens.map(id => D.screens[id].contour))].map(chip).join("")}</div><div class="vis">${st.screens.map(id => mock(id, 170)).join("")}</div>` : ""}
       <h5>${esc(st.title)}</h5><p>${esc(st.text)}</p>${st.was ? `<div class="was"><b>Раньше</b>${esc(st.was)}</div>` : ""}
       ${qList(qsOf([st.id, ...st.screens]))}<div class="src">Источник: ${esc(st.source)}</div></div>`).join("");
     execPrep(s.steps.flatMap(st => st.screens));
-    side.innerHTML = head(col.name, `<span class="pteam" style="--c:#2f6b2a"><i></i>${esc(p.name)}</span> · ${esc(p.lane)} · ${s.steps.length} ${plural(s.steps.length, "шаг", "шага", "шагов")}`) + `<div class="snbody">${html}${execInline()}</div>`;
+    side.innerHTML = head(col.name, `<span class="pteam" style="--c:#2f6b2a"><i></i>${esc(p.name)}</span> · ${esc(p.lane)} · ${s.steps.length} ${plural(s.steps.length, "шаг", "шага", "шагов")}`) + `<div class="snbody">${seenFlow(s)}${html}${execInline()}</div>`;
     body.classList.remove("wide"); body.classList.add("open"); side.scrollTop = 0;
     side.dataset.ctx = "seen:" + key; side.dataset.note = "";
     execShow(s.steps.flatMap(st => st.screens), "seen:" + key);
@@ -1129,6 +1146,7 @@
     const more = t.closest("[data-more]"); if (more) { const sc = more.closest(".sc"), open = !sc.classList.contains("open");
       sc.classList.toggle("open", open);
       more.textContent = open ? "свернуть" : `ещё ${sc.querySelectorAll(".xtra").length}`; return drawLinks() }
+    const fl = t.closest(".fn[data-seen]"); if (fl) return openSeen(fl.dataset.seen);
     const ev = t.closest("[data-ev]"); if (ev) { const sid = ev.dataset.ev; if (NOTE_OF[sid]) return openScreen(sid, 0); const s = D.seen.find(x => x.steps.some(st => st.screens.includes(sid))); if (s) return openSeen(s.key) }
     const ua = t.closest(".ua[data-seen]"); if (ua) return openSeen(ua.dataset.seen);
     const tf = t.closest("[data-tf]");

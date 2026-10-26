@@ -591,3 +591,14 @@ body[data-view="do"] .how.l-ev,body[data-view="do"] .how.l-user{display:none}
 .cond i{width:7px;height:7px;flex:none;background:#b7791f;transform:rotate(45deg)}
 .map.hot .cond{opacity:.15}.map.hot .cond.on{opacity:1}
 .cond.h{transform:translateX(-100%)}
+/* мини-схема шага: До → Сейчас → После (#31) */
+.flow{display:grid;grid-template-columns:1fr 18px 1fr 18px 1fr;align-items:center;gap:6px;margin:0 0 16px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--soft)}
+.fc{display:flex;flex-direction:column;gap:6px;min-width:0}
+.fc>small{font-size:10.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#8a857c}
+.fn{display:flex;flex-direction:column;gap:1px;text-align:left;border:1px solid var(--line);background:#fff;border-radius:9px;padding:6px 9px;font:inherit;cursor:pointer;min-width:0}
+.fn em{font-style:normal;font-size:10.5px;color:#8a857c}.fn b{font-size:12.5px;font-weight:600;line-height:1.3;color:var(--ink)}.fn small{font-size:11px;color:#8a857c}
+.fn:hover{border-color:#cfc8bb;box-shadow:0 3px 10px rgba(0,0,0,.06)}
+.fn.on{border-color:#1d1d1b;box-shadow:inset 0 0 0 1px #1d1d1b;cursor:default}
+.fn.st{cursor:default;border-color:#cfe0cb;background:#f3f8f1}.fn.st em{color:#2f6b2a;font-weight:700}
+.fn.na{cursor:default;color:#b0aba1;text-align:center;background:none;border-style:dashed}
+.fa{height:1px;background:#aca79d;position:relative}.fa::after{content:"";position:absolute;right:-1px;top:-3px;border:3.5px solid transparent;border-left:5px solid #aca79d}
