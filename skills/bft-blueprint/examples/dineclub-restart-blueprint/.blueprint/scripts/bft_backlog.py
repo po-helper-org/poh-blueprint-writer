@@ -16,6 +16,7 @@ markdown-файлы, которыми ИИ-агент управляет чер�
                                              контракты → параметры → источники → преобразования → AS-IS → изменения
   backlog/docs/doc-… - Стыки.md               этап «Контроль стыковочных работ» <!-- bft-seams … -->:
                                              участники стыков, обязательства, контракты, точки, риски
+  backlog/docs/doc-… - Риски-исполнения.md   риски исполнения историй, согласуются с PO <!-- bft-risks … -->
   backlog/docs/doc-… - Roadmap.md             сроки: кто что делает по неделям и спринтам <!-- bft-roadmap … -->
   backlog/docs/doc-… - План-релиза.md         этап «План релиза / Delivery» <!-- bft-release … -->:
                                              дорожки DEV/STAGE/PROD, шаги и ворота между стендами
@@ -75,8 +76,23 @@ MOSCOW = ("must", "should", "would")
 
 LAYERS = ("employee", "technology", "backstage", "support")
 
-# функциональные зоны подзадач истории: кто делает свою часть результата (в JIRA — подзадача с исполнителем)
-ZONES = ("PO", "SA", "Design", "FE", "BE", "QA", "DevOps", "Delivery")
+# функциональные зоны подзадач истории: кто делает свою часть результата (в JIRA — подзадача с исполнителем).
+# Требования БФТ — у истории; у подзадачи — исполнитель, постановка в формате зоны и чеклист приемки.
+# Аналитика: PO — согласования, BA — вопросы бизнес-логики, SA — вопросы системной реализации,
+# ADR — архитектурные решения (чеклист — то, на что нужно получить ответ). Исполнение: Design —
+# UserStory, JobStory, UserFlow (одна точка касания — одна задача); BE — ASIS/GAP/TOBE и «Данные»
+# (откуда и как берём каждый параметр); DBA — доработка БД под данные, которых в хранилище не было;
+# FE, DevOps — ASIS/GAP/TOBE. QA, Delivery — что сделать и чеклист.
+ZONES = ("PO", "BA", "SA", "ADR", "Design", "BE", "DBA", "FE", "DevOps", "QA", "Delivery")
+
+ZONE_SECTIONS = {"Design": ("UserStory", "JobStory", "UserFlow"), "BE": ("ASIS", "GAP", "TOBE", "Данные"),
+                 "DBA": ("ASIS", "GAP", "TOBE"), "FE": ("ASIS", "GAP", "TOBE"), "DevOps": ("ASIS", "GAP", "TOBE")}
+
+ZONE_CHECKLIST = ("PO", "BA", "SA", "ADR", "Design", "QA", "Delivery")   # без чеклиста подзадача пустая
+
+ZONE_CHECK_HINT = {"PO": "ключевые согласования", "BA": "ключевые вопросы по бизнес-логике",
+                   "SA": "ключевые вопросы по системной реализации", "ADR": "ключевые архитектурные решения",
+                   "Design": "что пользователь может сделать на экране", "QA": "что проверить", "Delivery": "что отгрузить"}
 
 # Этап «План релиза / Delivery»: дорожки-стенды, шаги, ворота между стендами.
 RELEASE_META = ("epic_slug", "version", "revised", "status")
@@ -89,6 +105,19 @@ ROADMAP_META = ("epic_slug", "version", "revised", "status", "start", "sprint_we
 ROADMAP_HEADER = ("ID", "Неделя с", "Неделя по")
 
 ROADMAP_MAX_SPRINTS = 6
+
+# Риски исполнения: что может сорвать срок истории. Кандидатов находит auto_risks() по данным карты —
+# стык BE+FE в одной истории, работы DevOps, интеграция новых или внешних систем; документ «Риски
+# исполнения» их записывает с митигацией, владельцем и статусом согласования с PO.
+RISKS_META = ("epic_slug", "version", "revised", "status")
+
+RISKS_HEADER = ("ID", "История", "Тип", "Риск", "Митигация", "Владелец", "Статус")
+
+RISK_KINDS = {"стык be+fe": "befe", "devops": "devops", "интеграция": "integration", "другое": "other"}
+
+RISK_STATUSES = ("на согласовании", "согласован", "снят")
+
+EXEC_RISK_ID = re.compile(r"^X-?(?P<num>\d+)$", re.I)
 
 RELEASE_TRACKS = ("dev", "stage", "prod")
 
@@ -251,7 +280,7 @@ REQS_LINE = re.compile(r"^Требования(?: БФТ)?\s*:\s*(.*)$")
 
 STEP_RE = re.compile(r"^\d+\.\s+\S")
 
-META_OPEN = re.compile(r"^<!--\s*(bft-map|bft-story|bft-adr|bft-sysreq|bft-seams|bft-release|bft-roadmap)\s*$")
+META_OPEN = re.compile(r"^<!--\s*(bft-map|bft-story|bft-adr|bft-sysreq|bft-seams|bft-release|bft-roadmap|bft-risks)\s*$")
 
 MERMAID = re.compile(r"```mermaid\n(.*?)\n```", re.S)
 
@@ -553,6 +582,24 @@ class Seams:
         return next((s for s in self.seams if s.id == sid), None)
 
 @dataclass
+class ExecRisk:
+    """Риск исполнения истории: тип, суть, митигация, владелец, статус согласования с PO."""
+    id: str
+    story: str
+    kind: str             # befe | devops | integration | other
+    text: str
+    mitigation: str
+    owner: str
+    status: str
+    line: int
+
+@dataclass
+class ExecRisks:
+    meta: dict = field(default_factory=dict)
+    items: list = field(default_factory=list)     # [ExecRisk]
+    doc: "Doc | None" = None
+
+@dataclass
 class RoadmapItem:
     """Строка Roadmap: работа на карте (история или подзадача) и её недели."""
     id: str
@@ -629,6 +676,8 @@ class Project:
     release: Release | None = None
     roadmap_doc: Doc | None = None
     roadmap: Roadmap | None = None
+    risks_doc: Doc | None = None
+    risks: ExecRisks | None = None
     story: bs.Story | None = None
     teams: list[Team] = field(default_factory=list)
     questions: list[Question] = field(default_factory=list)
@@ -1186,6 +1235,82 @@ def parse_release(pr: Project, d: Doc) -> Release:
     rel.meta["_issues"] = issues
     return rel
 
+def parse_risks(pr: Project, d: Doc) -> ExecRisks:
+    """Документ «Риски исполнения» (<!-- bft-risks … -->): «## Риски» | ID | История | Тип | Риск |
+    Митигация | Владелец | Статус |. Форма — здесь (RK001); ссылки и полнота — в линтере."""
+    rk = ExecRisks(meta={k: v for k, v in d.meta.items() if not k.startswith("_")})
+    rk.doc = d
+    issues: list[bb.Issue] = []
+    err = lambda ln, code, msg: issues.append(bb.Issue(ln, "ERROR", code, msg, d.rel))  # noqa: E731
+    for key in RISKS_META:
+        if not str(rk.meta.get(key, "")).strip():
+            err(d.off + 1, "RK001", f"паспорт <!-- bft-risks -->: нет ключа `{key}`")
+    lines = d.body.split("\n")
+    if not next((ln for ln in lines if ln.startswith("# ")), ""):
+        err(d.off + 1, "RK001", "нет заголовка `# Риски исполнения: <инициатива>`")
+    secs = bb._sections(lines)
+    if "Риски" not in secs:
+        err(d.off + 1, "RK001", f"нет раздела «## Риски» с таблицей | {' | '.join(RISKS_HEADER)} |")
+    else:
+        ln0, tbody = secs["Риски"]
+        found = bb.tables(tbody, first_lineno=d.off + ln0 + 1)
+        if not found or tuple(found[0][0]) != RISKS_HEADER:
+            err(d.off + ln0, "RK001", f"«Риски»: таблица | {' | '.join(RISKS_HEADER)} |")
+        else:
+            for ln, c in found[0][1]:
+                if len(c) != len(RISKS_HEADER):
+                    err(ln, "RK001", f"«Риски»: в строке {len(c)} колонок, нужно {len(RISKS_HEADER)}")
+                    continue
+                rid = _norm_id(c[0], EXEC_RISK_ID, "X")
+                if not rid or any(r.id == rid for r in rk.items):
+                    err(ln, "RK001", f"риск: ID вида X1…, уникален — «{c[0]}»")
+                    continue
+                kind = RISK_KINDS.get(c[2].strip().lower())
+                if not kind:
+                    err(ln, "RK001", f"{rid}: тип «{c[2].strip()}» — один из: стык BE+FE, DevOps, интеграция, другое")
+                    continue
+                status = c[6].strip().lower()
+                if status not in RISK_STATUSES:
+                    err(ln, "RK001", f"{rid}: статус «{c[6].strip()}» — один из: {', '.join(RISK_STATUSES)}")
+                    continue
+                if not all(x.strip() for x in (c[1], c[3], c[4], c[5])):
+                    err(ln, "RK001", f"{rid}: нужны «История», «Риск», «Митигация», «Владелец»")
+                    continue
+                rk.items.append(ExecRisk(rid, c[1].strip().upper(), kind, c[3].strip(), c[4].strip(), c[5].strip(), status, ln))
+    rk.meta["_issues"] = issues
+    return rk
+
+def auto_risks(pr: Project) -> list[tuple[str, str]]:
+    """Кандидаты в риски исполнения по данным карты: [(история, befe|devops|integration)].
+    Стык BE+FE — у истории подзадачи BE и FE; DevOps — подзадача DevOps; интеграция — история
+    работает с внешней системой (поток C4 к ней) или заводит новый сервис, хранилище, очередь."""
+    out: list[tuple[str, str]] = []
+    add = lambda sid, kind: (sid, kind) not in out and out.append((sid, kind))  # noqa: E731
+    for t in pr.tasks:
+        zones = {z.zone for z in pr.subtasks if z.parent == t.id}
+        if {"BE", "FE"} <= zones:
+            add(t.id, "befe")
+        if "DevOps" in zones:
+            add(t.id, "devops")
+    a = pr.adr
+    if a and a.components:
+        parent = {z.id: z.parent for z in pr.subtasks} | {c.id: c.parent for c in pr.cards}
+        story = lambda w: parent.get(w, w)  # noqa: E731
+        stories = {t.id for t in pr.tasks}
+        comps = {c.id: c for c in a.components}
+        for c in a.components:
+            touch = []
+            if c.kind == "внешняя система":
+                touch = [comps[f.dst if f.src == c.id else f.src] for f in a.flows if c.id in (f.src, f.dst)
+                         and (f.dst if f.src == c.id else f.src) in comps]
+            elif c.change == "новый" and c.kind in ("сервис", "хранилище", "очередь"):
+                touch = [c]
+            for o in touch:
+                for w in o.tasks:
+                    if story(w) in stories:
+                        add(story(w), "integration")
+    return sorted(out, key=lambda x: ([int(n) for n in re.findall(r"\d+", x[0])], x[1]))
+
 def parse_roadmap(pr: Project, d: Doc) -> Roadmap:
     """Документ «Roadmap» (<!-- bft-roadmap … -->): паспорт со стартом и длиной спринта, «## План» —
     | ID | Неделя с | Неделя по |. Форма — здесь (RM001); ссылки на карту и полнота — в линтере."""
@@ -1474,7 +1599,7 @@ def parse(root: Path) -> Project:
             pr.err(d.rel, 1, "BL005", f"второй документ с ID {d.id} — `backlog doctor`")
             continue
         pr.docs[d.id] = d
-        for kind in ("bft-map", "bft-story", "bft-adr", "bft-sysreq", "bft-seams", "bft-release", "bft-roadmap"):
+        for kind in ("bft-map", "bft-story", "bft-adr", "bft-sysreq", "bft-seams", "bft-release", "bft-roadmap", "bft-risks"):
             mc = _meta_comment(d.body, kind)
             if mc:
                 d.meta = {**d.meta, "_kind": kind, **mc[0]}
@@ -1503,6 +1628,13 @@ def parse(root: Path) -> Project:
                     pr.seams_doc = d
                     pr.seams = parse_seams(pr, d)
                     pr.issues.extend(pr.seams.meta.pop("_issues"))
+                elif kind == "bft-risks":
+                    if pr.risks_doc:
+                        pr.err(d.rel, 1, "RK002", f"вторые «Риски исполнения» — уже есть {pr.risks_doc.rel}")
+                    d.meta = {**d.meta, **mc[0]}
+                    pr.risks_doc = d
+                    pr.risks = parse_risks(pr, d)
+                    pr.issues.extend(pr.risks.meta.pop("_issues"))
                 elif kind == "bft-roadmap":
                     if pr.roadmap_doc:
                         pr.err(d.rel, 1, "RM002", f"второй Roadmap — уже есть {pr.roadmap_doc.rel}")
@@ -1742,9 +1874,26 @@ def _check_subtask(pr: Project, z: BTask, stages: set, team_ids: set, task_ids: 
     for c in cand:
         if c not in team_ids:
             pr.err(rel, 1, "BL043", f"{z.id}: кандидата {c} нет в «Командах»")
-    z.lead = z.desc.strip()
-    if not z.lead:
+    if not z.desc.strip():
         pr.err(rel, z.off or 1, "BL043", f"{z.id}: описание — что сделать в своей зоне, одна-две фразы")
+    pre, secs, order = _subsections(z.desc, z.off)
+    z.sections = secs
+    lead = []
+    for ln in pre:
+        if REQS_LINE.match(ln.strip()):
+            pr.err(rel, z.off or 1, "BL047", f"{z.id}: требования БФТ — у истории {z.parent}, в подзадаче — исполнитель, постановка зоны и чеклист")
+        else:
+            lead.append(ln)
+    z.lead = "\n".join(lead).strip()
+    need = ZONE_SECTIONS.get(z.zone, ())
+    for n, name in order:
+        if name not in need:
+            pr.err(rel, n, "BL047", f"{z.id}: раздел «{name}» — у зоны {z.zone or '?'} " + (f"разделы {', '.join(need)}" if need else "только описание и чеклист приемки"))
+    for name in need:
+        if name not in secs or not secs[name][1].strip():
+            pr.err(rel, secs.get(name, (z.off or 1,))[0], "BL047", f"{z.id}: зона {z.zone} — нужен раздел `### {name}`")
+    if z.zone in ZONE_CHECKLIST and not z.ac:
+        pr.err(rel, 1, "BL047", f"{z.id}: зона {z.zone} — чеклист приемки: " + ZONE_CHECK_HINT.get(z.zone, "что проверить"))
 
 
 VAGUE_LANE = re.compile(r"^(система|сервис|приложение|бэкенд|backend|фронтенд|frontend|платформа|модуль)$", re.I)

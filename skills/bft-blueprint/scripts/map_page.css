@@ -459,7 +459,7 @@ body[data-view="road"] .road{display:block}
 @media(max-width:700px){.rmwrap{--rmw:120px;padding:60px 10px 40px}.rmback{display:block}}
 /* слои «Архитектура», «Roadmap», «Релиз» — длиннее экрана: на большом экране html и body не прокручиваются
    (карта листается в своём окне), поэтому слой — своё окно прокрутки */
-@media(min-width:701px){body[data-view="adr"] .adrscr,body[data-view="rel"] .rel,body[data-view="road"] .road{height:100vh;overflow-y:auto;overflow-x:hidden}}
+@media(min-width:701px){body[data-view="adr"] .adrscr,body[data-view="rel"] .rel,body[data-view="road"] .road,body[data-view="risk"] .risk{height:100vh;overflow-y:auto;overflow-x:hidden}}
 /* MoSCoW и линия Out of scope на слое «Что делаем»: Would — под линией, приглушённо */
 .wk .tm .pr,.tkmeta .pr{margin-left:6px;padding:0 5px;border-radius:4px;font-size:9.5px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;line-height:15px}
 .pr.must{background:#1d1d1b;color:#fff}.pr.should{background:#ece8df;color:#55524c}.pr.would{background:none;border:1px dashed #b9b3a8;color:#8a857c}
@@ -493,3 +493,22 @@ body[data-view="how"] .oosl,body[data-view="how"] .oosm,body[data-view="how"] .o
 .ui-title{font-size:13.5px;line-height:1.4}
 .ui-own{padding:8px 12px}
 .ui-story.oos{opacity:.6}.ui-story.oos:hover{opacity:1}.ui-story.dim,.ui-card.dim{opacity:.15}
+.zreq{margin:6px 0 0;font-size:13px}
+/* вкладка «Риски»: сводка по типам, риски по историям, статус согласования с PO */
+.risk{display:none}
+body[data-view="risk"] .hero,body[data-view="risk"] .wrap,body[data-view="risk"] .mstack{display:none}
+body[data-view="risk"] .risk{display:block}
+.rkwrap{max-width:1100px;margin:0 auto;padding:76px 24px 60px;box-sizing:border-box}
+.rksum{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:0 0 22px}
+.rks{background:#fff;border:1px solid #e6e2da;border-radius:14px;padding:14px 16px}.rks b{display:block;font-size:26px;line-height:1}.rks span{display:block;margin-top:6px;font-weight:700;font-size:14px}.rks small{display:block;margin-top:4px;font-size:12.5px;color:#8a857c;line-height:1.4}
+.rkst-g{border:2px dashed #cfcac0;border-radius:16px;padding:10px;margin:0 0 14px}
+.rkgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:8px;margin-top:8px}
+.rkcard{background:#fff;border:1px solid #e6e2da;border-radius:12px;padding:12px 14px}
+.rktop{display:flex;align-items:center;gap:8px}.rkid{font-size:11.5px;color:#8a857c;font-weight:600}
+.rkk{padding:1px 8px;border-radius:6px;background:#f6ecea;color:#a0392d;font-size:11px;font-weight:700;line-height:17px;white-space:nowrap}
+.rkst{margin-left:auto;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600;line-height:17px;background:#fff4e0;color:#9a6a12}.rkst.ok{background:#e8f4ea;color:#2f6b2a}.rkst.off{background:#f2f0ec;color:#8a857c}
+.rktx{margin:8px 0 6px;font-size:14px;line-height:1.45}.rkm{margin:0 0 6px;font-size:13px;line-height:1.45;color:#3e3c38}.rkm span{display:block;font-size:11px;font-weight:700;color:#8a857c;text-transform:uppercase;letter-spacing:.4px}
+.rko{margin:0;font-size:12px;color:#8a857c}.rkcard.off{opacity:.6}
+.rkmiss{margin-top:20px}.rkmiss h4{margin:0 0 8px;font-size:13px}
+.rkm-i{display:block;width:100%;text-align:left;background:#fff;border:1px dashed #e0b9b2;border-radius:12px;padding:10px 12px;margin:0 0 8px;font:inherit;font-size:13.5px;cursor:pointer}.rkm-i small{display:block;color:#8a857c;font-size:12px;margin-top:3px}.rkm-i .rkk{margin-right:6px}
+.rkst-g .ui-head{width:100%}

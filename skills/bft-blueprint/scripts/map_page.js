@@ -24,7 +24,10 @@
   const TASK = {}; D.tasks.forEach(t => TASK[t.id] = t);
   const PROC = {}; D.cards.forEach(p => PROC[p.id] = p);
   /* эпик (БФТ) → история (задача «Что делаем») → подзадачи по зонам; история в одном контуре — без подзадач */
-  const ZONES = ["PO", "SA", "Design", "FE", "BE", "QA", "DevOps", "Delivery"];
+  const ZONES = ["PO", "BA", "SA", "ADR", "Design", "BE", "DBA", "FE", "DevOps", "QA", "Delivery"];
+  /* постановка подзадачи — в формате зоны; чеклист называется по смыслу зоны */
+  const ZONE_SECS = { Design: ["UserStory", "JobStory", "UserFlow"], BE: ["ASIS", "GAP", "TOBE", "Данные"], DBA: ["ASIS", "GAP", "TOBE"], FE: ["ASIS", "GAP", "TOBE"], DevOps: ["ASIS", "GAP", "TOBE"] };
+  const ZONE_CHECK = { PO: "Согласования", BA: "Вопросы по бизнес-логике", SA: "Вопросы по системной реализации", ADR: "Решения", Design: "На экране" };
   const SUBS = D.subs || [], SUB = {}; SUBS.forEach(z => SUB[z.id] = z);
   const subsOf = id => SUBS.filter(z => z.task === id).sort((a, b) => ZONES.indexOf(a.zone) - ZONES.indexOf(b.zone));
   /* MoSCoW: Must и Should — коммитмент заказчику, Would — за линией Out of scope */
@@ -427,6 +430,30 @@
       ${off.length ? `<div class="rmoff"><h4>Вне плана · ${off.length}</h4>${off.map(w => `<button class="ref" ${SUB[w.id] ? "data-sub" : "data-task"}="${esc(w.id)}" title="${esc(w.text)}">${esc(w.id)}</button>`).join(" ")}</div>` : ""}</div>`;
   }
 
+  /* ---------- вкладка «Риски»: риски исполнения историй, согласуются с PO, на основной карте их нет ----------
+     Данные — документ «Риски исполнения» (ключ risks.items) и кандидаты по данным карты (risks.auto):
+     стык BE+FE, DevOps, интеграция систем. Сводка по типам, риски по историям со статусом согласования;
+     кандидаты без строки в документе — блоком «Не записаны». */
+  const RK = D.risks || null, gridRisk = document.getElementById("risk");
+  const RK_KIND = { befe: ["Стык BE+FE", "в истории подзадачи BE и FE — детали реализации не собраны, бэкенд может не успеть отдать данные"], devops: ["DevOps", "в истории работы DevOps — CI/CD, сетевые доступы, загрузка команды"], integration: ["Интеграция систем", "история работает с внешней системой или заводит новый сервис — согласования и доступы"], other: ["Другое", ""] };
+  const RK_ST = { "на согласовании": "wait", "согласован": "ok", "снят": "off" };
+  function rkBoard() {
+    if (!RK || !gridRisk) return;
+    const items = RK.items, have = new Set(items.map(r => r.story + ":" + r.kind)), miss = RK.auto.filter(a => !have.has(a.story + ":" + a.kind));
+    const kinds = Object.keys(RK_KIND).filter(k => items.some(r => r.kind === k) || miss.some(a => a.kind === k));
+    const ok = items.filter(r => r.status === "согласован").length;
+    const stories = [...new Set(items.map(r => r.story))].sort((a, b) => D.tasks.findIndex(t => t.id === a) - D.tasks.findIndex(t => t.id === b));
+    const card = r => `<div class="rkcard ${RK_ST[r.status] || ""}"><div class="rktop"><span class="rkk">${esc(RK_KIND[r.kind][0])}</span><span class="rkid">${esc(r.id)}</span><span class="rkst ${RK_ST[r.status] || ""}">${esc(r.status)}</span></div>
+      <p class="rktx">${mdInline(r.text)}</p><p class="rkm"><span>Митигация</span>${mdInline(r.mitigation)}</p><p class="rko">Владелец · ${esc(r.owner)}</p></div>`;
+    gridRisk.innerHTML = `<div class="rkwrap"><div class="rmhead"><button class="rmback" data-view="see">← К карте</button>${RK.status ? `<span class="arst">${esc(RK.status)}</span>` : ""}<h2>Риски исполнения</h2>
+      <p>Согласуются с PO инициативы · ${items.length} ${plural(items.length, "риск", "риска", "рисков")}, согласовано ${ok}${miss.length ? ` · не записано ${miss.length}` : ""}</p></div>
+      <div class="rksum">${kinds.map(k => `<div class="rks"><b>${items.filter(r => r.kind === k).length + miss.filter(a => a.kind === k).length}</b><span>${esc(RK_KIND[k][0])}</span><small>${esc(RK_KIND[k][1])}</small></div>`).join("")}</div>
+      ${stories.map(sid => { const t = TASK[sid] || { id: sid, text: sid };
+        return `<section class="rkst-g"><button class="ui-head" data-task="${esc(sid)}"><span class="ui-chip">История</span><span class="ui-name">${esc(t.text)}</span><span class="ui-tags"><span class="ui-zone">${esc(sid)}</span></span></button>
+          <div class="rkgrid">${items.filter(r => r.story === sid).map(card).join("")}</div></section>` }).join("")}
+      ${miss.length ? `<section class="rkmiss"><h4>Не записаны — найдены по данным карты</h4>${miss.map(a => `<button class="rkm-i" data-task="${esc(a.story)}"><span class="rkk">${esc(RK_KIND[a.kind][0])}</span><b>${esc(a.story)}</b> ${esc((TASK[a.story] || {}).text || "")}<small>${esc(RK_KIND[a.kind][1])}</small></button>`).join("")}</section>` : ""}</div>`;
+  }
+
   /* первый шаг дорожки — куда ведут её ворота */
   const rlStepOfTrack = tr => { const s = RL.steps.find(x => x.track === tr); return s ? s.id : (RL.steps[0] ? RL.steps[0].id : "") };
 
@@ -444,8 +471,9 @@
     if (v === "rel") { if (RL) { rlBoard(); gridRel.scrollIntoView({ block: "start" }) } return }
     if (v === "adr") { if (AR || SR) { adrBoard(); adrGrid.scrollIntoView({ block: "start" }) } return }
     if (v === "road") { if (RM) { rmBoard(); gridRoad.scrollTop = 0 } return }
-    if (was === "rel" || was === "adr" || was === "road") { window.scrollTo(0, 0) }
-    const col = was === "see" ? firstVisible(hh, hs, 132) : was === "rel" || was === "road" ? 0 : firstVisible(mh, work, 96);
+    if (v === "risk") { if (RK) { rkBoard(); gridRisk.scrollTop = 0 } return }
+    if (was === "rel" || was === "adr" || was === "road" || was === "risk") { window.scrollTo(0, 0) }
+    const col = was === "see" ? firstVisible(hh, hs, 132) : was === "rel" || was === "road" || was === "risk" ? 0 : firstVisible(mh, work, 96);
     if (v === "see") hs.scrollLeft = hh[col] ? hh[col].offsetLeft - 132 : 0;
     else { work.scrollTop = 0; work.scrollLeft = mh[col] ? mh[col].offsetLeft - 96 : 0 }
     drawLinks();
@@ -599,8 +627,10 @@
   function openSub(id) {
     const z = SUB[id], t = TASK[z.task];
     const ac = z.ac.length ? `<ul class="zac">${z.ac.map(([, x]) => `<li>${mdInline(x)}</li>`).join("")}</ul>` : "";
+    const brief = (ZONE_SECS[z.zone] || []).map(k => sec(k, mdHTML((z.brief || {})[k] || ""))).join("");
+    const reqs = t && t.reqs.length ? `<p class="zreq"><span class="lk">Требования БФТ</span> ${t.reqs.map(esc).join(", ")}</p>` : "";
     side.innerHTML = head(z.text, `<b class="zt" style="--c:${teamC(z)}">${esc(z.zone)}</b> <span class="pteam" style="--c:${teamC(z)}"><i></i>${esc(z.team === "?" && z.cand ? "Команда? " + z.cand : teamN(z))}</span> · ${esc(id)} · ${esc(z.status)}`, true) + `<div class="snbody">
-      ${z.lead ? `<p class="tklead">${mdInline(z.lead)}</p>` : ""}${sec("Критерии приемки", ac)}${sec("История", t ? refList([`${idChip(t.id)} ${esc(t.text)}`]) : "")}${sec("Вопросы", qList(qsOf([id])))}</div>`;
+      ${z.lead ? `<p class="tklead">${mdInline(z.lead)}</p>` : ""}${brief}${sec(ZONE_CHECK[z.zone] || "Критерии приемки", ac)}${sec("Требования истории", t ? refList([`${idChip(t.id)} ${esc(t.text)}`]) + reqs : "")}${sec("Вопросы", qList(qsOf([id])))}</div>`;
     body.classList.remove("wide"); body.classList.add("open"); side.scrollTop = 0;
     side.dataset.ctx = "sub:" + id; side.dataset.note = "";
   }

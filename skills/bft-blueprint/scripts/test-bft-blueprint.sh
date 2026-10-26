@@ -303,6 +303,42 @@ sed -i 's/^  - moscow:would$/  - moscow:could/' "$MB/backlog/tasks/"bp-11\ *
 out2="$(python3 "$BLINT" "$MB" --no-source 2>&1)"; rc2=$?
 [ "$rc" -eq 1 ] && grep -q "BL046 BP-14: нет приоритета" <<<"$out" && [ "$rc2" -eq 1 ] && grep -q "BL006 BP-11: приоритет — одна метка moscow:" <<<"$out2" \
   && ok "карта · MoSCoW: без приоритета — BL046, чужое значение — BL006" || fail "карта · MoSCoW не проверяется — $out $out2"
+# формат зон: требования — у истории, разделы — по зоне (BL047); Design — одна точка касания, BE без данных — DBA (BL048)
+ZF="$tmp/bad/zfmt" && cp -r "$BGOLD" "$ZF" && python3 - "$ZF" <<'PY'
+import sys
+from pathlib import Path
+t = Path(sys.argv[1], "backlog/tasks")
+f = next(t.glob("bp-5.3 *")); x = f.read_text(encoding="utf-8")
+f.write_text(x.replace("события блока — в Метрику.\n", "события блока — в Метрику.\n\nТребования БФТ: ИТ-1\n", 1).replace("### GAP\n", "### Разное\n", 1), encoding="utf-8")
+PY
+out="$(python3 "$BLINT" "$ZF" --no-source 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && grep -q "BL047 BP-5.3: требования БФТ — у истории BP-5" <<<"$out" && grep -q "BL047 BP-5.3: раздел «Разное»" <<<"$out" && grep -q "BL047 BP-5.3: зона FE — нужен раздел \`### GAP\`" <<<"$out" \
+  && ok "подзадачи · формат зоны: BL047 (требования в подзадаче, чужой раздел, нет GAP)" || fail "подзадачи · BL047 не пойман — $out"
+ZD="$tmp/bad/zdata" && cp -r "$BGOLD" "$ZD" && python3 - "$ZD" <<'PY'
+import sys
+from pathlib import Path
+t = Path(sys.argv[1], "backlog/tasks")
+f = next(t.glob("bp-5.4 *")); f.write_text(f.read_text(encoding="utf-8").replace("- Рейтинг: Каталог UnitB, restaurants.rating", "- Рейтинг: нет в хранилище", 1), encoding="utf-8")
+f = next(t.glob("bp-5.2 *")); f.write_text(f.read_text(encoding="utf-8").replace("documentation:\n  - doc-4\n", "documentation:\n  - doc-4\n  - doc-6\n", 1), encoding="utf-8")
+PY
+out="$(python3 "$BLINT" "$ZD" --no-source --strict 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && grep -q "BL048 BP-5.2: Design — 2 экрана" <<<"$out" && grep -q "BL048 BP-5.4: данных «нет в хранилище», а подзадачи DBA в истории BP-5 нет" <<<"$out" \
+  && ok "подзадачи · Design — одна точка касания, BE без данных — DBA: BL048" || fail "подзадачи · BL048 не пойман — $out"
+# риски исполнения: кандидаты по данным карты записаны и видны отдельной вкладкой; не записан — RK005, история мимо карты — RK003
+python3 - "$tmp/bout" <<'PY' && ok "риски исполнения · 5 рисков (стык BE+FE у BP-5, интеграция у BP-6, 12, 16, 18), вкладка «Риски»" || fail "риски исполнения не дошли до страницы"
+import json, re, sys
+from pathlib import Path
+page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf-8")
+d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
+r = d["risks"]
+assert [(a["story"], a["kind"]) for a in r["auto"]] == [("BP-5", "befe"), ("BP-6", "integration"), ("BP-12", "integration"), ("BP-16", "integration"), ("BP-18", "integration")]
+assert {(x["story"], x["kind"]) for x in r["items"]} == {(a["story"], a["kind"]) for a in r["auto"]}
+assert all(x["status"] == "на согласовании" for x in r["items"]) and 'data-view="risk">Риски' in page and "function rkBoard" in page
+PY
+RW="$tmp/bad/risks" && cp -r "$BGOLD" "$RW" && sed -i '/^| X2 | BP-6 |/d; s/^| X5 | BP-18 |/| X5 | BP-99 |/' "$RW/backlog/docs/"*Риски-исполнения.md
+out="$(python3 "$BLINT" "$RW" --no-source --strict 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && grep -q "RK005 BP-6: риск «интеграция» по данным карты не записан" <<<"$out" && grep -q "RK003 X5: истории BP-99 на карте нет" <<<"$out" \
+  && ok "риски исполнения · не записан — RK005, история мимо карты — RK003" || fail "риски исполнения · RK005/RK003 не пойманы — $out"
 # BL043: подзадача — зона из списка, родитель — история
 ZB="$tmp/bad/zone" && cp -r "$BGOLD" "$ZB" && python3 - "$ZB" <<'PY'
 import sys
