@@ -418,7 +418,7 @@ page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf
 d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
 L = {(l["src"], l["dst"]): l["cond"] for l in d["links"]}
 assert L[("BP-16.1", "BP-18.1")] == "билет действителен" and L[("BP-12.2", "BP-14.1")] == "есть push-канал", L
-assert 'class="cond"' in page
+assert 'class="cond' in page and 'cond.h{transform' in page
 PY
 # BL043: подзадача — зона из списка, родитель — история
 ZB="$tmp/bad/zone" && cp -r "$BGOLD" "$ZB" && python3 - "$ZB" <<'PY'
