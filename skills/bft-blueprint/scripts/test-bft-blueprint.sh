@@ -343,14 +343,26 @@ out="$(python3 "$BLINT" "$RW" --no-source --strict 2>&1)"; rc=$?
 [ "$rc" -eq 1 ] && grep -q "RK005 BP-6: риск «интеграция» по данным карты не записан" <<<"$out" && grep -q "RK003 X5: истории BP-99 на карте нет" <<<"$out" \
   && ok "риски исполнения · не записан — RK005, история мимо карты — RK003" || fail "риски исполнения · RK005/RK003 не пойманы — $out"
 # User Actions: старт пути персонажа (триггер) и точки входа — из «Карты» и согласованной истории; без триггера — BL050
-python3 - "$tmp/bout" <<'PY' && ok "карта · User Actions: два триггера, точки входа из истории" || fail "карта · User Actions не дошёл до страницы"
+python3 - "$tmp/bout" <<'PY' && ok "карта · Evidence и User Actions: два триггера, шаги CJM и группы касания из истории" || fail "карта · User Actions не дошёл до страницы"
 import json, re, sys
 from pathlib import Path
 page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf-8")
 d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
 assert d["triggers"] == [{"persona": "rest", "text": "Ресторан подаёт заявку на участие", "stage": "A"}, {"persona": "guest", "text": "Гость купил билет на оффлайн-мероприятие", "stage": "B"}]
-assert "l-user" in page and "const ENTRY" in page and "trgHTML" in page
+assert "l-user" in page and "l-ev" in page and "const GROUPS" in page and "trgHTML" in page and "stepHTML" in page
 PY
+# Evidence: группы касания — путь экранов в контуре; альтернативный экран — в группе основного; шаг CJM — в группе первого экрана
+node - "$tmp/bout/dineclub-restart-map.html" <<'JS' && ok "карта · Evidence: D2 — в группе «Витрина → Все рестораны», F4 — рядом с F3, шаги CJM пронумерованы" || fail "карта · Evidence и CJM не те"
+const { chromium } = require('playwright');
+(async () => { const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 2400, height: 1300 } });
+  await p.goto('file://' + process.argv[2]); await p.click('button[data-view="how"]'); await p.waitForTimeout(500);
+  const g = await p.$$eval('.l-ev .sc', e => e.map(x => [(x.querySelector('.evh') || {}).textContent || '', [...x.querySelectorAll('.ev')].map(v => v.dataset.ev)]));
+  const st = await p.$$eval('.l-user .ua', e => e.map(x => [x.dataset.step, x.dataset.n]));
+  await b.close();
+  const ok = g.some(([h, s]) => h === 'Витрина → Все рестораны' && s.join() === 'D2') && g.some(([h, s]) => s.includes('F3') && s.includes('F4'))
+    && st.some(([s, n]) => s === 'Ш2' && n === '1') && st.some(([s, n]) => s === 'Ш4' && n === '3') && st.length === 12;
+  process.exit(ok ? 0 : 1) })();
+JS
 TG="$tmp/bad/trg" && cp -r "$BGOLD" "$TG" && sed -i '/^| guest | Гость купил билет/d; s/^| rest | Ресторан подаёт заявку на участие | A |$/| rest | Ресторан подаёт заявку на участие | Z |/' "$TG/backlog/docs/doc-1 - "*.md
 out="$(python3 "$BLINT" "$TG" --no-source --strict 2>&1)"; rc=$?
 [ "$rc" -eq 1 ] && grep -q "BL050 у персонажа guest нет триггера" <<<"$out" && grep -q "BL049 триггер «Ресторан подаёт заявку на участие»" <<<"$out" \
