@@ -245,7 +245,7 @@ assert all(t["brief"].get("ASIS") and t["ac"] for t in d["tasks"])
 assert len(d["links"]) >= 20 and len(d["notes"]) == 12
 PY
 # «Исполнение»: у каждого экрана с требованиями — задача, чей documentation (или её карточки) ведёт на документ экрана
-python3 - "$tmp/bout" <<'PY' && ok "карта · исполнение: у каждого экрана есть задачи, F1 → BP-16, панель #exec на странице" || fail "карта · связь экран → задачи исполнения не та"
+python3 - "$tmp/bout" <<'PY' && ok "карта · исполнение: у каждого экрана есть задачи, F1 → BP-16, панель #exec, HowToDemo раскадровкой" || fail "карта · связь экран → задачи исполнения не та"
 import json, re, sys
 from pathlib import Path
 page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf-8")
@@ -259,6 +259,10 @@ for c in d["cards"]:
 assert all(of.get(s) for s in d["notes"]), [s for s in d["notes"] if not of.get(s)]
 assert of["F1"] == {"BP-16"} and of["F2"] == {"BP-15"}, of
 assert 'id="exec"' in page and "data-extask" in page
+# HowToDemo раскадровкой: шаг с ID экрана «(F3)» — кадр этого экрана, даже если он не в documentation задачи
+T = {t["id"]: t for t in d["tasks"]}
+assert T["BP-16"]["brief"]["HowToDemo"].count("(F3)") == 3 and "(F1)" in T["BP-15"]["brief"]["HowToDemo"]
+assert 'class="demo"' in page and "function demoHTML" in page
 PY
 EX="$tmp/bad/exec" && cp -r "$BGOLD" "$EX" && python3 - "$EX" <<'PY'
 import re, sys

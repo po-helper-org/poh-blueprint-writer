@@ -483,6 +483,34 @@
     const [kind, id] = exFrom.split(/:(.*)/);
     return kind === "seen" ? openSeen(id) : openScreen(kind === "screen" ? id : snCur);
   }
+  /* ---------- HowToDemo раскадровкой: шаг проверки — кадр экрана, «делаю» и «вижу» ----------
+     Экраны — те, на которые ведёт documentation задачи или карточки. Экран шага: ID в тексте шага «(F3)»,
+     иначе экран, чьё название ближе к тексту шага, иначе экран прошлого шага. «Делаю — вижу» делит
+     первое «→» или «—». Шаги не списком или экранов нет — HowToDemo текстом, как раньше. */
+  const scrName = sid => SCR_DOC[sid] ? D.docs[SCR_DOC[sid]].title.replace(/^[^·]*·\s*/, "") : sid;
+  const stems = x => new Set((String(x).toLowerCase().match(/[a-zа-яё0-9]{4,}/g) || []).map(w => w.slice(0, 5)));
+  const SID_RE = /\s*\(([A-ZА-Я]\d{1,2}(?:\s*,\s*[A-ZА-Я]\d{1,2})*)\)/g;
+  function demoHTML(md, docs) {
+    const lines = String(md || "").trim().split("\n").filter(l => l.trim());
+    const sids = [...new Set(docs.map(d => DOC_SCR[docKey(d)]).filter(Boolean))];
+    if (!lines.length || !sids.length || !lines.every(l => /^\d+\.\s/.test(l))) return mdHTML(md || "");
+    let prev = "";
+    const steps = lines.map(l => {
+      let text = l.replace(/^\d+\.\s+/, ""), sid = "";
+      text = text.replace(SID_RE, (m, ids) => { sid = sid || ids.split(/\s*,\s*/).find(x => D.screens[x]) || ""; return sid ? "" : m });
+      if (!sid) {
+        const w = stems(text); let best = 0;
+        sids.forEach(x => { const n = [...stems(scrName(x))].filter(y => w.has(y)).length; if (n > best || (n === best && n && x === prev)) { best = n; sid = x } });
+      }
+      sid = sid || prev || sids[0]; prev = sid;
+      const m = text.match(/^(.+?)\s+[→—]\s+(.+)$/);
+      return { sid, act: m ? m[1] : text, see: m ? m[2] : "" };
+    });
+    gallery = steps.map((st, i) => ({ alt: `Шаг ${i + 1} · ${st.sid} · ${scrName(st.sid)}`, src: screenImg(st.sid) }));
+    return `<ol class="demo">${steps.map((st, i) => `<li class="dm"><span class="dmh" title="${esc(st.sid)} · ${esc(scrName(st.sid))}"><b>${i + 1}</b>${esc(st.sid)} · ${esc(scrName(st.sid))}</span>
+      <span class="dmpic"><img src="${esc(screenImg(st.sid))}" alt="${esc(scrName(st.sid))}" data-zoom="${i}" loading="lazy" draggable="false"></span>
+      <span class="dmt"><i>Делаю</i>${mdInline(st.act)}</span>${st.see ? `<span class="dmt see"><i>Вижу</i>${mdInline(st.see)}</span>` : ""}</li>`).join("")}</ol>`;
+  }
   function execOpen(id) {
     openTask(id, 0, true); execShow(null, "", id);
   }
@@ -571,7 +599,7 @@
     const ac = t.ac.map(([d, x], k) => `<label class="dod"><input type="checkbox" data-dod="${id}:${k}"${(done[k] != null ? done[k] : d) ? " checked" : ""}><span>${mdInline(x)}</span></label>`).join("");
     const links = refList([...(t.reqs.length ? [`<span class="lk">Требования БФТ</span> ${t.reqs.map(esc).join(", ")}`] : []), ...t.docs.map(refItem), ...t.refs.filter(r => !/^https?:\/\//.test(r)).map(refItem)]);
     const html = (t.why ? `<p class="tklead">${mdInline(t.why)}</p>` : "") + sec("ASIS", mdHTML(br.ASIS || "")) + sec("GAP", mdHTML(br.GAP || "")) + sec("TOBE", mdHTML(br.TOBE || "")) +
-      sec("HowToDemo", mdHTML(br.HowToDemo || "")) + sec("Чеклист приемки", ac) + sec("Дополнительно", mdHTML(br["Дополнительно"] || "")) +
+      sec("HowToDemo", demoHTML(br.HowToDemo, [...t.docs, ...cards.flatMap(c => c.docs)])) + sec("Чеклист приемки", ac) + sec("Дополнительно", mdHTML(br["Дополнительно"] || "")) +
       sec("Как это работает", refList(cards.map(c => `${idChip(c.id)} ${esc(c.text)}`))) + sec("Вопросы", qList(qsOf([id, ...cards.map(c => c.id)]))) + sec("Ссылки", links);
     const tabs = `<nav class="snseg tktabs">${["Требования", "Исполнение"].map((n, i) => `<button data-tktab="${i}"${i === taskTab ? ' class="on"' : ""}>${n}</button>`).join("")}</nav>`;
     side.innerHTML = head(t.text, `<span class="pteam" style="--c:${teamC(t)}"><i></i>${esc(t.team === "?" && t.cand ? "Команда? " + t.cand : teamN(t))}</span> · ${esc(COLS[colOf(t.stage)].name)} · ${esc(id)} · ${esc(t.status)}`, back) + `<div class="snbody">${tabs}${taskTab ? execHTML(t) : html}</div>`;
@@ -656,7 +684,7 @@
       ${sec("UserStory", c.us ? `<p>${mdInline(c.us)}</p>` : "")}
       ${sec("JobStory", (c.js || []).length ? `<ul class="js">${c.js.map(x => `<li>${mdInline(x)}</li>`).join("")}</ul>` : "")}
       ${sec("Процесс", proc)}${sec("Параметры", ["in", "ctl", "out", "mech"].map(row).join(""))}
-      ${sec("HowToDemo", mdHTML(c.demo || ""))}${sec("Вопросы", qList(qsOf([id, c.task])))}${sec("Ссылки", lnk)}</div>`;
+      ${sec("HowToDemo", demoHTML(c.demo, [...c.docs, ...(t ? t.docs : [])]))}${sec("Вопросы", qList(qsOf([id, c.task])))}${sec("Ссылки", lnk)}</div>`;
     body.classList.add("wide", "open"); side.scrollTop = 0;
     side.dataset.ctx = "proc:" + id; side.dataset.note = "";
     const box = side.querySelector(".bpmnw"); if (box) drawMermaid(box);
