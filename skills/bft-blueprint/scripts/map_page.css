@@ -471,3 +471,25 @@ body[data-view="road"] .road{display:block}
 .rmbar.oos{opacity:.6;border-style:dashed;border-left-style:solid}
 .lb.oosb{color:#8a857c;border-top:2px dashed #c4bdb1;padding-top:8px}
 body[data-view="how"] .oosl,body[data-view="how"] .oosm,body[data-view="how"] .oosc{display:none}
+/* компоненты «Что делаем»: история — пунктирная группа, работа — белая карточка (референс PO) */
+.ui-story{width:100%;box-sizing:border-box;border:2px dashed #cfcac0;border-radius:16px;padding:10px;display:flex;flex-direction:column;gap:8px;transition:opacity .2s}
+.ui-head{display:grid;grid-template-columns:auto 1fr auto;align-items:start;gap:10px;padding:2px 4px 2px;border:0;background:none;text-align:left;font:inherit;cursor:pointer;color:var(--ink)}
+.ui-chip{flex:none;margin-top:1px;padding:2px 8px;border-radius:6px;background:#ece8fb;color:#6b4fd4;font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;line-height:16px}
+.ui-name{min-width:0;font-size:14px;font-weight:700;line-height:1.35}
+.ui-head:hover .ui-name{text-decoration:underline;text-decoration-color:#cfcac0;text-underline-offset:3px}
+.ui-prio{flex:none;padding:1px 7px;border-radius:6px;border:1px solid #d8d3c9;color:#6b6b6b;font-size:10.5px;font-weight:600;line-height:16px}
+.ui-prio.would{border-style:dashed}
+.ui-head .ui-tags{margin-top:1px}
+.ui-card{width:100%;display:flex;flex-direction:column;gap:6px;text-align:left;background:#fff;border:1px solid #e6e2da;border-radius:12px;padding:10px 12px 11px;font:inherit;color:var(--ink);cursor:pointer;transition:border-color .15s,box-shadow .15s,opacity .2s}
+.ui-card:hover,.ui-card:focus-visible,.ui-head:focus-visible{border-color:#cfc8bb;box-shadow:0 6px 18px rgba(0,0,0,.07);outline:none}
+.ui-card.blk{background:#fdf4f2;border-color:#efc9c2}
+.ui-top{display:flex;align-items:center;gap:8px;min-height:20px}
+.ui-team{display:flex;align-items:center;gap:7px;min-width:0;font-size:12.5px;font-weight:700;color:#55524c}.ui-team i{flex:none;width:9px;height:9px;border-radius:50%;background:var(--c)}
+.ui-team.u{color:var(--red)}.ui-team.u i{background:#fff;border:1.5px dashed var(--red)}
+.ui-tags{margin-left:auto;display:flex;align-items:center;gap:6px;flex:none}
+.ui-zone{padding:1px 7px;border:1px solid #d8d3c9;border-radius:6px;font-size:11px;color:#6b6b6b;line-height:16px}
+.ui-q{min-width:20px;height:20px;border-radius:10px;background:#fbe3e0;color:var(--red);font-size:11px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;padding:0 5px;box-sizing:border-box}
+.ui-blk{padding:2px 8px;border-radius:7px;background:var(--red);color:#fff;font-size:11px;font-weight:700;line-height:16px}
+.ui-title{font-size:13.5px;line-height:1.4}
+.ui-own{padding:8px 12px}
+.ui-story.oos{opacity:.6}.ui-story.oos:hover{opacity:1}.ui-story.dim,.ui-card.dim{opacity:.15}

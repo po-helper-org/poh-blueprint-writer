@@ -18,7 +18,7 @@ description: "Service Blueprint по БФТ в два согласуемых э�
 
 Результат навыка — **не любой HTML про инициативу**, а комплект, собранный скриптами навыка. Харнесс без слэш-команд тоже идёт этим маршрутом: прочитай этот файл целиком, затем `resources/autopilot.md`.
 
-1. **HTML руками не пишется.** Ни `service-blueprint.html`, ни «диаграмма» в `<svg>`/`<div>`, ни свой шаблон. Страницы дают только `bft-story-render.py` и `bft-backlog-build.py` (в страницах стоит `<meta name="generator" content="bft-blueprint …">`). Внешний вид — эталон `examples/dineclub-restart-map.html`; поменять его можно правкой проекта, а не страницы.
+1. **HTML руками не пишется.** Ни `service-blueprint.html`, ни «диаграмма» в `<svg>`/`<div>`, ни свой шаблон. Страницы дают только `bft-story-render.py` и `bft-backlog-build.py` (в страницах стоит `<meta name="generator" content="bft-blueprint …">`). Внешний вид — эталон `examples/dineclub-restart-map.html`; поменять его можно правкой проекта, а не страницы. Страница собирается из компонентов `scripts/map_page.js` (история — пунктирная группа, работа — карточка, команда, зона, вопросы, блокер) детерминированно по данным проекта: агент наполняет только Backlog.md и план, кода и разметки не пишет.
 2. **Карта — это проект Backlog.md.** Задачи, карточки «Как это работает» и документы создаются `./backlog.py` (или планом карты `./blueprint.py apply`). Файла `backlog.md` и списка задач в HTML недостаточно: в проекте должны лежать `backlog/tasks/*.md` и `backlog/docs/*.md`.
 3. **Имена фиксированы.** `<epic>-story.md`, `<epic>-story.html`, папка `<epic>-blueprint/`, `<epic>-map.html`, `<epic>-blueprint.zip`. Другие имена и лишние `.html` — признак обхода маршрута.
 4. **Не останавливайся, пока нет приёмки.** Последний шаг любого запуска:

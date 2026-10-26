@@ -279,7 +279,7 @@ page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf
 d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
 assert [(z["id"], z["task"], z["zone"], z["team"]) for z in d["subs"]] == [("BP-5.2", "BP-5", "Design", "des"), ("BP-5.3", "BP-5", "FE", "?"), ("BP-5.4", "BP-5", "BE", "unitb"), ("BP-5.5", "BP-5", "QA", "?")], d["subs"]
 assert next(z for z in d["subs"] if z["id"] == "BP-5.3")["cand"] == "Витрина или TeamA"
-assert len(d["tasks"]) == 19 and "function openSub" in page and "data-teams" in page
+assert len(d["tasks"]) == 19 and "function openSub" in page and "data-teams" in page and "ui-story" in page and "const uiCard" in page
 PY
 # MoSCoW: приоритет у каждой истории, Would — за линией Out of scope; без приоритета — BL046, чужое значение — BL006
 python3 - "$tmp/bout" <<'PY' && ok "карта · MoSCoW: 9 Must, 8 Should, 2 Would за линией Out of scope" || fail "карта · приоритеты MoSCoW не дошли до страницы"

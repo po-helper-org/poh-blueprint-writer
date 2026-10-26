@@ -69,7 +69,7 @@
   /* фильтр по команде: подсветить её работу, на кнопке меню — чип с крестиком */
   function teamFilter(id) {
     document.querySelectorAll(".tchip").forEach(x => x.classList.toggle("on", x.dataset.tf === id));
-    document.querySelectorAll(".wk,.hw").forEach(x => x.classList.toggle("dim", !!id && !(x.dataset.teams || x.dataset.team).split(" ").includes(id)));
+    document.querySelectorAll(".ui-story,.hw,.ui-card[data-sub]").forEach(x => x.classList.toggle("dim", !!id && !(x.dataset.teams || x.dataset.team).split(" ").includes(id)));
     const t = id && (id === "?" ? { name: "Команда не определена", c: "var(--red)" } : TEAM[id]);
     document.getElementById("fchip").innerHTML = t ? `<button class="fchip" data-tf-clear style="--c:${t.c}" aria-label="Снять фильтр"><i></i>${esc(t.name)}<span aria-hidden="true">×</span></button>` : "";
   }
@@ -85,10 +85,20 @@
       return `<div class="seen" data-seen="${s.key}" role="button" tabindex="0"><span class="th">${mock(s.steps[0].screens[0])}</span><div class="sx">${w}<b>${esc(s.steps[0].title)}</b><p>${esc(s.steps[0].text)}</p>${more ? `<span class="more">+${more} ${plural(more, "шаг", "шага", "шагов")}</span>` : ""}</div></div>`;
     }).join("");
   }
+  /* компоненты слоя «Что делаем» — страница собирает их из данных Backlog.md, разметку не пишет никто:
+     история — пунктирная группа (чип «История», название, приоритет, вопросы и блокер истории);
+     работа — карточка (команда, зона, вопросы, блокер, название). Кроссфункциональная история —
+     группа с карточками подзадач; история в одном контуре — группа со строкой команды. */
+  const uiTeam = w => `<span class="ui-team${w.team === "?" ? " u" : ""}"><i style="--c:${teamC(w)}"></i>${esc(w.team === "?" && w.cand ? "Команда? " + w.cand : teamN(w))}</span>`;
+  const uiTags = (id, zone, prio) => { const n = asks(id), b = blocks(id).length;
+    return `<span class="ui-tags">${prio && prio !== "must" ? `<span class="ui-prio ${prio}">${PRIO[prio]}</span>` : ""}${zone ? `<span class="ui-zone">${esc(zone)}</span>` : ""}${n && !b ? `<span class="ui-q" title="Открытых вопросов: ${n}">${n}</span>` : ""}${b ? '<span class="ui-blk">Блокер</span>' : ""}</span>` };
+  const uiCard = z => `<button class="ui-card${blocks(z.id).length ? " blk" : ""}" data-sub="${esc(z.id)}" data-team="${z.team}"><span class="ui-top">${uiTeam(z)}${uiTags(z.id, z.zone)}</span><span class="ui-title">${esc(z.text)}</span></button>`;
   function taskHTML(t) {
-    const b = blocks(t.id).length, a = asks(t.id), subs = subsOf(t.id);
-    const zs = subs.length ? `<span class="zs">${subs.map(z => `<span class="z" style="--c:${teamC(z)}"><b>${esc(z.zone)}</b>${esc(teamN(z))}</span>`).join("")}</span>` : "";
-    return `<button class="wk${b ? " blk" : ""}${subs.length ? " st3" : ""}${oos(t) ? " oos" : ""}" data-task="${t.id}" data-team="${t.team}" data-teams="${[...new Set([t.team, ...subs.map(z => z.team)])].join(" ")}" style="--c:${teamC(t)}"><span class="tm${t.team === "?" ? " u" : ""}"><i></i>${esc(teamN(t))}${t.prio ? `<span class="pr ${t.prio}">${PRIO[t.prio]}</span>` : ""}${b ? '<span class="bl">Блокер</span>' : a ? `<span class="qn" title="Открытых вопросов: ${a}">${a}</span>` : ""}</span><span class="tx">${esc(t.text)}</span>${zs}</button>`;
+    const subs = subsOf(t.id), teams = [...new Set([t.team, ...subs.map(z => z.team)])].join(" ");
+    const head = `<button class="ui-head" data-task="${t.id}"><span class="ui-chip">История</span><span class="ui-name">${esc(t.text)}</span>${subs.length ? uiTags(t.id, "", t.prio) : ""}</button>`;
+    const body = subs.length ? subs.map(uiCard).join("")
+      : `<button class="ui-card ui-own${blocks(t.id).length ? " blk" : ""}" data-task="${t.id}"><span class="ui-top">${uiTeam(t)}${uiTags(t.id, "", t.prio)}</span></button>`;
+    return `<div class="ui-story${oos(t) ? " oos" : ""}" data-teams="${teams}">${head}${body}</div>`;
   }
   function procHTML(p) {
     const b = blocks(p.id).length + blocks(p.task).length;
@@ -97,8 +107,8 @@
 
   /* ---------- холст ---------- */
   grid.className = "map";
-  grid.style.gridTemplateColumns = `96px repeat(${COLS.length}, minmax(224px, 1fr))`;
-  grid.style.minWidth = `${96 + COLS.length * 236}px`;
+  grid.style.gridTemplateColumns = `96px repeat(${COLS.length}, minmax(272px, 1fr))`;
+  grid.style.minWidth = `${96 + COLS.length * 284}px`;
   let h = `<div class="mh corner"></div>` + COLS.map((c, i) => `<div class="mh"><span class="n">${i === COLS.length - 1 ? "✓" : i + 1}</span><span class="hx"><b>${esc(c.name)}</b>${c.when ? `<small>${esc(c.when)}</small>` : ""}</span></div>`).join("");
   h += `<div class="ml do">Что делаем</div>` + COLS.map(col => `<div class="mc do">${byPrio(D.tasks.filter(t => t.stage === col.id && !oos(t))).map(taskHTML).join("")}</div>`).join("");
   /* линия Out of scope: под ней — истории Would, они к инициативе относятся, но коммитментом заказчику не обсуждались */
