@@ -78,14 +78,14 @@ PAGE = """<!doctype html>
 {css}</style></head>
 <body>
 <h1 class="ptitle">{h1}</h1>
-<div class="fab"><button class="burger" id="burger" aria-label="Меню карты" aria-expanded="false" aria-controls="menu"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg><span class="bdot" id="bdot"></span></button><nav class="views" aria-label="Слой карты"><button data-view="see" class="on">Что видят</button><button data-view="how">Как это работает</button><button data-view="do">Что делаем</button>{rm_btn}{rk_btn}{rel_btn}</nav><span id="fchip"></span></div>
+<div class="fab"><button class="burger" id="burger" aria-label="Меню карты" aria-expanded="false" aria-controls="menu"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg><span class="bdot" id="bdot"></span></button><nav class="views" aria-label="Слой карты"><button data-view="see" class="on">Что видят</button><button data-view="how">Как это работает</button><button data-view="do">Что делаем</button>{rm_btn}{rel_btn}</nav><span id="fchip"></span></div>
 <div class="tr"><button class="ib iq" data-qpanel title="Уточнить: ответить на открытые вопросы" aria-label="Уточнить"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M6.2 6.1a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.6"/><circle cx="8" cy="11.6" r=".4"/></svg><span id="iq"></span></button><button class="ib icm" data-cmpanel title="Замечания" aria-label="Замечания"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7.5H7l-3 2.5V11H2.5z"/></svg><span id="icm"></span></button></div>
 <div class="mscrim"></div>
 <nav class="menu" id="menu" aria-label="Меню карты"><div class="mtop"><div><span class="draft{status_cls}">{status}</span><h1>{h1}</h1></div><button class="x" data-menu="close" aria-label="Закрыть">×</button></div>
 <button class="play" id="play">▶ Рассказать историю</button>
 <div class="mlist"><span id="blk"></span>
 <button class="mi" data-guide="help"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h4.5A1.5 1.5 0 0 1 8 4.5V14a1.5 1.5 0 0 0-1.5-1.5H2zM14 3H9.5A1.5 1.5 0 0 0 8 4.5V14a1.5 1.5 0 0 1 1.5-1.5H14z"/></svg>Инструкции</button>
-<button class="mi" data-guide="legend"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2.5" width="4" height="4" rx="1"/><path d="M8.5 4.5H14"/><circle cx="4" cy="11.5" r="2"/><path d="M8.5 11.5H14"/></svg>Легенда</button>{adr_menu}{rm_menu}{rel_menu}
+<button class="mi" data-guide="legend"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2.5" width="4" height="4" rx="1"/><path d="M8.5 4.5H14"/><circle cx="4" cy="11.5" r="2"/><path d="M8.5 11.5H14"/></svg>Легенда</button>{adr_menu}{rm_menu}{rk_menu}{rel_menu}
 <button class="mi" data-qpanel><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M6.2 6.1a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.6"/></svg>Уточнить</button>
 <button class="mi" data-seamspanel hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h5v8H2zM9 4h5v8H9z" fill="none"/><path d="M7 8h2"/></svg>Стыки<b class="cnt" id="seamcnt" hidden></b></button>
 <button class="mi" data-cmpanel><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7.5H7l-3 2.5V11H2.5z"/></svg>Замечания<b class="cnt cmn" id="cmn" hidden></b></button></div>
@@ -289,7 +289,10 @@ def render(pr: bl.Project, base: str = "") -> str:
     rm_btn = '<button data-view="road">Roadmap</button>' if has_rm else ""
     rm_menu = ('<button class="mi" data-rmmenu><svg viewBox="0 0 16 16" aria-hidden="true">'
                '<path d="M2 4h7M5 8h8M3 12h6" fill="none"/></svg>Roadmap</button>') if has_rm else ""
-    rk_btn = '<button data-view="risk">Риски</button>' if (pr.risks is not None and pr.risks_doc is not None) or bl.auto_risks(pr) else ""
+    # риски исполнения — пунктом меню, не в переключателе: согласуются с PO, это не основной вид карты
+    rk_menu = ('<button class="mi" data-rkmenu><svg viewBox="0 0 16 16" aria-hidden="true">'
+               '<path d="M8 2.5l6 11H2z M8 6.5v3.2 M8 11.6v.2" fill="none"/></svg>Риски исполнения</button>') \
+        if (pr.risks is not None and pr.risks_doc is not None) or bl.auto_risks(pr) else ""
     has_rel = pr.release is not None and pr.release_doc is not None
     rel_btn = '<button data-view="rel">Релиз</button>' if has_rel else ""
     rel_menu = ('<button class="mi" data-rlmenu><svg viewBox="0 0 16 16" aria-hidden="true">'
@@ -297,7 +300,7 @@ def render(pr: bl.Project, base: str = "") -> str:
     return PAGE.format(
         title_tag=html.escape(f"Карта · {pr.meta.get('epic_slug', '')}"), h1=html.escape(pr.title),
         status=html.escape(status), status_cls=" ok" if status.lower() == "согласован" else "",
-        adr_menu=adr_menu, rm_btn=rm_btn, rm_menu=rm_menu, rk_btn=rk_btn, rel_btn=rel_btn, rel_menu=rel_menu,
+        adr_menu=adr_menu, rm_btn=rm_btn, rm_menu=rm_menu, rk_menu=rk_menu, rel_btn=rel_btn, rel_menu=rel_menu,
         css=(HERE / "map_page.css").read_text(encoding="utf-8"),
         kit=(HERE / "page_kit.js").read_text(encoding="utf-8"),
         js=(HERE / "map_page.js").read_text(encoding="utf-8"), data=data)

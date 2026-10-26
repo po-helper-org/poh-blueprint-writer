@@ -613,14 +613,14 @@ body[data-view="do"] .how.l-user{display:none}
 </style></head>
 <body>
 <h1 class="ptitle">Перезапуск акции DineClub — «билет Acme Tickets = скидка 10%»</h1>
-<div class="fab"><button class="burger" id="burger" aria-label="Меню карты" aria-expanded="false" aria-controls="menu"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg><span class="bdot" id="bdot"></span></button><nav class="views" aria-label="Слой карты"><button data-view="see" class="on">Что видят</button><button data-view="how">Как это работает</button><button data-view="do">Что делаем</button><button data-view="road">Roadmap</button><button data-view="risk">Риски</button></nav><span id="fchip"></span></div>
+<div class="fab"><button class="burger" id="burger" aria-label="Меню карты" aria-expanded="false" aria-controls="menu"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg><span class="bdot" id="bdot"></span></button><nav class="views" aria-label="Слой карты"><button data-view="see" class="on">Что видят</button><button data-view="how">Как это работает</button><button data-view="do">Что делаем</button><button data-view="road">Roadmap</button></nav><span id="fchip"></span></div>
 <div class="tr"><button class="ib iq" data-qpanel title="Уточнить: ответить на открытые вопросы" aria-label="Уточнить"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M6.2 6.1a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.6"/><circle cx="8" cy="11.6" r=".4"/></svg><span id="iq"></span></button><button class="ib icm" data-cmpanel title="Замечания" aria-label="Замечания"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7.5H7l-3 2.5V11H2.5z"/></svg><span id="icm"></span></button></div>
 <div class="mscrim"></div>
 <nav class="menu" id="menu" aria-label="Меню карты"><div class="mtop"><div><span class="draft">Черновик</span><h1>Перезапуск акции DineClub — «билет Acme Tickets = скидка 10%»</h1></div><button class="x" data-menu="close" aria-label="Закрыть">×</button></div>
 <button class="play" id="play">▶ Рассказать историю</button>
 <div class="mlist"><span id="blk"></span>
 <button class="mi" data-guide="help"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h4.5A1.5 1.5 0 0 1 8 4.5V14a1.5 1.5 0 0 0-1.5-1.5H2zM14 3H9.5A1.5 1.5 0 0 0 8 4.5V14a1.5 1.5 0 0 1 1.5-1.5H14z"/></svg>Инструкции</button>
-<button class="mi" data-guide="legend"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2.5" width="4" height="4" rx="1"/><path d="M8.5 4.5H14"/><circle cx="4" cy="11.5" r="2"/><path d="M8.5 11.5H14"/></svg>Легенда</button><button class="mi" data-adrmenu><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 13.5L8 2l6 11.5M4.6 9h6.8" fill="none"/></svg>ADR и системные требования</button><button class="mi" data-rmmenu><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h7M5 8h8M3 12h6" fill="none"/></svg>Roadmap</button>
+<button class="mi" data-guide="legend"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2.5" width="4" height="4" rx="1"/><path d="M8.5 4.5H14"/><circle cx="4" cy="11.5" r="2"/><path d="M8.5 11.5H14"/></svg>Легенда</button><button class="mi" data-adrmenu><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 13.5L8 2l6 11.5M4.6 9h6.8" fill="none"/></svg>ADR и системные требования</button><button class="mi" data-rmmenu><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h7M5 8h8M3 12h6" fill="none"/></svg>Roadmap</button><button class="mi" data-rkmenu><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5l6 11H2z M8 6.5v3.2 M8 11.6v.2" fill="none"/></svg>Риски исполнения</button>
 <button class="mi" data-qpanel><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M6.2 6.1a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.6"/></svg>Уточнить</button>
 <button class="mi" data-seamspanel hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h5v8H2zM9 4h5v8H9z" fill="none"/><path d="M7 8h2"/></svg>Стыки<b class="cnt" id="seamcnt" hidden></b></button>
 <button class="mi" data-cmpanel><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7.5H7l-3 2.5V11H2.5z"/></svg>Замечания<b class="cnt cmn" id="cmn" hidden></b></button></div>
@@ -1857,6 +1857,7 @@ const BPK = (function () {
     const rcp = t.closest("[data-rlcopy]"); if (rcp) return copyText(rlCmd(), rcp);
     if (t.closest("[data-rlmenu]")) { menu(false); if (RL) return setView("rel") }
     if (t.closest("[data-rmmenu]")) { menu(false); if (RM) return setView("road") }
+    if (t.closest("[data-rkmenu]")) { menu(false); return setView("risk") }
     if (t.closest("#menu [data-guide]") || t.closest("#menu .play")) menu(false);
     const sl = t.closest("[data-sl]"); if (sl) return slide(sl.closest(".pic"), +sl.dataset.sl);
     const dd = t.closest("[data-dot]"); if (dd) return slide(dd.closest(".fr").querySelector(".pic"), 0, +dd.dataset.dot);

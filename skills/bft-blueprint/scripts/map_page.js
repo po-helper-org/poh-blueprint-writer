@@ -1153,6 +1153,7 @@
     const rcp = t.closest("[data-rlcopy]"); if (rcp) return copyText(rlCmd(), rcp);
     if (t.closest("[data-rlmenu]")) { menu(false); if (RL) return setView("rel") }
     if (t.closest("[data-rmmenu]")) { menu(false); if (RM) return setView("road") }
+    if (t.closest("[data-rkmenu]")) { menu(false); return setView("risk") }
     if (t.closest("#menu [data-guide]") || t.closest("#menu .play")) menu(false);
     const sl = t.closest("[data-sl]"); if (sl) return slide(sl.closest(".pic"), +sl.dataset.sl);
     const dd = t.closest("[data-dot]"); if (dd) return slide(dd.closest(".fr").querySelector(".pic"), 0, +dd.dataset.dot);

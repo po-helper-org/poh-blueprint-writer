@@ -338,7 +338,7 @@ d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
 r = d["risks"]
 assert [(a["story"], a["kind"]) for a in r["auto"]] == [("BP-5", "befe"), ("BP-6", "integration"), ("BP-12", "integration"), ("BP-16", "integration"), ("BP-18", "integration")]
 assert {(x["story"], x["kind"]) for x in r["items"]} == {(a["story"], a["kind"]) for a in r["auto"]}
-assert all(x["status"] == "на согласовании" for x in r["items"]) and 'data-view="risk">Риски' in page and "function rkBoard" in page
+assert all(x["status"] == "на согласовании" for x in r["items"]) and 'data-rkmenu' in page and 'data-view="risk">Риски' not in page and "function rkBoard" in page
 PY
 RW="$tmp/bad/risks" && cp -r "$BGOLD" "$RW" && sed -i '/^| X2 | BP-6 |/d; s/^| X5 | BP-18 |/| X5 | BP-99 |/' "$RW/backlog/docs/"*Риски-исполнения.md
 out="$(python3 "$BLINT" "$RW" --no-source --strict 2>&1)"; rc=$?
