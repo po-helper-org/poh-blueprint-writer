@@ -1,10 +1,10 @@
 ---
 id: BP-9.1
-title: 'Ранжирование: близость × рейтинг, фильтры'
+title: Каталог ресторанов ранжирует по близости и рейтингу, чтобы ближние и лучшие шли первыми
 status: To Do
 assignee: []
 created_date: '2026-10-19 19:07'
-updated_date: '2026-10-26 19:31'
+updated_date: '2026-10-26 19:57'
 labels:
   - stage:D
   - layer:backstage

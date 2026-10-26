@@ -351,7 +351,7 @@ class Skeleton:
         atoms = [g.atoms[x] for x in c["atoms"]]
         main = atoms[0] if atoms else None
         # название карточки — что происходит в работающем сервисе; копия названия задачи ничего не говорит (BL039)
-        title = stub(f"что происходит, когда сервис работает: кто → что → результат, до 90 знаков; не повторяй задачу"
+        title = stub(f"<кто> <что делает>, чтобы <результат> — до 90 знаков; кто — компонент или человек, не команда; не повторяй задачу"
                      + (f"; из БФТ: {main.name}" if main else ""))
         pts = [a for a in atoms if a.kind == "ПТ"]
         role = next((a.role for a in pts if a.role), "")

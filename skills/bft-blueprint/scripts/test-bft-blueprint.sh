@@ -399,6 +399,12 @@ NB="$tmp/bad/noteam" && cp -r "$BGOLD" "$NB" && f="$(ls "$NB/backlog/tasks/"bp-5
 out="$(python3 "$BLINT" "$NB" --no-source 2>&1)"
 grep -q "BL054 BP-5.1: у карточки «Как это работает» есть команда" <<<"$out" && grep -q "BL054 BP-5.6: тот же экран, этап и слой, что у BP-5.1" <<<"$out" && grep -q "BL053 BP-5.6: «доработанный»" <<<"$out" \
   && ok "карта · без команд: команда у карточки и дубль по экрану — BL054, «доработанный» — BL053" || fail "карта · BL054 — $out"
+# BL055: название бизнес-процесса — «<кто> <что делает>, чтобы <результат>»; карточки одного размера на всей диаграмме
+FB="$tmp/bad/form" && cp -r "$BGOLD" "$FB" && sed -i 's/^title: .*/title: Проверка билета: активен, не использован, ≤7 дней/' "$(ls "$FB/backlog/tasks/"bp-16.1*.md)"
+out="$(python3 "$BLINT" "$FB" --no-source 2>&1)"
+grep -q "WARN BL055 BP-16.1: «Проверка билета" <<<"$out" && ! grep -q "BL055" <<<"$(python3 "$BLINT" "$BGOLD" --no-source --strict 2>&1)" \
+  && grep -q ".hw{width:248px;height:70px" "$tmp/bout/dineclub-restart-map.html" \
+  && ok "карта · формулировка: «Проверка билета: …» — BL055; карточки 248×70 на всей диаграмме" || fail "карта · BL055 и размер карточек — $out"
 # BL043: подзадача — зона из списка, родитель — история
 ZB="$tmp/bad/zone" && cp -r "$BGOLD" "$ZB" && python3 - "$ZB" <<'PY'
 import sys

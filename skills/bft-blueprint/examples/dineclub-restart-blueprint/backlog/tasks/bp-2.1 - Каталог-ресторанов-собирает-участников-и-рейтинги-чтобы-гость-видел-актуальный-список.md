@@ -1,10 +1,10 @@
 ---
 id: BP-2.1
-title: Каталог наполняется ресторанами-участниками
+title: Каталог ресторанов собирает участников и рейтинги, чтобы гость видел актуальный список
 status: To Do
 assignee: []
 created_date: '2026-10-19 19:07'
-updated_date: '2026-10-26 19:31'
+updated_date: '2026-10-26 19:57'
 labels:
   - stage:A
   - layer:backstage

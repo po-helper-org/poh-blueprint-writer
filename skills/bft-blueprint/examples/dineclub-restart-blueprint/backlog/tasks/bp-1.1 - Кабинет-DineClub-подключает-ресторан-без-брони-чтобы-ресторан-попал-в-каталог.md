@@ -1,10 +1,10 @@
 ---
 id: BP-1.1
-title: Ресторан подключается и попадает в каталог
+title: Кабинет DineClub подключает ресторан без брони, чтобы ресторан попал в каталог
 status: To Do
 assignee: []
 created_date: '2026-10-19 19:07'
-updated_date: '2026-10-26 18:39'
+updated_date: '2026-10-26 19:57'
 labels:
   - stage:A
   - layer:backstage

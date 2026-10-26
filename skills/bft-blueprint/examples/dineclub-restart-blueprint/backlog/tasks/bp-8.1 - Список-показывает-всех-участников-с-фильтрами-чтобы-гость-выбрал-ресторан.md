@@ -1,10 +1,10 @@
 ---
 id: BP-8.1
-title: Список показывает всех участников с фильтрами
+title: Список показывает всех участников с фильтрами, чтобы гость выбрал ресторан
 status: To Do
 assignee: []
 created_date: '2026-10-19 19:07'
-updated_date: '2026-10-19 20:40'
+updated_date: '2026-10-26 19:59'
 labels:
   - stage:D
   - layer:technology

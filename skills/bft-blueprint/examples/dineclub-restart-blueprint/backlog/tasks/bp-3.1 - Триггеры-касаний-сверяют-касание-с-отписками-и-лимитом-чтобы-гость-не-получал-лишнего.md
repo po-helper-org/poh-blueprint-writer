@@ -1,10 +1,10 @@
 ---
 id: BP-3.1
-title: Касания идут по правилам частоты и отписок
+title: Триггеры касаний сверяют касание с отписками и лимитом, чтобы гость не получал лишнего
 status: To Do
 assignee: []
 created_date: '2026-10-19 19:07'
-updated_date: '2026-10-26 19:31'
+updated_date: '2026-10-26 19:57'
 labels:
   - stage:A
   - layer:backstage

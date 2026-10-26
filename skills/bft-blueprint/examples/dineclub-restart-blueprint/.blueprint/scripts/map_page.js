@@ -106,7 +106,7 @@
   /* карточка «Как это работает» — без команды: целевая картинка глазами пользователя, команд исполнения тут ещё нет */
   function procHTML(p) {
     const b = blocks(p.id).length + blocks(p.task).length;
-    return `<button class="hw ${p.layer}${b ? " blk" : ""}${oos(TASK[p.task]) ? " oos" : ""}" data-proc="${p.id}"><span>${esc(p.text)}</span></button>`;
+    return `<button class="hw ${p.layer}${b ? " blk" : ""}${oos(TASK[p.task]) ? " oos" : ""}" data-proc="${p.id}" title="${esc(p.text)}"><span>${esc(p.text)}</span></button>`;
   }
 
   /* ---------- холст ---------- */
