@@ -281,6 +281,28 @@ assert [(z["id"], z["task"], z["zone"], z["team"]) for z in d["subs"]] == [("BP-
 assert next(z for z in d["subs"] if z["id"] == "BP-5.3")["cand"] == "Витрина или TeamA"
 assert len(d["tasks"]) == 19 and "function openSub" in page and "data-teams" in page
 PY
+# MoSCoW: приоритет у каждой истории, Would — за линией Out of scope; без приоритета — BL046, чужое значение — BL006
+python3 - "$tmp/bout" <<'PY' && ok "карта · MoSCoW: 9 Must, 8 Should, 2 Would за линией Out of scope" || fail "карта · приоритеты MoSCoW не дошли до страницы"
+import json, re, sys
+from collections import Counter
+from pathlib import Path
+page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf-8")
+d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
+assert Counter(t["prio"] for t in d["tasks"]) == {"must": 9, "should": 8, "would": 2}
+assert {t["id"] for t in d["tasks"] if t["prio"] == "would"} == {"BP-11", "BP-14"}
+assert all(z["prio"] == "must" for z in d["subs"]) and 'class="oosl do"' in page
+PY
+MB="$tmp/bad/moscow" && cp -r "$BGOLD" "$MB" && python3 - "$MB" <<'PY'
+import sys
+from pathlib import Path
+t = Path(sys.argv[1], "backlog/tasks")
+f = next(t.glob("bp-14 *")); f.write_text(f.read_text(encoding="utf-8").replace("  - moscow:would\n", ""), encoding="utf-8")
+PY
+out="$(python3 "$BLINT" "$MB" --no-source --strict 2>&1)"; rc=$?
+sed -i 's/^  - moscow:would$/  - moscow:could/' "$MB/backlog/tasks/"bp-11\ *
+out2="$(python3 "$BLINT" "$MB" --no-source 2>&1)"; rc2=$?
+[ "$rc" -eq 1 ] && grep -q "BL046 BP-14: нет приоритета" <<<"$out" && [ "$rc2" -eq 1 ] && grep -q "BL006 BP-11: приоритет — одна метка moscow:" <<<"$out2" \
+  && ok "карта · MoSCoW: без приоритета — BL046, чужое значение — BL006" || fail "карта · MoSCoW не проверяется — $out $out2"
 # BL043: подзадача — зона из списка, родитель — история
 ZB="$tmp/bad/zone" && cp -r "$BGOLD" "$ZB" && python3 - "$ZB" <<'PY'
 import sys
@@ -1083,7 +1105,7 @@ from pathlib import Path
 root = Path(sys.argv[1])
 f = next(Path(root, "backlog/docs").glob("doc-* - Roadmap.md"))
 t = f.read_text(encoding="utf-8")
-t = re.sub(r"^\| BP-14 \|.*\n", "", t, flags=re.M)                     # история вне плана
+t = re.sub(r"^\| BP-13 \|.*\n", "", t, flags=re.M)                     # история вне плана (Would вне плана — не ошибка)
 t = re.sub(r"^\| BP-5\.5 \|.*\n", "| BP-5 | 2 | 5 |\n", t, flags=re.M)  # история с подзадачами — сама в плане
 f.write_text(t, encoding="utf-8")
 g = next(Path(root, "backlog/tasks").glob("bp-17 *"))                    # BP-17 зависит от BP-16, а начинается раньше её конца
@@ -1091,7 +1113,7 @@ g.write_text(g.read_text(encoding="utf-8").replace("dependencies: []", "dependen
 PY
 sed -i 's/^| BP-17 | 4 | 5 |$/| BP-17 | 3 | 5 |/' "$tmp/rm-warn/backlog/docs/"*Roadmap.md
 out="$(python3 "$BLINT" "$tmp/rm-warn" --no-source --strict 2>&1)"; rc=$?
-[ "$rc" -eq 1 ] && grep -q "RM005 BP-14 «Push — если канал есть» не в Roadmap" <<<"$out" && grep -q "RM005 BP-5: у истории подзадачи по зонам" <<<"$out" \
+[ "$rc" -eq 1 ] && grep -q "RM005 BP-13 «Напоминание в окне 7 дней: письмо или SMS» не в Roadmap" <<<"$out" && ! grep -q "RM005 BP-14" <<<"$out" && grep -q "RM005 BP-5: у истории подзадачи по зонам" <<<"$out" \
   && grep -q "RM005 BP-5.5 (QA) не в Roadmap" <<<"$out" && grep -q "RM005 BP-17 начинается на неделе 3, а его зависимость BP-16 кончается на неделе 3" <<<"$out" \
   && ok "Roadmap · полнота и порядок: RM005" || fail "Roadmap · RM005 не пойман — $out"
 # AR002: второй ADR в проекте

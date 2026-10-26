@@ -66,6 +66,7 @@
   BL042  экран без исполнения: ни задача, ни её карточка не ссылаются на документ экрана — панель «Исполнение» пуста
   BL044  кроссфункциональная история (в работе две команды и больше) без подзадач по зонам: кто что делает?
   BL045  один экран делают истории разных команд — это один результат: одна история с подзадачами по зонам
+  BL046  у истории нет приоритета Must / Should / Would (метка moscow:) — что коммитим заказчику?
   AR005  ADR без узких мест или компромиссов; на карте есть слой Technology (устройство систем), а документов «ADR»/«Системные требования» нет — этап включён не был
   AR007  C4 L3 ADR: нет «Компонентов»; компонент меняется, а задачи нет; компонент без потоков; контракт TO-BE не идёт ни по одному потоку
   SM005  стык без обязательств; команд 2 и больше, а документа «Стыки» нет — этап включён не был
@@ -150,6 +151,9 @@ def check(pr: bl.Project, source: Path | None, no_source: bool, explicit: bool =
         teams = {t.team for t in ts} - {"?"}
         if k in doc_sid and len(ts) > 1 and len(teams) > 1:
             pr.warn(ts[1].rel, 1, "BL045", f"экран {doc_sid[k]} делают {', '.join(t.id for t in ts)} разных команд — это один результат: одна история, их работа — подзадачи по зонам")
+    for t in pr.tasks:
+        if not t.prio and not any(str(x).lower().startswith("moscow:") for x in t.labels):
+            pr.warn(t.rel, 1, "BL046", f"{t.id}: нет приоритета — must, should или would (would — за линией Out of scope)")
     with_card = {c.parent for c in pr.cards}
     linked = {x for a, b, _ in pr.links() for x in (a, b)}
     for t in pr.tasks:
@@ -277,9 +281,9 @@ def check_roadmap(pr: bl.Project) -> None:
             if t.id in plan:
                 pr.warn(rel, plan[t.id].line, "RM005", f"{t.id}: у истории подзадачи по зонам — в план ставь их, у них свои исполнители и сроки")
             for z in mine:
-                if z.id not in plan:
+                if z.id not in plan and t.prio != "would":
                     pr.warn(rel, 1, "RM005", f"{z.id} ({z.zone}) не в Roadmap — когда её делают?")
-        elif t.id not in plan:
+        elif t.id not in plan and t.prio != "would":
             pr.warn(rel, 1, "RM005", f"{t.id} «{t.title}» не в Roadmap — когда её делают?")
     for i in rm.items:
         w = stories.get(i.id) or subs.get(i.id)
@@ -565,6 +569,7 @@ HINTS = {
     "BL043": "подзадача: `./backlog.py task create … -p BP-5 -l \"stage:B,zone:FE\" -a @vit` — родитель история, этап её, зона из PO, SA, Design, FE, BE, QA, DevOps, Delivery; в плане — блок «## BP-5.2 · …» с «зона: FE»",
     "BL044": "кроссфункциональная история: под ней подзадачи по зонам — «## BP-5.2 · …» с «зона: FE» и «команда: vit»; история в одном контуре остаётся без подзадач",
     "BL045": "одно и то же делают истории разных команд: слей их в одну историю по результату, работу каждой команды — подзадачей по зоне",
+    "BL046": "приоритет истории: в плане строка «приоритет: must | should | would», в проекте — метка moscow:must; would — за линией Out of scope, не коммитмент заказчику",
     "BL042": "экран делает задача: строка «экраны: F3» в задаче (и карточке) плана, в проекте — ./backlog.py task edit BP-N --doc doc-N",
     "BL041": "сотрудник на виду у клиента (официант при госте, мастер-приёмщик при клиенте) — «слой: employee»; его планшет или сканер — в этой же карточке, не отдельной technology",
     "BL040": "участник процесса — система с именем из БФТ или «Механизма»: «Реестр продаж», «Приложение-сканер», а не «Система»",

@@ -152,12 +152,12 @@ def model(pr: bl.Project, base: str = "") -> dict:
     docs = {k: {"title": d.title, "file": d.rel, "screen": doc_screen.get(k, "")} for k, d in pr.docs.items()}
     common = lambda t: {"id": t.id, "stage": t.stage, "team": t.team, "text": t.title, "status": t.status,  # noqa: E731
                         "refs": [str(x) for x in t.refs], "docs": [str(x) for x in t.docs], "file": t.rel}
-    tasks = [{**common(t), "cand": t.cand, "why": t.why, "reqs": t.reqs, "kind": t.kind, "notes": t.notes,
+    tasks = [{**common(t), "prio": t.prio, "cand": t.cand, "why": t.why, "reqs": t.reqs, "kind": t.kind, "notes": t.notes,
               "brief": {k: v[1] for k, v in t.sections.items()}, "ac": [[d, x] for d, x in t.ac]} for t in pr.tasks]
     cards = [{**common(c), "task": c.parent, "layer": c.layer, "lead": c.lead, "us": c.user_story, "js": c.job_stories, "bpmn": re.sub(r"^```mermaid\n|\n?```$", "", c.mermaid.strip()),
               "params": {k: [{"t": it.text, "r": it.refs} for it in v] for k, v in c.params.items()},
               "demo": c.sections.get("HowToDemo", (0, ""))[1]} for c in pr.cards]
-    subs = [{**common(z), "task": z.parent, "zone": z.zone, "cand": z.cand, "lead": z.lead,
+    subs = [{**common(z), "task": z.parent, "zone": z.zone, "prio": z.prio, "cand": z.cand, "lead": z.lead,
              "ac": [[d, x] for d, x in z.ac]} for z in pr.subtasks]
     return {
         "epic": pr.meta.get("epic_slug", ""), "title": pr.title, "prefix": pr.prefix,

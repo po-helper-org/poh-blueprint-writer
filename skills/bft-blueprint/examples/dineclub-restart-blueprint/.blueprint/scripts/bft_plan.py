@@ -28,7 +28,7 @@
     ## BP-3 · Название    задача: строки «ключ: значение», пустая строка, описание, ### Критерии приемки
     ## BP-3.1 · Название  карточка: строки «ключ: значение», пустая строка, описание карточки
 
-Ключи задачи: этап, вид, команда | кандидаты, экраны, документы, ссылки.
+Ключи задачи: этап, вид, приоритет (must | should | would), команда | кандидаты, экраны, документы, ссылки.
 Ключи карточки: этап, слой, команда (по умолчанию — команда задачи), экраны, документы, ссылки.
 Ключи подзадачи истории: этап (этап истории), зона (PO, SA, Design, FE, BE, QA, DevOps, Delivery),
 команда | кандидаты, экраны, документы, ссылки; под описанием — «### Критерии приемки» по желанию.
@@ -71,7 +71,7 @@ HEAD = re.compile(r"^##\s+([A-Za-z]+-\d+(?:\.\d+)?)\s*·\s*(.+?)\s*$")
 
 META = re.compile(r"^([а-яё]+)\s*:\s*(.*)$")
 
-TASK_KEYS = {"этап", "вид", "команда", "кандидаты", "экраны", "документы", "ссылки"}
+TASK_KEYS = {"этап", "вид", "приоритет", "команда", "кандидаты", "экраны", "документы", "ссылки"}
 
 CARD_KEYS = {"этап", "слой", "команда", "экраны", "документы", "ссылки"}
 
@@ -262,6 +262,8 @@ def _check_block(pl: Plan, b: Block, rel: str) -> None:
             pl.err(rel, b.line, "PL003", f"{b.id}: нет строки «{k}: …» сразу под заголовком")
     if b.card and not b.zone and b.meta.get("слой") and b.meta["слой"] not in bl.LAYERS:
         pl.err(rel, b.line, "PL003", f"{b.id}: слой «{b.meta['слой']}» — один из {', '.join(bl.LAYERS)}")
+    if not b.card and b.meta.get("приоритет") and b.meta["приоритет"].lower() not in bl.MOSCOW:
+        pl.err(rel, b.line, "PL003", f"{b.id}: приоритет «{b.meta['приоритет']}» — один из {', '.join(bl.MOSCOW)}")
     if not b.card and b.meta.get("вид") and b.meta["вид"] not in bl.KINDS:
         pl.err(rel, b.line, "PL003", f"{b.id}: вид «{b.meta['вид']}» — один из {', '.join(bl.KINDS)}")
     if not b.card and not b.meta.get("команда") and not b.meta.get("кандидаты"):
@@ -630,10 +632,12 @@ def apply(pl: Plan, root: Path) -> list[str]:
         else:
             cands = split(b.meta.get("кандидаты", ""))
             labels = [f"stage:{b.meta.get('этап', '')}", b.meta.get("вид", "")] + [f"кандидат:{c}" for c in cands]
+            if b.meta.get("приоритет"):
+                labels.append(f"moscow:{b.meta['приоритет'].lower()}")
             team = b.meta.get("команда", "")
             fm["assignee"] = [f"@{team.lstrip('@')}"] if team and not cands else []
             fm.pop("parent_task_id", None)
-        keep = [x for x in fm.get("labels") or [] if not re.match(r"^(stage:|layer:|zone:|кандидат:)", str(x)) and x not in bl.KINDS]
+        keep = [x for x in fm.get("labels") or [] if not re.match(r"^(stage:|layer:|zone:|moscow:|кандидат:)", str(x)) and x not in bl.KINDS]
         fm["labels"] = labels + keep
         docs_ids = [screen_doc.get(s, "") for s in split(b.meta.get("экраны", ""))] + split(b.meta.get("документы", ""))
         if "экраны" in b.meta or "документы" in b.meta:
@@ -740,7 +744,7 @@ def export(root: Path) -> dict[str, str]:
     for t in sorted(pr.tasks, key=lambda x: x.ordinal):
         r = raw[t.id]
         cands = [str(lb).split(":", 1)[1] for lb in r.fm.get("labels") or [] if str(lb).startswith("кандидат:")]
-        meta = [f"этап: {t.stage}", f"вид: {t.kind}"]
+        meta = [f"этап: {t.stage}", f"вид: {t.kind}"] + ([f"приоритет: {t.prio}"] if t.prio else [])
         meta.append(f"кандидаты: {', '.join(cands)}" if cands else f"команда: {t.team}")
         o += _export_block(t, r, meta, sid_of)
         if r.ac:

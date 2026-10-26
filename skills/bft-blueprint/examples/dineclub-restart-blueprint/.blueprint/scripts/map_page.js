@@ -27,6 +27,10 @@
   const ZONES = ["PO", "SA", "Design", "FE", "BE", "QA", "DevOps", "Delivery"];
   const SUBS = D.subs || [], SUB = {}; SUBS.forEach(z => SUB[z.id] = z);
   const subsOf = id => SUBS.filter(z => z.task === id).sort((a, b) => ZONES.indexOf(a.zone) - ZONES.indexOf(b.zone));
+  /* MoSCoW: Must и Should — коммитмент заказчику, Would — за линией Out of scope */
+  const PRIO = { must: "Must", should: "Should", would: "Would" }, PRIO_ORD = { must: 0, should: 1, "": 2, would: 3 };
+  const oos = t => t && t.prio === "would";
+  const byPrio = list => list.slice().sort((a, b) => PRIO_ORD[a.prio || ""] - PRIO_ORD[b.prio || ""]);
   const leadOf = t => t.team in TEAM && (D.teams.find(x => x.id === t.team) || {}).lead || "";
   const qOf = where => D.questions.filter(q => q.where === where && q.open);
   /* вопросы карты («Карта») и истории («История») — одним списком; ответ PO уходит в промпт агенту */
@@ -84,11 +88,11 @@
   function taskHTML(t) {
     const b = blocks(t.id).length, a = asks(t.id), subs = subsOf(t.id);
     const zs = subs.length ? `<span class="zs">${subs.map(z => `<span class="z" style="--c:${teamC(z)}"><b>${esc(z.zone)}</b>${esc(teamN(z))}</span>`).join("")}</span>` : "";
-    return `<button class="wk${b ? " blk" : ""}${subs.length ? " st3" : ""}" data-task="${t.id}" data-team="${t.team}" data-teams="${[...new Set([t.team, ...subs.map(z => z.team)])].join(" ")}" style="--c:${teamC(t)}"><span class="tm${t.team === "?" ? " u" : ""}"><i></i>${esc(teamN(t))}${b ? '<span class="bl">Блокер</span>' : a ? `<span class="qn" title="Открытых вопросов: ${a}">${a}</span>` : ""}</span><span class="tx">${esc(t.text)}</span>${zs}</button>`;
+    return `<button class="wk${b ? " blk" : ""}${subs.length ? " st3" : ""}${oos(t) ? " oos" : ""}" data-task="${t.id}" data-team="${t.team}" data-teams="${[...new Set([t.team, ...subs.map(z => z.team)])].join(" ")}" style="--c:${teamC(t)}"><span class="tm${t.team === "?" ? " u" : ""}"><i></i>${esc(teamN(t))}${t.prio ? `<span class="pr ${t.prio}">${PRIO[t.prio]}</span>` : ""}${b ? '<span class="bl">Блокер</span>' : a ? `<span class="qn" title="Открытых вопросов: ${a}">${a}</span>` : ""}</span><span class="tx">${esc(t.text)}</span>${zs}</button>`;
   }
   function procHTML(p) {
     const b = blocks(p.id).length + blocks(p.task).length;
-    return `<button class="hw ${p.layer}${b ? " blk" : ""}" data-proc="${p.id}" data-team="${p.team}" style="--c:${teamC(p)}"><span>${esc(p.text)}</span><i title="${esc(teamN(p))}"></i></button>`;
+    return `<button class="hw ${p.layer}${b ? " blk" : ""}${oos(TASK[p.task]) ? " oos" : ""}" data-proc="${p.id}" data-team="${p.team}" style="--c:${teamC(p)}"><span>${esc(p.text)}</span><i title="${esc(teamN(p))}"></i></button>`;
   }
 
   /* ---------- холст ---------- */
@@ -96,7 +100,10 @@
   grid.style.gridTemplateColumns = `96px repeat(${COLS.length}, minmax(224px, 1fr))`;
   grid.style.minWidth = `${96 + COLS.length * 236}px`;
   let h = `<div class="mh corner"></div>` + COLS.map((c, i) => `<div class="mh"><span class="n">${i === COLS.length - 1 ? "✓" : i + 1}</span><span class="hx"><b>${esc(c.name)}</b>${c.when ? `<small>${esc(c.when)}</small>` : ""}</span></div>`).join("");
-  h += `<div class="ml do">Что делаем</div>` + COLS.map((col, c) => `<div class="mc do">${D.tasks.filter(t => t.stage === col.id).map(taskHTML).join("")}</div>`).join("");
+  h += `<div class="ml do">Что делаем</div>` + COLS.map(col => `<div class="mc do">${byPrio(D.tasks.filter(t => t.stage === col.id && !oos(t))).map(taskHTML).join("")}</div>`).join("");
+  /* линия Out of scope: под ней — истории Would, они к инициативе относятся, но коммитментом заказчику не обсуждались */
+  if (D.tasks.some(oos)) h += `<div class="oosl do"></div><div class="ml do oosm">Out of scope<small>Would — не коммитмент заказчику</small></div>` +
+    COLS.map(col => `<div class="mc do oosc">${D.tasks.filter(t => t.stage === col.id && oos(t)).map(taskHTML).join("")}</div>`).join("");
   /* все четыре ряда — даже пустой: «сотрудника на виду у гостя нет» — тоже ответ */
   Object.keys(LAYER).forEach(l => {
     h += `<div class="ml hrow how l-${l}">${LAYER[l][0]}<small>${LAYER[l][1]}</small></div>` + COLS.map(col => `<div class="mc how l-${l}">${D.cards.filter(p => p.layer === l && p.stage === col.id).map(procHTML).join("")}</div>`).join("");
@@ -399,10 +406,10 @@
       h += `<div class="rmrow" style="${cols};--c:${teamC(t)}"><div class="rmtm" style="grid-row:1 / ${lanes.length + 1}"><i></i><b>${esc(tm === "?" ? "Команда не определена" : teamN(t))}</b>${lead ? `<small>${esc(lead)}</small>` : ""}<small>${mine.length} ${plural(mine.length, "работа", "работы", "работ")}</small></div>
         ${Array.from({ length: W }, (_, k) => wcol(k + 1).replace('style="', `style="grid-row:1 / ${lanes.length + 1};`)).join("")}
         ${mine.map(i => { const w = work(i.id), z = SUB[i.id];
-          return `<button class="rmbar${blocks(i.id).length ? " blk" : ""}" ${z ? "data-sub" : "data-task"}="${esc(i.id)}" style="grid-column:${i.start + 1} / ${i.end + 2};grid-row:${i._lane}" title="${esc(i.id)} · ${esc(w.text)} · недели ${i.start}–${i.end}"><span class="rmid">${z ? `<i class="zt" style="--c:${teamC(z)}">${esc(z.zone)}</i>` : ""}${esc(i.id)}</span><span class="rmtx">${esc(w.text)}</span></button>` }).join("")}</div>`;
+          return `<button class="rmbar${blocks(i.id).length ? " blk" : ""}${oos(w) ? " oos" : ""}" ${z ? "data-sub" : "data-task"}="${esc(i.id)}" style="grid-column:${i.start + 1} / ${i.end + 2};grid-row:${i._lane}" title="${esc(i.id)} · ${esc(w.text)} · недели ${i.start}–${i.end}"><span class="rmid">${z ? `<i class="zt" style="--c:${teamC(z)}">${esc(z.zone)}</i>` : ""}${esc(i.id)}</span><span class="rmtx">${esc(w.text)}</span></button>` }).join("")}</div>`;
     });
     const planned = new Set(RM.items.map(i => i.id));
-    const off = [...D.tasks.filter(t => !subsOf(t.id).length && !planned.has(t.id)), ...SUBS.filter(z => !planned.has(z.id))];
+    const off = [...D.tasks.filter(t => !oos(t) && !subsOf(t.id).length && !planned.has(t.id)), ...SUBS.filter(z => !oos(z) && !planned.has(z.id))];
     const last = day(W, 4);
     gridRoad.innerHTML = `<div class="rmwrap"><div class="rmhead"><button class="rmback" data-view="see">← К карте</button><span class="arst">${esc(RM.status)}</span><h2>Roadmap</h2>
       <p>${W / SW} ${plural(W / SW, "спринт", "спринта", "спринтов")} по ${SW} ${plural(SW, "неделе", "недели", "недель")} · ${dm(day(1, 0))} — ${dm(last)}.${last.getFullYear()} · не больше ${RM.maxSprints} спринтов</p></div>
@@ -437,9 +444,9 @@
 
   /* ---------- телефон: шаг за шагом сверху вниз; план релиза и архитектура — секциями в начале стека ---------- */
   document.getElementById("mstack").innerHTML = (RL ? `<section class="ms rlms"><div class="mh2"><span class="n">↗</span><div><b>План релиза</b><small>DEV → STAGE → PROD, ворота переходов</small></div></div><div class="wl" id="mrel"></div></section>` : "") + ((AR || SR) ? `<section class="ms arsms"><div class="mh2"><span class="n">A</span><div><b>Архитектура</b><small>ADR и системные требования: как реализуем</small></div></div><div id="madr"></div></section>` : "") + COLS.map((col, c) => {
-    const tasks = D.tasks.filter(t => t.stage === col.id), procs = D.cards.filter(p => p.stage === col.id);
+    const tasks = byPrio(D.tasks.filter(t => t.stage === col.id)), procs = D.cards.filter(p => p.stage === col.id);
     return `<section class="ms"><div class="mh2"><span class="n">${c === COLS.length - 1 ? "✓" : c + 1}</span><div><b>${esc(col.name)}</b>${col.when ? `<small>${esc(col.when)}</small>` : ""}</div></div>
-      <div class="wl">${seenHTML(c)}</div>${tasks.length ? `<span class="lb">Что делаем</span><div class="wl">${tasks.map(taskHTML).join("")}</div>` : ""}
+      <div class="wl">${seenHTML(c)}</div>${tasks.some(t => !oos(t)) ? `<span class="lb">Что делаем</span><div class="wl">${tasks.filter(t => !oos(t)).map(taskHTML).join("")}</div>` : ""}${tasks.some(oos) ? `<span class="lb oosb">Out of scope · Would</span><div class="wl">${tasks.filter(oos).map(taskHTML).join("")}</div>` : ""}
       ${procs.length ? `<span class="lb">Как это работает</span><div class="wl">${procs.map(procHTML).join("")}</div>` : ""}</section>`;
   }).join("");
   /* телефон: план релиза — дорожки по очереди, карточки те же, ворота строкой */
@@ -677,7 +684,7 @@
       sec("HowToDemo", demoHTML(br.HowToDemo, [...t.docs, ...cards.flatMap(c => c.docs)])) + sec("Чеклист приемки", ac) + sec("Дополнительно", mdHTML(br["Дополнительно"] || "")) +
       sec("Как это работает", refList(cards.map(c => `${idChip(c.id)} ${esc(c.text)}`))) + sec("Вопросы", qList(qsOf([id, ...cards.map(c => c.id)]))) + sec("Ссылки", links);
     const tabs = `<nav class="snseg tktabs">${["Требования", "Исполнение"].map((n, i) => `<button data-tktab="${i}"${i === taskTab ? ' class="on"' : ""}>${n}</button>`).join("")}</nav>`;
-    side.innerHTML = head(t.text, `<span class="pteam" style="--c:${teamC(t)}"><i></i>${esc(t.team === "?" && t.cand ? "Команда? " + t.cand : teamN(t))}</span>${leadOf(t) ? " · техлид " + esc(leadOf(t)) : ""} · ${esc(COLS[colOf(t.stage)].name)} · ${esc(id)} · ${esc(t.status)}`, back) + `<div class="snbody">${tabs}${taskTab ? execHTML(t) : html}</div>`;
+    side.innerHTML = head(t.text, `<span class="pteam" style="--c:${teamC(t)}"><i></i>${esc(t.team === "?" && t.cand ? "Команда? " + t.cand : teamN(t))}</span>${leadOf(t) ? " · техлид " + esc(leadOf(t)) : ""}${t.prio ? ` · <span class="pr ${t.prio}">${PRIO[t.prio]}${oos(t) ? " · Out of scope" : ""}</span>` : ""} · ${esc(COLS[colOf(t.stage)].name)} · ${esc(id)} · ${esc(t.status)}`, back) + `<div class="snbody">${tabs}${taskTab ? execHTML(t) : html}</div>`;
     body.classList.remove("wide"); body.classList.add("open"); side.scrollTop = 0;
     side.dataset.ctx = "task:" + id; side.dataset.note = "";
     if (!back) { exFrom = ""; howShow(id) }

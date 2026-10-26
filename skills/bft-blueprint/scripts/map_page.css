@@ -460,3 +460,14 @@ body[data-view="road"] .road{display:block}
 /* слои «Архитектура», «Roadmap», «Релиз» — длиннее экрана: на большом экране html и body не прокручиваются
    (карта листается в своём окне), поэтому слой — своё окно прокрутки */
 @media(min-width:701px){body[data-view="adr"] .adrscr,body[data-view="rel"] .rel,body[data-view="road"] .road{height:100vh;overflow-y:auto;overflow-x:hidden}}
+/* MoSCoW и линия Out of scope на слое «Что делаем»: Would — под линией, приглушённо */
+.wk .tm .pr,.tkmeta .pr{margin-left:6px;padding:0 5px;border-radius:4px;font-size:9.5px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;line-height:15px}
+.pr.must{background:#1d1d1b;color:#fff}.pr.should{background:#ece8df;color:#55524c}.pr.would{background:none;border:1px dashed #b9b3a8;color:#8a857c}
+.tkmeta .pr{margin-left:0;font-size:10px}
+.oosl{grid-column:1 / -1;position:relative;border-top:2px dashed #c4bdb1;margin:6px 0 0;height:0}
+.ml.oosm{color:#8a857c;padding-top:16px!important}.ml.oosm small{display:block;margin-top:4px;font-size:10.5px;font-weight:500;letter-spacing:0;text-transform:none;line-height:1.3;color:#a8a399}
+.mc.oosc{padding-top:12px!important}
+.wk.oos,.hw.oos{opacity:.62;border-style:dashed}.wk.oos:hover,.hw.oos:hover{opacity:1}
+.rmbar.oos{opacity:.6;border-style:dashed;border-left-style:solid}
+.lb.oosb{color:#8a857c;border-top:2px dashed #c4bdb1;padding-top:8px}
+body[data-view="how"] .oosl,body[data-view="how"] .oosm,body[data-view="how"] .oosc{display:none}

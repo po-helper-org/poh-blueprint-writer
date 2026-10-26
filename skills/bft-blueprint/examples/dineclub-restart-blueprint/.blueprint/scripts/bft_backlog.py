@@ -69,6 +69,10 @@ FINAL = bs.FINAL
 
 KINDS = ("создать", "доработать", "используем", "уточнить")
 
+# приоритет истории по MoSCoW — метка moscow:<приоритет>; Would — за линией Out of scope:
+# относится к инициативе, но коммитментом заказчику не обсуждалась
+MOSCOW = ("must", "should", "would")
+
 LAYERS = ("employee", "technology", "backstage", "support")
 
 # функциональные зоны подзадач истории: кто делает свою часть результата (в JIRA — подзадача с исполнителем)
@@ -283,6 +287,7 @@ class BTask:
     stage: str = ""
     layer: str = ""
     zone: str = ""            # функциональная зона подзадачи истории: FE, BE, Design…
+    prio: str = ""            # MoSCoW истории: must, should, would; у подзадачи — как у истории
     team: str = ""            # ID команды или «?»
     cand: str = ""
     kind: str = ""
@@ -1652,6 +1657,10 @@ def _check_task(pr: Project, t: BTask, stages: set, team_ids: set) -> None:
     if len(kinds) != 1:
         pr.err(rel, 1, "BL006", f"{t.id}: вид — одна метка из {', '.join(KINDS)}")
     t.kind = kinds[0].lower() if kinds else ""
+    prio = [x.lower() for x in _label(t, "moscow")]
+    if len(prio) > 1 or (prio and prio[0] not in MOSCOW):
+        pr.err(rel, 1, "BL006", f"{t.id}: приоритет — одна метка moscow: из {', '.join(MOSCOW)}")
+    t.prio = prio[0] if len(prio) == 1 and prio[0] in MOSCOW else ""
     who = [str(a).lstrip("@") for a in (t.fm.get("assignee") or [])]
     cand = _label(t, "кандидат")
     if len(who) > 1:
@@ -1713,6 +1722,7 @@ def _check_subtask(pr: Project, z: BTask, stages: set, team_ids: set, task_ids: 
     if z.parent not in task_ids:
         pr.err(rel, 1, "BL043", f"{z.id}: родитель — история «Что делаем» (`backlog task create -p {pr.prefix}-12 …`), а не «{z.parent or '—'}»")
     par = pr.task(z.parent)
+    z.prio = par.prio if par else ""
     if pr.story and z.stage not in stages:
         pr.err(rel, 1, "BL043", f"{z.id}: этап «{z.stage}» — ID этапа истории или `стало`")
     elif par and z.stage != par.stage:

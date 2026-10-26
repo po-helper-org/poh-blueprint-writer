@@ -5,9 +5,11 @@ status: To Do
 assignee:
   - '@vit'
 created_date: '2026-10-19 19:07'
+updated_date: '2026-10-26 16:34'
 labels:
-  - 'stage:D'
+  - stage:D
   - доработать
+  - moscow:should
 dependencies: []
 documentation:
   - doc-6
