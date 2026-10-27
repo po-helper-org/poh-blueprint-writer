@@ -243,6 +243,8 @@ assert {c["layer"] for c in d["cards"]} == {"employee", "technology", "backstage
 assert all(c["params"].get("out") and c["bpmn"].startswith("flowchart LR") for c in d["cards"])
 # Backstage — процесс и данные, без историй и показа; остальные слои — с UserStory, JobStory, HowToDemo
 assert all(not (c["demo"] or c["us"] or c["js"]) and c["data"] for c in d["cards"] if c["layer"] == "backstage")
+assert all(len(x) == 3 and x[2] for c in d["cards"] for x in c["data"]), [c["id"] for c in d["cards"] if any(not x[2] for x in c["data"])]
+assert 'class="dlist"' in page_src if (page_src := (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf-8")) else False
 assert all(c["demo"] and c["us"] and c["js"] for c in d["cards"] if c["layer"] != "backstage")
 assert all(t["brief"].get("ASIS") and t["ac"] for t in d["tasks"])
 assert len(d["links"]) >= 20 and len(d["notes"]) == 12
@@ -336,7 +338,7 @@ d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
 r = d["risks"]
 assert [(a["story"], a["kind"]) for a in r["auto"]] == [("BP-5", "befe"), ("BP-6", "integration"), ("BP-12", "integration"), ("BP-16", "integration"), ("BP-18", "integration")]
 assert {(x["story"], x["kind"]) for x in r["items"]} == {(a["story"], a["kind"]) for a in r["auto"]}
-assert all(x["status"] == "на согласовании" for x in r["items"]) and 'data-view="risk">Риски' in page and "function rkBoard" in page
+assert all(x["status"] == "на согласовании" for x in r["items"]) and 'data-rkmenu' in page and 'data-view="risk">Риски' not in page and "function rkBoard" in page
 PY
 RW="$tmp/bad/risks" && cp -r "$BGOLD" "$RW" && sed -i '/^| X2 | BP-6 |/d; s/^| X5 | BP-18 |/| X5 | BP-99 |/' "$RW/backlog/docs/"*Риски-исполнения.md
 out="$(python3 "$BLINT" "$RW" --no-source --strict 2>&1)"; rc=$?
@@ -350,6 +352,16 @@ page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf
 d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
 assert d["triggers"] == [{"persona": "rest", "text": "Ресторан подаёт заявку на участие", "stage": "A"}, {"persona": "guest", "text": "Гость купил билет на оффлайн-мероприятие", "stage": "B"}]
 assert "l-user" in page and "l-ev" in page and "const GROUPS" in page and "trgHTML" in page and "stepHTML" in page
+# длинная группа касания — первые три, остальное под «ещё N» (#26)
+assert "const MORE = 3" in page and "data-more" in page and ".sc:not(.open) .xtra{display:none}" in page
+# шаг User Actions: мини-схема «До → Сейчас → После», клик по шагу схемы открывает его панель (#31)
+# замечание по правому клику на шаг CJM, экран Evidence, старт — к ним, а не ко всей карте (#32)
+assert 'key: "step:" + st.id' in page and 'Экран ${sid} «${scrTitle(sid)}» · Evidence' in page and 'key: "trg:" + tg.dataset.persona' in page
+# карточки — в подстолбце своей группы касания, подстолбец не уже карточки (#33)
+assert "const SUBW = 264" in page and "const groupOf = (p, c)" in page and "cards.filter(p => groupOf(p, c) === gi)" in page
+# Evidence — общий первый ряд «Что делаем» и «Как это работает» (#34)
+assert '<div class="mc l-ev">' in page and "h = h.slice(0, hdrLen) + evRow + h.slice(hdrLen)" in page
+assert "function seenFlow" in page and '<div class="snbody">${seenFlow(s)}' in page and 't.closest(".fn[data-seen]")' in page
 PY
 # Evidence: группы касания — путь экранов в контуре; альтернативный экран — в группе основного; шаг CJM — в группе первого экрана
 node - "$tmp/bout/dineclub-restart-map.html" <<'JS' && ok "карта · Evidence: D2 — в группе «Витрина → Все рестораны», F4 — рядом с F3, шаг Ш4 — в группе своего первого экрана" || fail "карта · Evidence и CJM не те"
@@ -378,9 +390,9 @@ grep -q "BL051 BP-15.2: в Support — проектная работа («Диз
   && ok "карта · Support: макет дизайнера и канал рассылки — BL051, разбор обращения — норма" || fail "карта · BL051 не ловит не-Support — $out"
 # BL052: Backstage — процесс и данные; UserStory у неё лишняя, «Данные» — строки «- что — откуда»
 BS="$tmp/bad/backstage" && cp -r "$BGOLD" "$BS" && f="$(ls "$BS/backlog/tasks/"bp-16.1*.md)" \
-  && sed -i 's/^### Параметры$/### UserStory\nКак официант, я хочу ответ сразу, чтобы не спорить.\n\n### Параметры/; s/^- Статус билета и дата мероприятия — Acme Tickets$/- Статус билета из Acme Tickets/' "$f"
+  && sed -i 's/^### Параметры$/### UserStory\nКак официант, я хочу ответ сразу, чтобы не спорить.\n\n### Параметры/; s/^- Статус билета и дата мероприятия — Acme Tickets — понять, давать ли скидку$/- Статус билета из Acme Tickets/; s/^- Штрихкод — Приложение-сканер (BP-15.1) — найти билет$/- Штрихкод — Приложение-сканер (BP-15.1)/' "$f"
 out="$(python3 "$BLINT" "$BS" --no-source 2>&1)"
-grep -q "BL052 BP-16.1: Backstage — процесс и данные; UserStory здесь не нужны" <<<"$out" && grep -q "BL052 BP-16.1: Данные — строка «- что — откуда»" <<<"$out" \
+grep -q "BL052 BP-16.1: Backstage — процесс и данные; UserStory здесь не нужны" <<<"$out" && grep -q "BL052 BP-16.1: Данные — строка «- что — откуда" <<<"$out" && grep -q "BL052 BP-16.1: Данные «Штрихкод» — нет «для чего»" <<<"$out" \
   && ok "карта · Backstage: UserStory лишняя, «Данные» без источника — BL052" || fail "карта · BL052 — $out"
 # BL053: «Как это работает» — регулярный процесс; разовая задача команды — предупреждение, команда в Backstage — ошибка
 RB="$tmp/bad/regular" && cp -r "$BGOLD" "$RB" && f="$(ls "$RB/backlog/tasks/"bp-16.1*.md)" \
@@ -397,6 +409,25 @@ NB="$tmp/bad/noteam" && cp -r "$BGOLD" "$NB" && f="$(ls "$NB/backlog/tasks/"bp-5
 out="$(python3 "$BLINT" "$NB" --no-source 2>&1)"
 grep -q "BL054 BP-5.1: у карточки «Как это работает» есть команда" <<<"$out" && grep -q "BL054 BP-5.6: тот же экран, этап и слой, что у BP-5.1" <<<"$out" && grep -q "BL053 BP-5.6: «доработанный»" <<<"$out" \
   && ok "карта · без команд: команда у карточки и дубль по экрану — BL054, «доработанный» — BL053" || fail "карта · BL054 — $out"
+# BL055: название бизнес-процесса — «<кто> <что делает>, чтобы <результат>»; карточки одного размера на всей диаграмме
+FB="$tmp/bad/form" && cp -r "$BGOLD" "$FB" && sed -i 's/^title: .*/title: Проверка билета: активен, не использован, ≤7 дней/' "$(ls "$FB/backlog/tasks/"bp-16.1*.md)"
+out="$(python3 "$BLINT" "$FB" --no-source 2>&1)"
+grep -q "WARN BL055 BP-16.1: «Проверка билета" <<<"$out" && ! grep -q "BL055" <<<"$(python3 "$BLINT" "$BGOLD" --no-source --strict 2>&1)" \
+  && grep -q ".hw{width:248px;height:70px" "$tmp/bout/dineclub-restart-map.html" \
+  && ok "карта · формулировка: «Проверка билета: …» — BL055; карточки 248×70 на всей диаграмме" || fail "карта · BL055 и размер карточек — $out"
+# BL056: развилка процесса на разные карточки — на карте условием «Если …»; страница подписывает стрелку
+CB2="$tmp/bad/fork" && cp -r "$BGOLD" "$CB2" && sed -i 's/Если билет действителен: билет «использован» (BP-18.1)/Билет «использован» (BP-18.1)/' "$(ls "$CB2/backlog/tasks/"bp-16.1*.md)"
+out="$(python3 "$BLINT" "$CB2" --no-source 2>&1)"
+python3 - "$tmp/bout" <<'PY' && grep -q "WARN BL056 BP-16.1: в «Процессе» развилка «Все условия выполнены?»" <<<"$out" \
+  && ok "карта · развилки: условная связь BP-16.1 → BP-18.1 «если билет действителен», без условия — BL056" || fail "карта · развилки «ЕСЛИ» — $out"
+import json, re, sys
+from pathlib import Path
+page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf-8")
+d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
+L = {(l["src"], l["dst"]): l["cond"] for l in d["links"]}
+assert L[("BP-16.1", "BP-18.1")] == "билет действителен" and L[("BP-12.2", "BP-14.1")] == "есть push-канал", L
+assert 'class="cond' in page and 'cond.h{transform' in page
+PY
 # BL043: подзадача — зона из списка, родитель — история
 ZB="$tmp/bad/zone" && cp -r "$BGOLD" "$ZB" && python3 - "$ZB" <<'PY'
 import sys

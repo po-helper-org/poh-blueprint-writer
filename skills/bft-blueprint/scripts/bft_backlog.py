@@ -152,11 +152,14 @@ CARD_REQUIRED = ("UserStory", "JobStory", "Параметры", "Процесс"
 BACKSTAGE_REQUIRED = ("Параметры", "Процесс")
 BACKSTAGE_SKIP = ("UserStory", "JobStory", "HowToDemo")
 
-# «### Данные»: «- что — откуда», источник — система, документ или карточка (BP-8.1)
-DATA_ITEM = re.compile(r"^[-*]\s+(?P<what>.+?)\s+[—–]\s+(?P<src>.+)$")
+# «### Данные»: «- что — откуда — для чего», источник — система, документ или карточка (BP-8.1)
+DATA_ITEM = re.compile(r"^[-*]\s+(?P<what>.+?)\s+[—–]\s+(?P<src>.+?)(?:\s+[—–]\s+(?P<why>.+))?$")
 
 # участники процесса, которые строят сервис, а не работают в нём: такая карточка — о проекте, а не о сервисе
 PROJECT_ROLE = re.compile(r"^(?:PO|СА|PM|PO .+|СА .+|продакт.*|владелец продукта|(?:системный |бизнес-)?аналитик|разработ\w*|команда.*|архитектор)$", re.I)
+
+# условная связь в «Параметрах»: «Если <условие>: <что> (BP-x.y)» — развилка на карте
+COND = re.compile(r"^[Ее]сли\s+(?P<cond>[^:]+?)\s*:\s*(?P<what>.+)$")
 
 MAX_STEPS = 12          # шагов процесса — дальше схема не читается, карточку делят на две
 
@@ -340,7 +343,7 @@ class BTask:
     mermaid: str = ""                             # блок BPMN в файле
     user_story: str = ""
     job_stories: list = field(default_factory=list)
-    data: list = field(default_factory=list)      # Backstage: [(что, откуда)]
+    data: list = field(default_factory=list)      # Backstage: [(что, откуда, для чего)]
     proc: list = field(default_factory=list)      # шаги процесса: {t: task|xor, …}
 
     @property
@@ -1971,9 +1974,11 @@ def _check_card(pr: Project, c: BTask, stages: set, team_ids: set, task_ids: set
                 continue
             m = DATA_ITEM.match(ln.strip())
             if m:
-                c.data.append((m["what"].strip(), m["src"].strip()))
+                c.data.append((m["what"].strip(), m["src"].strip(), (m["why"] or "").strip()))
+                if not m["why"]:
+                    pr.warn(rel, secs["Данные"][0], "BL052", f"{c.id}: Данные «{m['what'].strip()[:30]}» — нет «для чего»: «- что — откуда — для чего используется»")
             else:
-                pr.warn(rel, secs["Данные"][0], "BL052", f"{c.id}: Данные — строка «- что — откуда», а не «{ln.strip()[:40]}»")
+                pr.warn(rel, secs["Данные"][0], "BL052", f"{c.id}: Данные — строка «- что — откуда — для чего», а не «{ln.strip()[:40]}»")
     if "UserStory" in secs:
         c.user_story = secs["UserStory"][1].strip()
         if c.user_story and not re.match(r"^Как .+,\s*я хочу .+,\s*чтобы .+", c.user_story.replace("**", ""), re.S):

@@ -1,10 +1,10 @@
 ---
 id: BP-7.1
-title: Письмо с билетом приходит с одним офером
+title: Письмо с билетом показывает один офер, чтобы гость заметил скидку
 status: To Do
 assignee: []
 created_date: '2026-10-19 19:07'
-updated_date: '2026-10-26 17:55'
+updated_date: '2026-10-26 19:57'
 labels:
   - stage:C
   - layer:technology

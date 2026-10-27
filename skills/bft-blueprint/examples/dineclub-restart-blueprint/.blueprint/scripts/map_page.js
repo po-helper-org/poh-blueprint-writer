@@ -106,7 +106,7 @@
   /* карточка «Как это работает» — без команды: целевая картинка глазами пользователя, команд исполнения тут ещё нет */
   function procHTML(p) {
     const b = blocks(p.id).length + blocks(p.task).length;
-    return `<button class="hw ${p.layer}${b ? " blk" : ""}${oos(TASK[p.task]) ? " oos" : ""}" data-proc="${p.id}"><span>${esc(p.text)}</span></button>`;
+    return `<button class="hw ${p.layer}${b ? " blk" : ""}${oos(TASK[p.task]) ? " oos" : ""}" data-proc="${p.id}" title="${esc(p.text)}"><span>${esc(p.text)}</span></button>`;
   }
 
   /* ---------- холст ---------- */
@@ -138,11 +138,12 @@
   /* номер шага в пути персонажа: читать слева направо 1 → 2 → 3, старт — перед первым */
   const STEP_NO = {}, stepC = {};
   STEPS.forEach(ss => ss.forEach(st => STEP_NO[st.id] = stepC[st.persona] = (stepC[st.persona] || 0) + 1));
-  const SUBW = 210, wOf = c => Math.max(272, Math.max(1, GROUPS[c].length) * SUBW);
+  const SUBW = 264, wOf = c => Math.max(272, Math.max(1, GROUPS[c].length) * SUBW);
   grid.className = "map";
   grid.style.gridTemplateColumns = `112px ${COLS.map((_, c) => `minmax(${wOf(c)}px, ${Math.max(1, GROUPS[c].length)}fr)`).join(" ")}`;
   grid.style.minWidth = `${112 + COLS.reduce((s, _, c) => s + wOf(c) + 12, 0)}px`;
   let h = `<div class="mh corner"></div>` + COLS.map((c, i) => `<div class="mh"><span class="n">${i === COLS.length - 1 ? "✓" : i + 1}</span><span class="hx"><b>${esc(c.name)}</b>${c.when ? `<small>${esc(c.when)}</small>` : ""}</span></div>`).join("");
+  const hdrLen = h.length;   // сюда встанет ряд Evidence: он общий для «Что делаем» и «Как это работает»
   h += `<div class="ml do">Что делаем</div>` + COLS.map(col => `<div class="mc do">${byPrio(D.tasks.filter(t => t.stage === col.id && !oos(t))).map(taskHTML).join("")}</div>`).join("");
   /* линия Out of scope: под ней — истории Would, они к инициативе относятся, но коммитментом заказчику не обсуждались */
   if (D.tasks.some(oos)) h += `<div class="oosl do"></div><div class="ml do oosm">Out of scope<small>Would — не коммитмент заказчику</small></div>` +
@@ -151,9 +152,14 @@
   const pName = id => (D.personas.find(x => x.id === id) || { name: id }).name;
   const sub = (c, cell) => `<div class="sub" style="grid-template-columns:repeat(${Math.max(1, GROUPS[c].length)},minmax(0,1fr))">${GROUPS[c].map(cell).join("")}</div>`;
   /* Evidence — точки касания: что клиент видит (экран, письмо, уведомление); клик — требования к экрану */
+  /* длинная группа — первые MORE, остальное под «ещё N»: высоту ряда задаёт не самая длинная группа */
+  const MORE = 3, fold = (items, html) => items.map((x, i) => html(x).replace(/^<(\w+) class="/, m => i < MORE ? m : m + "xtra ")).join("")
+    + (items.length > MORE ? `<button class="fold" data-more>ещё ${items.length - MORE}</button>` : "");
   const evHTML = sid => `<button class="ev" data-ev="${esc(sid)}" title="${esc(scrTitle(sid))}"><b>${esc(sid)}</b><span>${esc(scrTitle(sid))}</span></button>`;
-  h += `<div class="ml hrow how l-ev">Evidence<small>точки касания: что видит клиент</small></div>` + COLS.map((_, c) =>
-    `<div class="mc how l-ev">${sub(c, g => `<div class="sc">${g.path ? `<div class="evh">${esc(g.path)}</div>` : ""}${g.screens.map(evHTML).join("")}</div>`)}</div>`).join("");
+  /* Evidence — первым рядом и в «Что делаем»: по нему видно, к какому экрану относятся задачи этапа */
+  const evRow = `<div class="ml hrow l-ev">Evidence<small>точки касания: что видит клиент</small></div>` + COLS.map((_, c) =>
+    `<div class="mc l-ev">${sub(c, g => `<div class="sc">${g.path ? `<div class="evh">${esc(g.path)}</div>` : ""}${fold(g.screens, evHTML)}</div>`)}</div>`).join("");
+  h = h.slice(0, hdrLen) + evRow + h.slice(hdrLen);
   /* User Actions — CJM: старт пути персонажа и его шаги из истории по порядку */
   const trgHTML = tg => `<div class="uat" data-persona="${esc(tg.persona)}" title="Старт пути: ${esc(pName(tg.persona))}"><i></i><span><em>Старт</em><b>${esc(tg.text)}</b><small>${esc(pName(tg.persona).split(/[\s-]+/)[0])}</small></span></div>`;
   const stepHTML = st => `<button class="ua" data-step="${esc(st.id)}" data-seen="${esc(st.seen)}" data-persona="${esc(st.persona)}" data-n="${STEP_NO[st.id]}" title="${esc(pName(st.persona))}: шаг ${STEP_NO[st.id]}"><i>${STEP_NO[st.id]}</i><span><b>${esc(st.title)}</b><small>${esc(pName(st.persona).split(/[\s-]+/)[0])}${st.screens.length ? " · " + st.screens.map(esc).join(", ") : ""}</small></span></button>`;
@@ -161,11 +167,22 @@
     const tgs = (D.triggers || []).filter(tg => tg.stage === col.id);
     return `<div class="mc how l-user">${sub(c, (g, gi) => {
       const mine = tgs.filter(tg => (GROUPS[c].findIndex(x => x.steps.some(st => st.persona === tg.persona)) + 1 || 1) - 1 === gi);
-      return `<div class="sc">${mine.map(trgHTML).join("")}${g.steps.map(stepHTML).join("")}</div>`;
+      return `<div class="sc">${mine.map(trgHTML).join("")}${fold(g.steps, stepHTML)}</div>`;
     })}${GROUPS[c].length ? "" : tgs.map(trgHTML).join("")}</div>`;
   }).join("");
+  /* карточка — в подстолбце своей группы касания: по своему экрану; без экрана — по связанной стрелкой
+     карточке этого этапа, у которой экран есть; иначе в первом подстолбце */
+  const scrOfDoc = d => (D.docs[String(d).toLowerCase().split(" ")[0]] || {}).screen;
+  const ownGroup = (p, c) => { for (const d of p.docs) { const sid = scrOfDoc(d), gi = GROUPS[c].findIndex(g => g.screens.includes(sid)); if (gi >= 0) return gi } return -1 };
+  const groupOf = (p, c) => { const own = ownGroup(p, c); if (own >= 0) return own;
+    for (const l of D.links) { const o = l.src === p.id ? l.dst : l.dst === p.id ? l.src : null; const q = o && PROC[o];
+      if (q && colOf(q.stage) === c) { const gi = ownGroup(q, c); if (gi >= 0) return gi } }
+    return 0 };
   Object.keys(LAYER).forEach(l => {
-    h += `<div class="ml hrow how l-${l}">${LAYER[l][0]}<small>${LAYER[l][1]}</small></div>` + COLS.map(col => `<div class="mc how l-${l}">${D.cards.filter(p => p.layer === l && p.stage === col.id).map(procHTML).join("")}</div>`).join("");
+    h += `<div class="ml hrow how l-${l}">${LAYER[l][0]}<small>${LAYER[l][1]}</small></div>` + COLS.map((col, c) => {
+      const cards = D.cards.filter(p => p.layer === l && p.stage === col.id);
+      return `<div class="mc how l-${l}">${GROUPS[c].length > 1 ? sub(c, (g, gi) => `<div class="sc">${cards.filter(p => groupOf(p, c) === gi).map(procHTML).join("")}</div>`) : cards.map(procHTML).join("")}</div>`;
+    }).join("");
   });
   grid.innerHTML = h;
 
@@ -174,7 +191,7 @@
      под стрелку; линия не проходит под чужой карточкой — обходит её по краю колонки. Наведение на
      старт, точку входа или карточку подсвечивает всю цепочку, остальное гаснет. */
   function drawLinks() {
-    grid.querySelector("svg.hwl")?.remove();
+    grid.querySelector("svg.hwl")?.remove(); grid.querySelectorAll(".cond").forEach(x => x.remove());
     if (body.dataset.view !== "how") return;
     const g = grid.getBoundingClientRect();
     const R = el => { const r = el.getBoundingClientRect(); return { l: r.left - g.left, r: r.right - g.left, t: r.top - g.top, b: r.bottom - g.top, cx: (r.left + r.right) / 2 - g.left, cy: (r.top + r.bottom) / 2 - g.top } };
@@ -192,7 +209,7 @@
       const x0 = Math.min(A.l, B.l), gx = x0 - 4 - 4 * Math.min(2, lane[x0] = (lane[x0] ?? -1) + 1);
       return path([[A.l, A.cy], [gx, A.cy], [gx, B.cy], [B.l, B.cy]], a, b);
     };
-    const seen = new Set(), lane = {};
+    const seen = new Set(), lane = {}, conds = [];
     D.links.forEach(l => {
       if (!PROC[l.src] || !PROC[l.dst]) return;
       // на карте — только соседние шаги; полная цепочка живёт в карточке процесса
@@ -200,14 +217,19 @@
       const key = [l.src, l.dst].sort().join(); if (seen.has(key)) return; seen.add(key);
       const ea = grid.querySelector(`[data-proc="${l.src}"]`), eb = grid.querySelector(`[data-proc="${l.dst}"]`); if (!ea || !eb) return;
       const A = R(ea), B = R(eb);
+      /* условная связь — подпись-ромб «если …» у выхода стрелки: развилку видно без открытия карточки */
+      // вертикальная стрелка — подпись рядом с её началом; горизонтальная — на нижнем крае исходной карточки, чтобы не лечь на соседнюю
+      if (l.cond) conds.push(Math.abs(A.cx - B.cx) < 40 ? { x: A.cx + 6, y: B.t > A.b ? A.b + 3 : A.t - 21, h: 0, t: l.cond, a: l.src, b: l.dst }
+        : { x: A.r - 8, y: A.b - 9, h: 1, t: l.cond, a: l.src, b: l.dst });
       if (Math.abs(A.cx - B.cx) < 40) s += vert(A.cx, A, B, l.src, l.dst, [l.src, l.dst]);
       else if (B.l > A.r) s += Math.abs(A.cy - B.cy) < 3 ? path([[A.r, A.cy], [B.l, B.cy]], l.src, l.dst) : path([[A.r, A.cy], [B.l - 8, A.cy], [B.l - 8, B.cy], [B.l, B.cy]], l.src, l.dst);
       else if (A.l > B.r) s += path([[A.l, A.cy], [B.r + 8, A.cy], [B.r + 8, B.cy], [B.r, B.cy]], l.src, l.dst);
     });
     const cellOf = el => [...grid.children].indexOf(el.closest(".mc")) % (COLS.length + 1);
     /* старт → первый шаг персонажа на этапе */
+    const shown = el => el.offsetParent !== null;   // шаг под «ещё N» стрелок не получает
     grid.querySelectorAll(".uat").forEach(tg => {
-      const dot = [...grid.children][[...grid.children].indexOf(tg.closest(".mc"))].querySelector(`.ua[data-persona="${tg.dataset.persona}"]`); if (!dot) return;
+      const dot = [...tg.closest(".mc").querySelectorAll(`.ua[data-persona="${tg.dataset.persona}"]`)].find(shown); if (!dot) return;
       const A = R(tg.querySelector("i")), B = R(dot.querySelector("i"));
       s += Math.abs(A.cx - B.cx) < 4 ? path([[A.cx, A.b], [B.cx, B.t]], "tg:" + tg.dataset.persona, "st:" + dot.dataset.step)
         : path([[A.cx, A.b], [A.cx, B.cy], [B.l, B.cy]], "tg:" + tg.dataset.persona, "st:" + dot.dataset.step);
@@ -223,6 +245,7 @@
       return path([[A.cx, A.b], [A.cx, yb], [gx, yb], [gx, B.cy], [B.l, B.cy]], a, b);
     };
     grid.querySelectorAll(".ua[data-step]").forEach(dot => {
+      if (!shown(dot)) return;
       const st = STEPS.flat().find(x => x.id === dot.dataset.step), idx = cellOf(dot), A = R(dot.querySelector("i")), done = new Set();
       st.screens.forEach(sid => {
         edges.push(["ev:" + sid, "st:" + st.id]);
@@ -234,7 +257,7 @@
     });
     /* путь персонажа: старт → шаги по порядку слева направо — по низу ряда User Actions (своя дорожка на персонажа), в шаг — слева; виден при наведении, без него порядок держат номера */
     [...new Set([...grid.querySelectorAll(".l-user [data-persona]")].map(x => x.dataset.persona))].forEach((pid, k) => {
-      const seq = urow.flatMap(c => [...c.querySelectorAll(`.uat[data-persona="${pid}"]`), ...[...c.querySelectorAll(`.ua[data-persona="${pid}"]`)].sort((x, y) => x.dataset.n - y.dataset.n)]), Y = ub - 9 - 10 * k;
+      const seq = urow.flatMap(c => [...c.querySelectorAll(`.uat[data-persona="${pid}"]`), ...[...c.querySelectorAll(`.ua[data-persona="${pid}"]`)].filter(shown).sort((x, y) => x.dataset.n - y.dataset.n)]), Y = ub - 9 - 10 * k;
       seq.slice(1).forEach((el, i) => {
         const pa = seq[i], A = R(pa.querySelector("i")), B = R(el.querySelector("i")), ia = nodeId(pa), ib = nodeId(el);
         if (pa.closest(".sc") === el.closest(".sc")) { if (!pa.classList.contains("uat")) s += path([[A.cx, A.b], [B.cx, B.t]], ia, ib).replace('class="ln"', 'class="ln jr"'); return }
@@ -242,7 +265,8 @@
         s += path([[A.cx, A.b], [A.cx, Y], [B.l - 12, Y], [B.l - 12, B.cy], [B.l, B.cy]], ia, ib).replace('class="ln"', 'class="ln jr"');
       });
     });
-    grid.insertAdjacentHTML("beforeend", s + "</svg>");
+    grid.querySelectorAll(".cond").forEach(x => x.remove());
+    grid.insertAdjacentHTML("beforeend", s + "</svg>" + conds.map(c => `<span class="cond${c.h ? " h" : ""}" data-a="${esc(c.a)}" data-b="${esc(c.b)}" style="left:${Math.round(c.x)}px;top:${Math.round(c.y)}px" title="Если ${esc(c.t)}"><i></i>если ${esc(c.t.length > 26 ? c.t.slice(0, 25) + "…" : c.t)}</span>`).join(""));
     grid.dataset.edges = JSON.stringify(edges);
   }
   /* цепочка узла: всё, что до него и после него по стрелкам */
@@ -257,6 +281,7 @@
     const on = chain(nodeId(el)); grid.dataset.hot = nodeId(el); grid.classList.add("hot");
     grid.querySelectorAll(".hw[data-proc],.ua[data-step],.ev,.uat").forEach(x => x.classList.toggle("on", on.has(nodeId(x))));
     grid.querySelectorAll("svg.hwl .ln").forEach(x => x.classList.toggle("on", on.has(x.dataset.a) && on.has(x.dataset.b)));
+    grid.querySelectorAll(".cond").forEach(x => x.classList.toggle("on", on.has(x.dataset.a) && on.has(x.dataset.b)));
   });
   grid.addEventListener("mouseleave", () => { grid.dataset.hot = ""; grid.classList.remove("hot") });
   grid.addEventListener("mouseout", e => { if (!e.relatedTarget || !e.relatedTarget.closest(".hw[data-proc],.ua[data-step],.ev,.uat")) { grid.dataset.hot = ""; grid.classList.remove("hot") } });
@@ -638,13 +663,30 @@
   }
   const closeSide = () => { body.classList.remove("open", "wide"); execHide() };
 
+  /* мини-схема шага «До → сейчас → После»: соседние этапы пути персонажа и этапы, связанные стрелками карточек.
+     «До» отвечает, как пользователь оказался здесь (у первого этапа — старт пути), «После» — куда он может пойти */
+  function seenFlow(s) {
+    const cardsOf = x => { const keys = new Set(x.steps.flatMap(st => st.screens).map(sid => SCR_DOC[sid]).filter(Boolean));
+      return D.cards.filter(c => colOf(c.stage) === x.col && c.docs.some(d => keys.has(docKey(d)))).map(c => c.id) };
+    const mine = D.seen.filter(x => x.persona === s.persona).sort((a, b) => a.col - b.col), i = mine.indexOf(s), my = new Set(cardsOf(s));
+    const via = (from, to) => D.seen.filter(x => x !== s && cardsOf(x).some(c => D.links.some(l => from(l, c) && to(l, c))));
+    const uniq = xs => [...new Set(xs.filter(Boolean))];
+    const before = uniq([mine[i - 1], ...via((l, c) => l.src === c, l => my.has(l.dst))]).filter(x => !x.final && x.col <= s.col);
+    const after = uniq([mine[i + 1], ...via(l => my.has(l.src), (l, c) => l.dst === c)]).filter(x => x.col >= s.col);
+    const short = id => (D.personas.find(x => x.id === id) || { name: id }).name.split(/[\s-]+/)[0];
+    const node = x => `<button class="fn${x === s ? " on" : ""}" data-seen="${esc(x.key)}"><em>${x.final ? "Итог" : esc(COLS[x.col].name)}${x.persona !== s.persona ? " · " + esc(short(x.persona)) : ""}</em><b>${esc(x.steps[0].title)}</b>${x.steps.length > 1 ? `<small>и ещё ${x.steps.length - 1}</small>` : ""}</button>`;
+    const tg = (D.triggers || []).find(x => x.persona === s.persona);
+    const start = !before.length && tg ? `<span class="fn st"><em>Старт</em><b>${esc(tg.text)}</b></span>` : "";
+    const col = (name, xs, extra) => `<div class="fc"><small>${name}</small>${extra}${xs.map(node).join("")}${!xs.length && !extra ? '<span class="fn na">—</span>' : ""}</div>`;
+    return `<div class="flow">${col("До", before, start)}<i class="fa"></i>${col("Сейчас", [s], "")}<i class="fa"></i>${col("После", after, "")}</div>`;
+  }
   function openSeen(key) {
     const s = D.seen.find(x => x.key === key), p = D.personas.find(x => x.id === s.persona), col = COLS[s.col];
     const html = s.steps.map(st => `<div class="stp">${st.screens.length ? `<div class="chips2">${[...new Set(st.screens.map(id => D.screens[id].contour))].map(chip).join("")}</div><div class="vis">${st.screens.map(id => mock(id, 170)).join("")}</div>` : ""}
       <h5>${esc(st.title)}</h5><p>${esc(st.text)}</p>${st.was ? `<div class="was"><b>Раньше</b>${esc(st.was)}</div>` : ""}
       ${qList(qsOf([st.id, ...st.screens]))}<div class="src">Источник: ${esc(st.source)}</div></div>`).join("");
     execPrep(s.steps.flatMap(st => st.screens));
-    side.innerHTML = head(col.name, `<span class="pteam" style="--c:#2f6b2a"><i></i>${esc(p.name)}</span> · ${esc(p.lane)} · ${s.steps.length} ${plural(s.steps.length, "шаг", "шага", "шагов")}`) + `<div class="snbody">${html}${execInline()}</div>`;
+    side.innerHTML = head(col.name, `<span class="pteam" style="--c:#2f6b2a"><i></i>${esc(p.name)}</span> · ${esc(p.lane)} · ${s.steps.length} ${plural(s.steps.length, "шаг", "шага", "шагов")}`) + `<div class="snbody">${seenFlow(s)}${html}${execInline()}</div>`;
     body.classList.remove("wide"); body.classList.add("open"); side.scrollTop = 0;
     side.dataset.ctx = "seen:" + key; side.dataset.note = "";
     execShow(s.steps.flatMap(st => st.screens), "seen:" + key);
@@ -991,9 +1033,14 @@
     /* Backstage — работа за кадром: процесс со схемой и данные, которые ему нужны, — без историй и показа.
        «Данные» — из раздела карточки; нет раздела — из «Входа»: что приходит и от какой карточки */
     const REF = /\s*\(((?:[A-ZА-Я]+-\d+(?:\.\d+)?(?:,\s*)?)+)\)\s*$/;
-    const dataRows = (c.data || []).length ? c.data.map(([what, src]) => { const m = src.match(REF); return [what, m ? src.replace(REF, "") : src, m ? m[1].split(/,\s*/) : []] })
-      : (P.in || []).map(it => [it.t, it.r.map(r => PROC[r] ? teamN(PROC[r]) : "").filter(Boolean).join(", ") || "—", it.r]);
-    const dataHTML = dataRows.length ? `<table class="dtab"><thead><tr><th>Что</th><th>Откуда</th></tr></thead><tbody>${dataRows.map(([w, s, r]) => `<tr><td>${mdInline(w)}</td><td>${mdInline(s)}${r.length ? " " + r.map(idChip).join(" ") : ""}</td></tr>`).join("")}</tbody></table>` : "";
+    /* «Откуда» — компонент-источник, не команда: «Механизм» карточки, на которую ссылается строка */
+    const srcOf = r => PROC[r] ? (((PROC[r].params || {}).mech || [])[0] || {}).t || "" : "";
+    const dataRows = (c.data || []).length ? c.data.map(([what, src, why]) => { const m = src.match(REF); return [what, m ? src.replace(REF, "") : src, m ? m[1].split(/,\s*/) : [], why || ""] })
+      : (P.in || []).map(it => [it.t, it.r.map(srcOf).filter(Boolean).join(", "), it.r, ""]);
+    const cap = s => s ? s[0].toUpperCase() + s.slice(1) : s;
+    const dataHTML = dataRows.length ? `<ul class="dlist">${dataRows.map(([w, s, r, why]) => `<li><b>${mdInline(cap(w))}</b>
+      <span class="dm"><em>Откуда</em><span>${s ? mdInline(cap(s)) : '<i class="na">не указано</i>'}${r.length ? " " + r.map(idChip).join(" ") : ""}</span></span>
+      <span class="dm"><em>Для чего</em><span>${why ? mdInline(cap(why)) : '<i class="na">не указано</i>'}</span></span></li>`).join("")}</ul>` : "";
     if (c.layer === "backstage") {
       side.innerHTML = head(c.text, `<span class="lay" style="--c:${L[2]}">${L[0]}</span> · ${esc(COLS[colOf(c.stage)].name)} · ${esc(id)} · ${esc(c.status)}`, !!t) + `<div class="snbody">
       ${sec("Процесс", proc)}${sec("Данные", dataHTML)}${sec("Вопросы", qList(qsOf([id, c.task])))}${sec("Ссылки", lnk)}</div>`;
@@ -1106,10 +1153,15 @@
     const rcp = t.closest("[data-rlcopy]"); if (rcp) return copyText(rlCmd(), rcp);
     if (t.closest("[data-rlmenu]")) { menu(false); if (RL) return setView("rel") }
     if (t.closest("[data-rmmenu]")) { menu(false); if (RM) return setView("road") }
+    if (t.closest("[data-rkmenu]")) { menu(false); return setView("risk") }
     if (t.closest("#menu [data-guide]") || t.closest("#menu .play")) menu(false);
     const sl = t.closest("[data-sl]"); if (sl) return slide(sl.closest(".pic"), +sl.dataset.sl);
     const dd = t.closest("[data-dot]"); if (dd) return slide(dd.closest(".fr").querySelector(".pic"), 0, +dd.dataset.dot);
     const sd = t.closest("[data-screen-doc]"); if (sd) return openScreen(sd.dataset.screenDoc, 0);
+    const more = t.closest("[data-more]"); if (more) { const sc = more.closest(".sc"), open = !sc.classList.contains("open");
+      sc.classList.toggle("open", open);
+      more.textContent = open ? "свернуть" : `ещё ${sc.querySelectorAll(".xtra").length}`; return drawLinks() }
+    const fl = t.closest(".fn[data-seen]"); if (fl) return openSeen(fl.dataset.seen);
     const ev = t.closest("[data-ev]"); if (ev) { const sid = ev.dataset.ev; if (NOTE_OF[sid]) return openScreen(sid, 0); const s = D.seen.find(x => x.steps.some(st => st.screens.includes(sid))); if (s) return openSeen(s.key) }
     const ua = t.closest(".ua[data-seen]"); if (ua) return openSeen(ua.dataset.seen);
     const tf = t.closest("[data-tf]");
@@ -1168,12 +1220,21 @@
         const what = note || (li ? `${tab ? tab.textContent : ""} · заметка «${li.querySelector("b").textContent}»` : "");
         return { key: "screen:" + id, label: `Экран ${id} «${SCR[id].title}»${what ? " · " + what : ""}`, file: (D.noteFiles || {})[id] || storyDoc } }
       if (kind === "proc") { const s = el.closest(".tk"); return { key: "proc:" + id, label: `Карточка ${id} «${PROC[id].text}»${s ? " · раздел " + s.querySelector("h4").textContent : ""}`, file: PROC[id].file } }
-      if (kind === "seen") return { key: "seen:" + id, label: `Шаги истории «${id}»`, file: storyDoc };
+      if (kind === "seen") { const s = D.seen.find(x => x.key === id) || { steps: [], col: 0 };
+        return { key: "seen:" + id, label: `Шаги истории ${s.steps.map(st => st.id).join(", ")} · этап «${s.final ? "Итог" : COLS[s.col].name}» · ${pName(s.persona)}`, file: storyDoc } }
       if (kind === "sub") return { key: "sub:" + id, label: `Подзадача ${id} «${SUB[id].text}»`, file: SUB[id].file };
       return { key: "map", label: "Карта", file: mapDoc };
     }
     const fr = el.closest(".fr"); if (fr) { const cap = fr.querySelector(".cap").textContent, ids = (fr.dataset.screens || "").split(",").filter(Boolean);
       fr.dataset.cmk = "fr:" + cap; return { key: "fr:" + cap, label: `Что видят · шаг «${cap}»`, file: storyDoc + (ids.length && (D.noteFiles || {})[NOTE_OF[ids[0]]] ? `, ${D.noteFiles[NOTE_OF[ids[0]]]}` : "") } }
+    /* «Как это работает»: шаг CJM, экран Evidence, старт пути — замечание к ним, а не ко всей карте */
+    const ua = el.closest(".ua[data-step]"); if (ua) { const st = STEPS.flat().find(x => x.id === ua.dataset.step); ua.dataset.cmk = "step:" + st.id;
+      const notes = st.screens.map(sid => (D.noteFiles || {})[NOTE_OF[sid]]).filter(Boolean);
+      return { key: "step:" + st.id, label: `Шаг истории ${st.id} «${st.title}» · ${pName(st.persona)}${st.screens.length ? " · экраны " + st.screens.join(", ") : ""}`, file: [storyDoc, ...new Set(notes)].join(", ") } }
+    const ev = el.closest(".ev[data-ev]"); if (ev) { const sid = ev.dataset.ev; ev.dataset.cmk = "screen:" + sid;
+      return { key: "screen:" + sid, label: `Экран ${sid} «${scrTitle(sid)}» · Evidence`, file: (D.noteFiles || {})[NOTE_OF[sid]] || storyDoc } }
+    const tg = el.closest(".uat"); if (tg) { const tr = (D.triggers || []).find(x => x.persona === tg.dataset.persona) || { text: "" }; tg.dataset.cmk = "trg:" + tg.dataset.persona;
+      return { key: "trg:" + tg.dataset.persona, label: `Старт пути «${tr.text}» · ${pName(tg.dataset.persona)}`, file: mapDoc } }
     const wk = el.closest("[data-task]"); if (wk) { const id = wk.dataset.task; wk.dataset.cmk = "task:" + id; return { key: "task:" + id, label: `Задача ${id} «${TASK[id].text}»`, file: TASK[id].file } }
     const hw = el.closest("[data-proc]"); if (hw) { const id = hw.dataset.proc; hw.dataset.cmk = "proc:" + id; return { key: "proc:" + id, label: `Карточка ${id} «${PROC[id].text}»`, file: PROC[id].file } }
     const hd = el.closest(".hh,.mh:not(.corner)"); if (hd) { const name = hd.querySelector("b").textContent; hd.dataset.cmk = "stage:" + name; return { key: "stage:" + name, label: `Этап «${name}»`, file: storyDoc } }
