@@ -1051,8 +1051,36 @@ miss=""; for c in CT001 CT002 CT003 CT004 CT005 CT006 CT007 CT008 CT009 CT010 CT
 CS="$tmp/cts" && cp -r "$BGOLD" "$CS" && rm "$CS/contracts/C-6.md"
 out1="$(python3 "$CTL" lint "$CS" 2>&1)"; python3 "$CTL" skeleton "$CS" >/dev/null 2>&1; out2="$(python3 "$CTL" lint "$CS" 2>&1)"
 grep -q "WARN CT020 BP-1.1 → BP-2.1" <<<"$out1" && grep -q "^cards: BP-1.1, BP-2.1" "$CS/contracts/C-9.md" && grep -q "ERROR CT011 C-9" <<<"$out2" \
-  && [ "$(grep -c " ERROR " <<<"$out2")" -eq 1 ] && ! grep -q CT020 <<<"$out2" && [ "$(ls "$CS/contracts" | wc -l)" -eq 9 ] \
+  && [ "$(grep -c " ERROR " <<<"$out2")" -eq 1 ] && ! grep -q CT020 <<<"$out2" && [ "$(ls "$CS/contracts" | grep -c '^C-.*\.md$')" -eq 8 ] \
   && ok "контракты · skeleton: стык без контракта → каркас C-9 с картой в шапке, незаполненный — только CT011" || fail "контракты · skeleton"
+# Swagger из контрактов: пути и операции, обязательные поля, назначение в описании; без назначения — CT023; вкладка «Контракты»
+python3 - "$BGOLD" "$DIR/scripts" "$tmp/bout/dineclub-restart-map.html" <<'PY' && ok "контракты · Swagger: OpenAPI 3 из 7 API-контрактов, обязательные поля и назначение; вкладка «Контракты»" || fail "контракты · Swagger и вкладка «Контракты»"
+import json, re, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[2])
+import bft_backlog as bl, bft_contracts as bc
+pr = bl.parse(Path(sys.argv[1])); cs = bc.parse(pr)
+d = bc.openapi(cs, pr.title)
+ops = {o["operationId"]: o for p in d["paths"].values() for o in p.values()}
+assert d["openapi"].startswith("3.") and len(ops) == 7 and "C-5" not in ops, sorted(ops)
+v = ops["C-3"]
+assert v["parameters"][0]["name"] == "barcode" and v["parameters"][0]["in"] == "path" and v["parameters"][0]["required"] is True
+assert v["requestBody"]["content"]["application/json"]["schema"]["required"] == ["restaurant_id"]
+r = v["responses"]["200"]["content"]["application/json"]
+assert r["schema"]["required"] == ["status"] and r["schema"]["properties"]["reason"]["description"].startswith("Объяснить официанту причину отказа")
+assert set(v["responses"]) == {"200", "404", "409", "422"} and r["example"]["status"] == "valid"
+items = ops["C-1"]["responses"]["200"]["content"]["application/json"]["schema"]["properties"]["items"]
+assert items["type"] == "array" and "walk_minutes" in items["items"]["properties"]
+f = Path(sys.argv[1]) / "contracts" / "openapi.yaml"
+assert f.read_text(encoding="utf-8") == bc.openapi_text(cs, pr.title), "contracts/openapi.yaml устарел — ./blueprint.py build"
+page = Path(sys.argv[3]).read_text(encoding="utf-8")
+m = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
+assert len(m["contracts"]) == 8 and m["openapi"] == "contracts/openapi.yaml" and 'data-view="api">Контракты' in page and "function openApi" in page
+assert next(c for c in m["contracts"] if c["id"] == "C-3")["resp"][2][4] == "объяснить официанту причину отказа"
+PY
+CP="$tmp/ctp" && cp -r "$BGOLD" "$CP" && sed -i 's/ | объяснить официанту причину отказа |/ |  |/' "$CP/contracts/C-3.md"
+python3 "$CTL" lint "$CP" --no-source 2>&1 | grep -q "WARN CT023 C-3: «Ответ»: поле reason" \
+  && ok "контракты · CT023: поле без «Зачем потребителю»" || fail "контракты · CT023"
 # внешний стык текстом («из внешней системы»), без карточки на той стороне: CT020 и external-каркас на эту карточку
 CX="$tmp/ctx" && cp -r "$BGOLD" "$CX" && sed -i '0,/^- \*\*Вход:\*\* /s//- **Вход:** Рейтинги из внешней системы; /' "$CX/backlog/tasks/bp-9.1 "*.md
 out1="$(python3 "$CTL" lint "$CX" 2>&1)"; python3 "$CTL" skeleton "$CX" >/dev/null 2>&1

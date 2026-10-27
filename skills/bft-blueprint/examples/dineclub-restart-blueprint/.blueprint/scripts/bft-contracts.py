@@ -83,7 +83,7 @@ def report(pr: bl.Project, contracts: list, strict: bool) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("cmd", choices=["lint", "skeleton"], help="lint — проверить контракты; skeleton — каркас на стыки без контракта")
+    ap.add_argument("cmd", choices=["lint", "skeleton", "openapi"], help="lint — проверить контракты; skeleton — каркас на стыки без контракта; openapi — Swagger contracts/openapi.yaml")
     ap.add_argument("project", type=Path, help="папка проекта Backlog.md (<epic>-blueprint)")
     ap.add_argument("--source", help="путь к БФТ (по умолчанию — `source_doc` паспорта рядом с проектом)")
     ap.add_argument("--no-source", action="store_true", help="не сверять источники полей с БФТ")
@@ -108,6 +108,17 @@ def main() -> int:
             print(f"contracts skeleton: {f}")
         print(f"contracts skeleton: стыков без контракта — {len(files)}; шаблон и правила — .blueprint/templates/contract.md, .blueprint/rules/contracts.md")
         print("дальше: заполни места {{…}} в каждом файле, затем ./blueprint.py contracts — до 0 ошибок")
+        return 0
+    if args.cmd == "openapi":
+        pr, contracts = run(args.project, args.source, args.no_source)
+        if [i for i in pr.errors if i.code.startswith("CT")]:
+            report(pr, contracts, False)
+            print("contracts openapi: сначала контракты без ошибок — ./blueprint.py contracts", file=sys.stderr)
+            return 1
+        f = args.project / bc.DIR / bc.OPENAPI
+        f.write_text(bc.openapi_text(contracts, pr.title), encoding="utf-8")
+        api = [c for c in contracts if c.boundary != "service-db" and bc.OP_RE.match(c.get("op"))]
+        print(f"contracts openapi: {f} — операций {len(api)}; mock-сервер: npx @stoplight/prism-cli mock {f}")
         return 0
     try:
         pr, contracts = run(args.project, args.source, args.no_source)
