@@ -34,13 +34,16 @@ WHERE = ("path", "query", "body", "header")
 # высота стыка: в «Данных» — какие поля нужны, а не устройство хранилища (это работа СА)
 DDL_RE = re.compile(r"\b(CREATE|ALTER|INDEX|PRIMARY\s+KEY|FOREIGN\s+KEY|VARCHAR|BIGINT|INTEGER|JOIN|SELECT|INSERT|UPDATE)\b|первичн\w* ключ|внешн\w* ключ|индекс", re.I)
 SECTIONS = ("Запрос", "Ответ", "Пример ответа", "Ошибки", "Sequence", "Цепочка", "Данные")
+# «Зачем потребителю» — что поле даёт вызывающей стороне: из него бэкенд понимает, зачем поле реализовать
 COLUMNS = {
-    "Запрос": ("Поле", "Тип", "Обяз.", "Где", "Источник"),
-    "Ответ": ("Поле", "Тип", "Источник"),
+    "Запрос": ("Поле", "Тип", "Обяз.", "Где", "Источник", "Зачем потребителю"),
+    "Ответ": ("Поле", "Тип", "Обяз.", "Источник", "Зачем потребителю"),
     "Ошибки": ("Статус", "Код", "Когда"),
     "Цепочка": ("Шаг", "Кто", "Вход", "Что делает", "Выход"),
     "Данные": ("Хранилище", "Какие данные нужны", "Источник"),
 }
+# прежний формат без назначения полей читается, линтер просит дописать (CT023)
+LEGACY = {"Запрос": ("Поле", "Тип", "Обяз.", "Где", "Источник"), "Ответ": ("Поле", "Тип", "Источник")}
 
 
 @dataclass
@@ -93,7 +96,7 @@ class Contract:
         return [r.cells.get("Поле", "").strip("` ") for r in self.rows(sec)]
 
 
-def _table(text: str, first: int, cols: tuple) -> tuple[list[Row], list[tuple[int, str]]]:
+def _table(text: str, first: int, cols: tuple, legacy: tuple | None = None) -> tuple[list[Row], list[tuple[int, str]]]:
     """Строки markdown-таблицы раздела по заголовку; (строки, ошибки разбора)."""
     rows, errs, head = [], [], None
     for n, raw in enumerate(text.split("\n"), start=first):
@@ -103,7 +106,7 @@ def _table(text: str, first: int, cols: tuple) -> tuple[list[Row], list[tuple[in
         cells = [c.strip() for c in ln.strip("|").split("|")]
         if head is None:
             head = cells
-            if tuple(head) != cols:
+            if tuple(head) != cols and tuple(head) != legacy:
                 errs.append((n, f"колонки таблицы — | {' | '.join(cols)} |, а не | {' | '.join(head)} |"))
             continue
         if all(re.fullmatch(r":?-{3,}:?", c) for c in cells):
@@ -137,7 +140,7 @@ def read(pr: bl.Project, f: Path) -> Contract | None:
     for sec, cols in COLUMNS.items():
         if sec in c.sections:
             first, body = c.sections[sec]
-            c.tables[sec], errs = _table(body, first + 1, cols)
+            c.tables[sec], errs = _table(body, first + 1, cols, LEGACY.get(sec))
             for n, msg in errs:
                 pr.err(rel, n, "CT004", f"{c.id}: «{sec}»: {msg}")
     if "Пример ответа" in c.sections:
@@ -268,6 +271,10 @@ def check(pr: bl.Project, contracts: list[Contract], reqs: dict | None = None) -
             pr.err(c.rel, c.sections.get("Ошибки", (1,))[0], "CT004", f"{c.id}: внешний стык без ошибок — хотя бы одна строка «Ошибки»")
         elif b in ("frontend-backend", "service-service") and not c.rows("Ошибки"):
             pr.warn(c.rel, c.sections.get("Ошибки", (1,))[0], "CT022", f"{c.id}: нет ни одной ошибки — что видит {c.get('caller')}, если {c.get('callee')} отказал?")
+        for sec in ("Запрос", "Ответ"):
+            for r in c.rows(sec):
+                if not r.cells.get("Зачем потребителю", "").strip():
+                    pr.warn(c.rel, r.line, "CT023", f"{c.id}: «{sec}»: поле {r.cells.get('Поле', '').strip('` ')} — не сказано, зачем оно потребителю ({c.get('caller') if sec == 'Ответ' else c.get('callee')})")
         for sec in ("Запрос", "Ответ"):
             for r in c.rows(sec):
                 name = r.cells.get("Поле", "").strip("` ")
@@ -550,15 +557,15 @@ cards: {', '.join(cards)}
 
 ## Запрос
 
-| Поле | Тип | Обяз. | Где | Источник |
-| --- | --- | --- | --- | --- |
-| {{{{поле латиницей: что уходит от caller — из «Выхода» {a} и «Входа» {b}}}}} | {{{{string · integer · number · boolean · array · object}}}} | {{{{да или нет}}}} | {{{{path · query · body}}}} | {{{{{src}}}}} |
+| Поле | Тип | Обяз. | Где | Источник | Зачем потребителю |
+| --- | --- | --- | --- | --- | --- |
+| {{{{поле латиницей: что уходит от caller — из «Выхода» {a} и «Входа» {b}}}}} | {{{{string · integer · number · boolean · array · object}}}} | {{{{да или нет}}}} | {{{{path · query · body}}}} | {{{{{src}}}}} | {{{{что поле даёт callee: «найти билет гостя»}}}} |
 
 ## Ответ
 
-| Поле | Тип | Источник |
-| --- | --- | --- |
-| {{{{поле латиницей: что caller получает обратно и показывает или передаёт дальше}}}} | {{{{тип}}}} | {{{{{src}}}}} |
+| Поле | Тип | Обяз. | Источник | Зачем потребителю |
+| --- | --- | --- | --- | --- |
+| {{{{поле латиницей: что caller получает обратно и показывает или передаёт дальше}}}} | {{{{тип}}}} | {{{{да или нет}}}} | {{{{{src}}}}} | {{{{что поле даёт caller: «показать официанту причину отказа»}}}} |
 
 ## Пример ответа
 
@@ -625,6 +632,127 @@ def skeleton(pr: bl.Project, contracts: list[Contract]) -> list[tuple[str, str]]
     return out
 
 
+# --- Swagger: OpenAPI 3 из API-контрактов --------------------------------------------------------
+# Технический контракт для бэкенда: по файлу поднимается mock-сервер (Prism, MockAPI прототипа), у каждого
+# поля — тип, обязательность, зачем оно потребителю и источник в БФТ. Контракты базы данных (service-db)
+# в OpenAPI не входят — они на вкладке «Контракты» карты.
+OPENAPI = "openapi.yaml"
+
+
+def _field_doc(r: Row) -> str:
+    why, src = r.cells.get("Зачем потребителю", "").strip(), r.cells.get("Источник", "").strip()
+    return ". ".join(x for x in (why[:1].upper() + why[1:] if why else "", f"Источник: {src}" if src else "") if x)
+
+
+def _tree(rows: list) -> dict:
+    """Схема объекта из полей «a», «a.b»: у массива — items-объект, у недостающего родителя — объект."""
+    root = {"type": "object", "properties": {}}
+    def holder(parts: list) -> dict:
+        node = root
+        for p in parts:
+            props = node.setdefault("properties", {})
+            ch = props.setdefault(p, {"type": "object", "properties": {}})
+            node = ch.setdefault("items", {"type": "object", "properties": {}}) if ch.get("type") == "array" else ch
+        return node
+    for r in rows:
+        name = r.cells.get("Поле", "").strip("` ")
+        if not FIELD_RE.match(name):
+            continue
+        *parent, leaf = name.split(".")
+        node = holder(parent)
+        typ = r.cells.get("Тип", "").strip() or "string"
+        old = node.setdefault("properties", {}).get(leaf, {})
+        s = {"type": typ if typ in TYPES else "string", "description": _field_doc(r)}
+        if typ == "array":
+            s["items"] = old.get("items") or {"type": "object", "properties": {}}
+        elif typ == "object" and old.get("properties"):
+            s["properties"] = old["properties"]
+        node["properties"][leaf] = s
+        if r.cells.get("Обяз.", "").strip().lower() == "да":
+            node.setdefault("required", []).append(leaf)
+    return root
+
+
+def openapi(contracts: list, title: str) -> dict:
+    """OpenAPI 3.0 по API-контрактам: путь и метод — из op, параметры и тело — из «Запроса», ответ — из «Ответа»
+    с примером, ошибки — по статусам; кто кого вызывает и Sequence — в x-полях операции."""
+    doc = {"openapi": "3.0.3",
+           "info": {"title": f"Контракты стыков · {title}", "version": "1.0.0",
+                    "description": "Собрано из contracts/C-N.md командой ./blueprint.py contracts openapi — правь контракты, не этот файл."},
+           "servers": [{"url": "http://localhost:8080", "description": "MockAPI прототипа: ./blueprint.py prototype build, docker compose up"}],
+           "tags": [{"name": b} for b in BOUNDARIES if b != "service-db" and any(c.boundary == b for c in contracts)],
+           "paths": {}}
+    for c in contracts:
+        m = OP_RE.match(c.get("op"))
+        if c.boundary == "service-db" or not m:
+            continue
+        method, path = m.group(1).lower(), m.group(2)
+        rows = c.rows("Запрос")
+        op = {"operationId": c.id, "summary": c.title, "tags": [c.boundary],
+              "description": f"{c.get('caller')} → {c.get('callee')}. Карточки «Как это работает»: {', '.join(c.cards)}.",
+              "x-caller": c.get("caller"), "x-callee": c.get("callee"), "x-cards": c.cards}
+        params = [{"name": r.cells["Поле"].strip("` "), "in": r.cells.get("Где", "").strip(),
+                   "required": r.cells.get("Где", "").strip() == "path" or r.cells.get("Обяз.", "").strip().lower() == "да",
+                   "description": _field_doc(r), "schema": {"type": r.cells.get("Тип", "string").strip() or "string"}}
+                  for r in rows if r.cells.get("Где", "").strip() in ("path", "query", "header")]
+        if params:
+            op["parameters"] = params
+        body = [r for r in rows if r.cells.get("Где", "").strip() == "body"]
+        if body:
+            op["requestBody"] = {"required": any(r.cells.get("Обяз.", "").strip().lower() == "да" for r in body),
+                                 "content": {"application/json": {"schema": _tree(body)}}}
+        ok = {"description": "Успех", "content": {"application/json": {"schema": _tree(c.rows("Ответ"))}}}
+        if c.example is not None:
+            ok["content"]["application/json"]["example"] = c.example
+        op["responses"] = {"200": ok}
+        errs: dict = {}
+        for r in c.rows("Ошибки"):
+            errs.setdefault(r.cells.get("Статус", "").strip(), []).append((r.cells.get("Код", "").strip(), r.cells.get("Когда", "").strip()))
+        for st, items in errs.items():
+            op["responses"][st] = {"description": "; ".join(f"{k} — {w}" for k, w in items),
+                                   "content": {"application/json": {"schema": {"type": "object", "required": ["code"], "properties": {
+                                       "code": {"type": "string", "enum": [k for k, _ in items]}, "message": {"type": "string"}}},
+                                       "example": {"code": items[0][0], "message": items[0][1]}}}}
+        if c.sequence:
+            op["x-sequence"] = [f"{x.src} {x.arrow} {x.dst}: {x.msg}" for x in c.sequence]
+        doc["paths"].setdefault(path, {})[method] = op
+    return doc
+
+
+_PLAIN = re.compile(r"^[A-Za-z_][\w-]*$")
+
+
+def to_yaml(obj, ind: int = 0) -> str:
+    """YAML без зависимостей: строки — в двойных кавычках (JSON-строка — валидный YAML), ключи-не-слова — тоже."""
+    pad = "  " * ind
+    key = lambda k: k if _PLAIN.match(str(k)) else json.dumps(str(k), ensure_ascii=False)  # noqa: E731
+    scal = lambda v: json.dumps(v, ensure_ascii=False)  # noqa: E731
+    if isinstance(obj, dict):
+        if not obj:
+            return pad + "{}\n"
+        out = ""
+        for k, v in obj.items():
+            if isinstance(v, (dict, list)) and v:
+                out += f"{pad}{key(k)}:\n" + to_yaml(v, ind + 1)
+            else:
+                out += f"{pad}{key(k)}: {scal(v) if not isinstance(v, (dict, list)) else ('{}' if isinstance(v, dict) else '[]')}\n"
+        return out
+    if isinstance(obj, list):
+        out = ""
+        for v in obj:
+            if isinstance(v, (dict, list)) and v:
+                inner = to_yaml(v, ind + 1)
+                out += f"{pad}- " + inner[len(pad) + 2:]
+            else:
+                out += f"{pad}- {scal(v) if not isinstance(v, (dict, list)) else ('{}' if isinstance(v, dict) else '[]')}\n"
+        return out
+    return pad + scal(obj) + "\n"
+
+
+def openapi_text(contracts: list, title: str) -> str:
+    return "# Swagger (OpenAPI 3) — собран из contracts/C-N.md: ./blueprint.py contracts openapi\n" + to_yaml(openapi(contracts, title))
+
+
 HINTS = {
     "CT001": "контракт — файл contracts/C-N.md, frontmatter id: C-N совпадает с именем файла; шаблон — .blueprint/templates/contract.md",
     "CT002": "шапка: title, boundary (external | frontend-backend | service-service | service-db), caller, callee, op «POST /v1/…», cards",
@@ -644,4 +772,5 @@ HINTS = {
     "CT020": "стык на карте (экран ↔ Backstage, Backstage ↔ другая команда, внешняя система) — контракт, в cards: которого обе карточки связи; ./blueprint.py contracts skeleton заведёт его",
     "CT021": "за вызываемой системой есть ещё участники — «## Цепочка»: шаг, кто, вход, что делает, выход",
     "CT022": "добавь в «Ошибки» хотя бы отказ: что получает вызывающая сторона",
+    "CT023": "у каждого поля — «Зачем потребителю»: что поле даёт тому, кто его получает («показать гостю ближние рестораны»); в «Ответе» ещё «Обяз.» — да или нет. Таблицы: | Поле | Тип | Обяз. | Где | Источник | Зачем потребителю | и | Поле | Тип | Обяз. | Источник | Зачем потребителю |",
 }

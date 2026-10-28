@@ -594,6 +594,72 @@
       ${miss.length ? `<section class="rkmiss"><h4>Не записаны — найдены по данным карты</h4>${miss.map(a => `<button class="rkm-i" data-task="${esc(a.story)}"><span class="rkk">${esc(RK_KIND[a.kind][0])}</span><b>${esc(a.story)}</b> ${esc((TASK[a.story] || {}).text || "")}<small>${esc(RK_KIND[a.kind][1])}</small></button>`).join("")}</section>` : ""}</div>`;
   }
 
+  /* ---------- «Расхождения с требованиями»: где проработка карты отошла от первичных БФТ ----------
+     Данные — документ «Расхождения с требованиями» (ключ devs): функционал, что требуется в БФТ, что изменилось
+     в процессе, решение. Строка без решения — эскалировать. Требование кликается: где оно на карте. */
+  const DV = D.devs || null, gridDev = document.getElementById("devs");
+  const dvOpen = r => !String(r.decision || "").trim() || /УТОЧНИТЬ/.test(r.decision);
+  function dvBoard() {
+    if (!DV || !gridDev) return;
+    const open = DV.items.filter(dvOpen).length;
+    const req = id => `<button class="dvreq" data-dvreq="${esc(id)}" title="Где на карте">${esc(id)}<i>${(DV.at[id] || []).length}</i></button>`;
+    const row = r => `<tr class="${dvOpen(r) ? "esc" : ""}"><td class="dvid">${esc(r.id)}</td><td>${r.reqs.map(req).join(" ")}</td><td><b>${mdInline(r.feature)}</b></td>
+      <td>${mdInline(r.bft)}</td><td>${mdInline(r.change)}</td><td>${dvOpen(r) ? `<span class="dvesc">Эскалировать</span> ` : ""}${mdInline(r.decision || "")}</td></tr>`;
+    gridDev.innerHTML = `<div class="rkwrap"><div class="rmhead"><button class="rmback" data-view="see">← К карте</button>${DV.status ? `<span class="arst">${esc(DV.status)}</span>` : ""}<h2>Расхождения с требованиями</h2>
+      <p>Где карта отошла от первичных БФТ · ${DV.items.length} ${plural(DV.items.length, "расхождение", "расхождения", "расхождений")}${open ? `, без решения ${open} — эскалировать` : ", у всех есть решение"} · документ <code>${esc(DV.file)}</code></p></div>
+      ${DV.items.length ? `<div class="tbl"><table class="dvtbl"><thead><tr><th>ID</th><th>Требование</th><th>Функционал</th><th>Требуется в БФТ</th><th>Изменения в процессе</th><th>Решение</th></tr></thead><tbody>${DV.items.map(row).join("")}</tbody></table></div>`
+        : `<p class="dvnone">Расхождений нет: карта делает всё, что требует БФТ.</p>`}
+      <p class="dvhint">Сверка каждого требования БФТ с картой — <code>./blueprint.py reconcile</code>.</p></div>`;
+  }
+  function openDevReq(id) {
+    const at = DV.at[id] || [], rows = DV.items.filter(r => r.reqs.includes(id));
+    const chip = x => API && API.some(c => c.id === x) ? `<button class="ref" data-api="${esc(x)}">${esc(x)}</button>` : idChip(x);
+    side.innerHTML = head(id, `Требование БФТ · ${rows.map(r => esc(r.id)).join(", ")}`) + `<div class="snbody">
+      ${sec("Где на карте", at.length ? `<p>${at.map(chip).join(" ")}</p>` : "<p>На карте его нет — решение записано в реестре расхождений.</p>")}
+      ${rows.map(r => sec(`${r.id} · ${r.feature}`, `<p><b>Требуется в БФТ.</b> ${mdInline(r.bft)}</p><p><b>Изменения в процессе.</b> ${mdInline(r.change)}</p><p><b>Решение.</b> ${mdInline(r.decision || "— эскалировать")}</p>`)).join("")}
+      ${sec("Ссылки", refList([`<span class="lk">Реестр</span> <code>${esc(DV.file)}</code>`]))}</div>`;
+    body.classList.add("open"); side.scrollTop = 0; side.dataset.ctx = "dev:" + id; side.dataset.note = "";
+  }
+
+  /* ---------- «Контракты»: технические контракты стыков — API и база данных ----------
+     Работа команды согласования контрактов: вход — история, где системы обмениваются данными (БФТ и процесс
+     карточек), выход — контракт contracts/C-N.md и Swagger contracts/openapi.yaml, по нему поднимается mock-сервер.
+     У каждого поля — обязательность и зачем оно потребителю: бэкенд видит, что и зачем реализовать. */
+  const API = D.contracts || null, gridApi = document.getElementById("api");
+  const API_KIND = { "frontend-backend": "Frontend → Backend", "service-service": "Сервис → сервис", "external": "Внешняя система", "service-db": "База данных" };
+  const opParts = op => { const m = String(op || "").match(/^(\S+)\s+(\S+)$/); return m ? [m[1], m[2]] : ["", op || ""] };
+  function apiBoard() {
+    if (!API || !gridApi) return;
+    const card = c => { const [m, path] = opParts(c.op), n = c.req.length + c.resp.length + c.data.length;
+      return `<button class="apic" data-api="${esc(c.id)}"><span class="apitop">${m ? `<b class="mth ${esc(m.toLowerCase())}">${esc(m)}</b><code>${esc(path)}</code>` : '<b class="mth db">DB</b>'}<span class="apiid">${esc(c.id)}</span></span>
+        <span class="apit">${esc(c.title)}</span><small>${esc(c.caller)} → ${esc(c.callee)} · ${n} ${plural(n, "поле", "поля", "полей")}</small></button>` };
+    const kinds = Object.keys(API_KIND).filter(k => API.some(c => c.boundary === k));
+    const api = API.filter(c => c.boundary !== "service-db").length;
+    gridApi.innerHTML = `<div class="rkwrap"><div class="rmhead"><h2>Технические контракты</h2>
+      <p>Стыки, где системы обмениваются данными: ${api} API, ${API.length - api} базы данных. Вход — история со стыком, БФТ и процесс карточек; выход — контракт и Swagger.</p>
+      ${api ? `<a class="swg" href="${esc(fileURL(D.openapi))}" target="_blank" rel="noopener">Swagger · ${esc(D.openapi)}</a>` : ""}</div>
+      ${kinds.map(k => `<section class="apig"><h4>${esc(API_KIND[k])}</h4><div class="apigrid">${API.filter(c => c.boundary === k).map(card).join("")}</div></section>`).join("")}</div>`;
+  }
+  function openApi(id) {
+    const c = API.find(x => x.id === id); if (!c) return;
+    const [m, path] = opParts(c.op), yes = v => /^да$/i.test(String(v).trim());
+    const tbl = (cols, rows) => `<div class="tbl"><table class="apitbl"><thead><tr>${cols.map(x => `<th>${esc(x)}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
+    const fieldCell = (f, typ) => `<td><code>${esc(f)}</code><small>${esc(typ)}</small></td>`;
+    const reqCell = v => `<td><span class="rq ${yes(v) ? "y" : "n"}">${yes(v) ? "обязательное" : "опционально"}</span></td>`;
+    const req = c.req.length ? tbl(["Поле", "Обяз.", "Где", "Зачем потребителю", "Источник"], c.req.map(([f, typ, rq, where, src, why]) => `<tr>${fieldCell(f, typ)}${reqCell(where === "path" ? "да" : rq)}<td>${esc(where)}</td><td>${mdInline(why || "—")}</td><td class="src">${mdInline(src)}</td></tr>`)) : "";
+    const resp = c.resp.length ? tbl(["Поле", "Обяз.", "Зачем потребителю", "Источник"], c.resp.map(([f, typ, rq, src, why]) => `<tr>${fieldCell(f, typ)}${reqCell(rq)}<td>${mdInline(why || "—")}</td><td class="src">${mdInline(src)}</td></tr>`)) : "";
+    const seq = c.seq.length ? `<ol class="apiseq">${c.seq.map(([a, arr, b, msg]) => `<li class="${arr === "-->" ? "ret" : ""}"><b>${esc(a)}</b><i>${arr === "-->" ? "⇢" : "→"}</i><b>${esc(b)}</b><span>${esc(msg)}</span></li>`).join("")}</ol>` : "";
+    const errs = c.errors.length ? tbl(["Статус", "Код", "Когда"], c.errors.map(([s, k, w]) => `<tr><td><b>${esc(s)}</b></td><td><code>${esc(k)}</code></td><td>${mdInline(w)}</td></tr>`)) : "";
+    const chain = c.chain.length ? tbl(["Шаг", "Кто", "Вход", "Что делает", "Выход"], c.chain.map(r => `<tr>${r.map(x => `<td>${esc(x)}</td>`).join("")}</tr>`)) : "";
+    const data = c.data.length ? tbl(["Хранилище", "Какие данные нужны", "Источник"], c.data.map(r => `<tr><td>${esc(r[0])}</td><td>${mdInline(r[1])}</td><td class="src">${mdInline(r[2])}</td></tr>`)) : "";
+    const links = refList([`<span class="lk">Контракт</span> <code>${esc(c.file)}</code>`, ...(m ? [`<span class="lk">Swagger</span> <a href="${esc(fileURL(D.openapi))}" target="_blank" rel="noopener">${esc(D.openapi)}</a> · operationId <code>${esc(c.id)}</code>`] : [])]);
+    side.innerHTML = head(c.title, `<span class="lay">${esc(API_KIND[c.boundary] || c.boundary)}</span> · ${esc(c.caller)} → ${esc(c.callee)} · ${esc(c.id)}`) + `<div class="snbody">
+      ${sec("Операция", `${m ? `<p class="apiop"><b class="mth ${esc(m.toLowerCase())}">${esc(m)}</b><code>${esc(path)}</code></p>` : ""}<p class="apicards">Карточки «Как это работает»: ${c.cards.map(idChip).join(" ")}</p>`)}
+      ${sec("Взаимодействия", seq)}${sec("Запрос", req)}${sec("Ответ", resp)}${sec("Пример ответа", c.example ? `<pre class="apiex">${esc(c.example)}</pre>` : "")}
+      ${sec("Ошибки", errs)}${sec("Цепочка за кадром", chain)}${sec("Данные", data)}${sec("Ссылки", links)}</div>`;
+    body.classList.add("wide", "open"); side.scrollTop = 0; side.dataset.ctx = "api:" + id; side.dataset.note = "";
+  }
+
   /* первый шаг дорожки — куда ведут её ворота */
   const rlStepOfTrack = tr => { const s = RL.steps.find(x => x.track === tr); return s ? s.id : (RL.steps[0] ? RL.steps[0].id : "") };
 
@@ -612,8 +678,10 @@
     if (v === "adr") { if (AR || SR) { adrBoard(); adrGrid.scrollIntoView({ block: "start" }) } return }
     if (v === "road") { if (RM) { rmBoard(); gridRoad.scrollTop = 0 } return }
     if (v === "risk") { if (RK) { rkBoard(); gridRisk.scrollTop = 0 } return }
-    if (was === "rel" || was === "adr" || was === "road" || was === "risk") { window.scrollTo(0, 0) }
-    const col = was === "see" ? firstVisible(hh, hs, 132) : was === "rel" || was === "road" || was === "risk" ? 0 : firstVisible(mh, work, 96);
+    if (v === "api") { if (API) { apiBoard(); gridApi.scrollTop = 0 } return }
+    if (v === "dev") { if (DV) { dvBoard(); gridDev.scrollTop = 0 } return }
+    if (was === "rel" || was === "adr" || was === "road" || was === "risk" || was === "api" || was === "dev") { window.scrollTo(0, 0) }
+    const col = was === "see" ? firstVisible(hh, hs, 132) : was === "rel" || was === "road" || was === "risk" || was === "api" || was === "dev" ? 0 : firstVisible(mh, work, 96);
     if (v === "see") hs.scrollLeft = hh[col] ? hh[col].offsetLeft - 132 : 0;
     else { work.scrollTop = 0; work.scrollLeft = mh[col] ? mh[col].offsetLeft - 96 : 0 }
     drawLinks();
@@ -1154,6 +1222,7 @@
     if (t.closest("[data-rlmenu]")) { menu(false); if (RL) return setView("rel") }
     if (t.closest("[data-rmmenu]")) { menu(false); if (RM) return setView("road") }
     if (t.closest("[data-rkmenu]")) { menu(false); return setView("risk") }
+    if (t.closest("[data-dvmenu]")) { menu(false); return setView("dev") }
     if (t.closest("#menu [data-guide]") || t.closest("#menu .play")) menu(false);
     const sl = t.closest("[data-sl]"); if (sl) return slide(sl.closest(".pic"), +sl.dataset.sl);
     const dd = t.closest("[data-dot]"); if (dd) return slide(dd.closest(".fr").querySelector(".pic"), 0, +dd.dataset.dot);
@@ -1162,6 +1231,8 @@
       sc.classList.toggle("open", open);
       more.textContent = open ? "свернуть" : `ещё ${sc.querySelectorAll(".xtra").length}`; return drawLinks() }
     const fl = t.closest(".fn[data-seen]"); if (fl) return openSeen(fl.dataset.seen);
+    const ap = t.closest("[data-api]"); if (ap) return openApi(ap.dataset.api);
+    const dq = t.closest("[data-dvreq]"); if (dq) return openDevReq(dq.dataset.dvreq);
     const ev = t.closest("[data-ev]"); if (ev) { const sid = ev.dataset.ev; if (NOTE_OF[sid]) return openScreen(sid, 0); const s = D.seen.find(x => x.steps.some(st => st.screens.includes(sid))); if (s) return openSeen(s.key) }
     const ua = t.closest(".ua[data-seen]"); if (ua) return openSeen(ua.dataset.seen);
     const tf = t.closest("[data-tf]");
@@ -1223,6 +1294,8 @@
       if (kind === "seen") { const s = D.seen.find(x => x.key === id) || { steps: [], col: 0 };
         return { key: "seen:" + id, label: `Шаги истории ${s.steps.map(st => st.id).join(", ")} · этап «${s.final ? "Итог" : COLS[s.col].name}» · ${pName(s.persona)}`, file: storyDoc } }
       if (kind === "sub") return { key: "sub:" + id, label: `Подзадача ${id} «${SUB[id].text}»`, file: SUB[id].file };
+      if (kind === "api") { const c = API.find(x => x.id === id); return { key: "api:" + id, label: `Контракт ${id} «${c.title}»`, file: c.file } }
+      if (kind === "dev") return { key: "dev:" + id, label: `Расхождение по требованию ${id}`, file: DV.file };
       return { key: "map", label: "Карта", file: mapDoc };
     }
     const fr = el.closest(".fr"); if (fr) { const cap = fr.querySelector(".cap").textContent, ids = (fr.dataset.screens || "").split(",").filter(Boolean);
@@ -1235,6 +1308,7 @@
       return { key: "screen:" + sid, label: `Экран ${sid} «${scrTitle(sid)}» · Evidence`, file: (D.noteFiles || {})[NOTE_OF[sid]] || storyDoc } }
     const tg = el.closest(".uat"); if (tg) { const tr = (D.triggers || []).find(x => x.persona === tg.dataset.persona) || { text: "" }; tg.dataset.cmk = "trg:" + tg.dataset.persona;
       return { key: "trg:" + tg.dataset.persona, label: `Старт пути «${tr.text}» · ${pName(tg.dataset.persona)}`, file: mapDoc } }
+    const apc = el.closest("[data-api]"); if (apc) { const c = API.find(x => x.id === apc.dataset.api); apc.dataset.cmk = "api:" + c.id; return { key: "api:" + c.id, label: `Контракт ${c.id} «${c.title}»`, file: c.file } }
     const wk = el.closest("[data-task]"); if (wk) { const id = wk.dataset.task; wk.dataset.cmk = "task:" + id; return { key: "task:" + id, label: `Задача ${id} «${TASK[id].text}»`, file: TASK[id].file } }
     const hw = el.closest("[data-proc]"); if (hw) { const id = hw.dataset.proc; hw.dataset.cmk = "proc:" + id; return { key: "proc:" + id, label: `Карточка ${id} «${PROC[id].text}»`, file: PROC[id].file } }
     const hd = el.closest(".hh,.mh:not(.corner)"); if (hd) { const name = hd.querySelector("b").textContent; hd.dataset.cmk = "stage:" + name; return { key: "stage:" + name, label: `Этап «${name}»`, file: storyDoc } }

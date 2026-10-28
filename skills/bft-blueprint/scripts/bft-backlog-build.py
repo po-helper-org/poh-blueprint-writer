@@ -58,6 +58,45 @@ import bft_screens as bsn  # noqa: E402
 
 import bft_mock as bm  # noqa: E402
 
+import bft_contracts as bc  # noqa: E402
+
+
+def _contracts(pr: bl.Project) -> list:
+    """Контракты стыков без следа в отчёте карты: их проверяет ./blueprint.py contracts."""
+    keep = list(pr.issues)
+    try:
+        return bc.parse(pr)
+    finally:
+        pr.issues[:] = keep
+
+
+def contracts_model(pr: bl.Project) -> list:
+    """Вкладка «Контракты»: технические контракты стыков — поля с назначением, пример, ошибки, взаимодействия."""
+    rows = lambda c, sec, cols: [[r.cells.get(k, "") for k in cols] for r in c.rows(sec)]  # noqa: E731
+    ex = lambda c: (re.search(r"```json\s*\n(.*?)\n```", c.sections.get("Пример ответа", (0, ""))[1], re.S) or [None, ""])[1]  # noqa: E731
+    return [{"id": c.id, "title": c.title, "boundary": c.boundary, "caller": c.get("caller"), "callee": c.get("callee"),
+             "op": c.get("op"), "cards": c.cards, "file": c.rel,
+             "req": rows(c, "Запрос", ("Поле", "Тип", "Обяз.", "Где", "Источник", "Зачем потребителю")),
+             "resp": rows(c, "Ответ", ("Поле", "Тип", "Обяз.", "Источник", "Зачем потребителю")),
+             "errors": rows(c, "Ошибки", ("Статус", "Код", "Когда")),
+             "chain": rows(c, "Цепочка", ("Шаг", "Кто", "Вход", "Что делает", "Выход")),
+             "data": rows(c, "Данные", ("Хранилище", "Какие данные нужны", "Источник")),
+             "seq": [[x.src, x.arrow, x.dst, x.msg] for x in c.sequence], "example": ex(c)} for c in _contracts(pr)]
+
+
+def sync_openapi(pr: bl.Project, write: bool = True) -> bool:
+    """contracts/openapi.yaml — Swagger из API-контрактов; True, если файл устарел (и переписан при write)."""
+    cs = [c for c in _contracts(pr) if c.boundary != "service-db" and bc.OP_RE.match(c.get("op"))]
+    f = pr.root / bc.DIR / bc.OPENAPI
+    if not cs:
+        return False
+    text = bc.openapi_text(_contracts(pr), pr.title)
+    if f.is_file() and f.read_text(encoding="utf-8") == text:
+        return False
+    if write:
+        f.write_text(text, encoding="utf-8")
+    return True
+
 def _load(name: str, file: str):
     spec = importlib.util.spec_from_file_location(name, HERE / file)
     mod = importlib.util.module_from_spec(spec)
@@ -67,6 +106,8 @@ def _load(name: str, file: str):
 lint = _load("bl_lint", "bft-backlog-lint.py")
 
 kit = _load("bl_init", "bft-backlog-init.py")
+
+rc = _load("bl_reconcile", "bft-reconcile.py")
 
 ZIP_DATE = (1980, 1, 1, 0, 0, 0)
 
@@ -78,14 +119,14 @@ PAGE = """<!doctype html>
 {css}</style></head>
 <body>
 <h1 class="ptitle">{h1}</h1>
-<div class="fab"><button class="burger" id="burger" aria-label="Меню карты" aria-expanded="false" aria-controls="menu"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg><span class="bdot" id="bdot"></span></button><nav class="views" aria-label="Слой карты"><button data-view="see" class="on">Что видят</button><button data-view="how">Как это работает</button><button data-view="do">Что делаем</button>{rm_btn}{rel_btn}</nav><span id="fchip"></span></div>
+<div class="fab"><button class="burger" id="burger" aria-label="Меню карты" aria-expanded="false" aria-controls="menu"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg><span class="bdot" id="bdot"></span></button><nav class="views" aria-label="Слой карты"><button data-view="see" class="on">Что видят</button><button data-view="how">Как это работает</button><button data-view="do">Что делаем</button>{api_btn}{rm_btn}{rel_btn}</nav><span id="fchip"></span></div>
 <div class="tr"><button class="ib iq" data-qpanel title="Уточнить: ответить на открытые вопросы" aria-label="Уточнить"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M6.2 6.1a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.6"/><circle cx="8" cy="11.6" r=".4"/></svg><span id="iq"></span></button><button class="ib icm" data-cmpanel title="Замечания" aria-label="Замечания"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7.5H7l-3 2.5V11H2.5z"/></svg><span id="icm"></span></button></div>
 <div class="mscrim"></div>
 <nav class="menu" id="menu" aria-label="Меню карты"><div class="mtop"><div><span class="draft{status_cls}">{status}</span><h1>{h1}</h1></div><button class="x" data-menu="close" aria-label="Закрыть">×</button></div>
 <button class="play" id="play">▶ Рассказать историю</button>
 <div class="mlist"><span id="blk"></span>
 <button class="mi" data-guide="help"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h4.5A1.5 1.5 0 0 1 8 4.5V14a1.5 1.5 0 0 0-1.5-1.5H2zM14 3H9.5A1.5 1.5 0 0 0 8 4.5V14a1.5 1.5 0 0 1 1.5-1.5H14z"/></svg>Инструкции</button>
-<button class="mi" data-guide="legend"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2.5" width="4" height="4" rx="1"/><path d="M8.5 4.5H14"/><circle cx="4" cy="11.5" r="2"/><path d="M8.5 11.5H14"/></svg>Легенда</button>{adr_menu}{rm_menu}{rk_menu}{rel_menu}
+<button class="mi" data-guide="legend"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2.5" width="4" height="4" rx="1"/><path d="M8.5 4.5H14"/><circle cx="4" cy="11.5" r="2"/><path d="M8.5 11.5H14"/></svg>Легенда</button>{adr_menu}{rm_menu}{rk_menu}{dv_menu}{rel_menu}
 <button class="mi" data-qpanel><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M6.2 6.1a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.6"/></svg>Уточнить</button>
 <button class="mi" data-seamspanel hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h5v8H2zM9 4h5v8H9z" fill="none"/><path d="M7 8h2"/></svg>Стыки<b class="cnt" id="seamcnt" hidden></b></button>
 <button class="mi" data-cmpanel><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7.5H7l-3 2.5V11H2.5z"/></svg>Замечания<b class="cnt cmn" id="cmn" hidden></b></button></div>
@@ -94,6 +135,8 @@ PAGE = """<!doctype html>
 <div class="wrap" id="work"><div id="grid"></div></div>
 <section class="adrscr" id="adr" aria-label="ADR и Системные требования — как реализуем работу"></section>
 <section class="risk" id="risk" aria-label="Риски исполнения — согласуются с PO"></section>
+<section class="devs" id="devs" aria-label="Расхождения с требованиями — где карта отошла от БФТ"></section>
+<section class="api" id="api" aria-label="Технические контракты стыков: API и база данных"></section>
 <section class="road" id="road" aria-label="Roadmap — кто что делает по неделям и спринтам"></section>
 <section class="rel" id="rel" aria-label="План релиза — дорожки DEV, STAGE, PROD"></section>
 <div class="mstack" id="mstack"></div>
@@ -110,6 +153,15 @@ PAGE = """<!doctype html>
 
 def step_json(s: bs.Step) -> dict:
     return {"id": s.id, "title": s.title, "text": s.text, "was": s.was, "screens": s.screens, "source": s.source}
+
+def devs_model(pr: bl.Project) -> dict:
+    """Реестр «Расхождения с требованиями»: строки и где каждое их требование на карте (ID задач, карточек, экранов, контрактов)."""
+    places = rc.where(pr)
+    return {"status": pr.devs.meta.get("status", ""), "file": pr.devs_doc.rel,
+            "items": [{"id": x.id, "reqs": x.reqs, "feature": x.feature, "bft": x.bft, "change": x.change,
+                       "decision": x.decision} for x in pr.devs.items],
+            "at": {r: [p.split(" ", 1)[1] for p in places.get(r, [])] for x in pr.devs.items for r in x.reqs}}
+
 
 def model(pr: bl.Project, base: str = "") -> dict:
     """Данные страницы — только из файлов проекта (проверяет `provenance`). `base` — путь от страницы
@@ -231,13 +283,15 @@ def model(pr: bl.Project, base: str = "") -> dict:
                         "gates": [{"frm": g.frm, "to": bl.RELEASE_TRACKS[bl.RELEASE_TRACKS.index(g.frm) + 1],
                                    "who": g.who, "criterion": g.criterion} for g in pr.release.gates]}}
            if pr.release is not None and pr.release_doc is not None else {}),
+        **({"devs": devs_model(pr)} if pr.devs is not None and pr.devs_doc is not None else {}),
+        **({"contracts": contracts_model(pr), "openapi": f"{bc.DIR}/{bc.OPENAPI}"} if (pr.root / bc.DIR).is_dir() else {}),
         "files": {"map": pr.map_doc.rel, "story": pr.story_doc.rel, "source": pr.meta.get("source_doc", ""),
                   "project": f"{pr.meta.get('epic_slug', 'epic')}-blueprint"},
         "base": base, "mermaid": ".blueprint/vendor/mermaid.min.js",
     }
 
 # ключи, которые страница считает сама: подписи шагов, ключи кадров, пути — их нет в тексте проекта
-DERIVED = {"key", "label", "rev", "base", "mermaid", "file", "files", "img", "noteFiles", "col", "final", "open", "kind"}
+DERIVED = {"key", "label", "rev", "base", "mermaid", "file", "files", "img", "noteFiles", "col", "final", "open", "kind", "openapi", "at"}
 
 BY_ID = {"notes", "noteFiles", "screens", "docs", "files"}   # словари «ID → значение»: ключ — не имя поля
 
@@ -245,7 +299,9 @@ def provenance(m: dict, pr: bl.Project) -> list[str]:
     """Каждая строка данных страницы есть в файлах проекта Backlog.md — дословно, построчно.
     Путь (файл, картинка) — существует. Возвращает строки, которых в проекте нет: так сборка
     не может показать на карте то, чего в бэклоге не написано."""
-    corpus = "\n".join(f.read_text(encoding="utf-8") for f in sorted(pr.bdir.rglob("*.md")))
+    # бэклог и контракты стыков (вкладка «Контракты») — оба в проекте
+    files = sorted(pr.bdir.rglob("*.md")) + sorted((pr.root / bc.DIR).glob("C-*.md"))
+    corpus = "\n".join(f.read_text(encoding="utf-8") for f in files)
     norm = lambda s: " ".join(s.split())  # noqa: E731
     text = norm(corpus)
     # значение «Параметров» страница показывает без ссылок (BP-x.y): сверяем и с текстом без них
@@ -293,6 +349,11 @@ def render(pr: bl.Project, base: str = "") -> str:
     rk_menu = ('<button class="mi" data-rkmenu><svg viewBox="0 0 16 16" aria-hidden="true">'
                '<path d="M8 2.5l6 11H2z M8 6.5v3.2 M8 11.6v.2" fill="none"/></svg>Риски исполнения</button>') \
         if (pr.risks is not None and pr.risks_doc is not None) or bl.auto_risks(pr) else ""
+    # расхождения с БФТ — пунктом меню: PO видит отходы от первичных требований и решения, строки без решения — эскалирует
+    nd = len(pr.devs.items) if pr.devs is not None and pr.devs_doc is not None else 0
+    dv_menu = ('<button class="mi" data-dvmenu><svg viewBox="0 0 16 16" aria-hidden="true">'
+               '<path d="M2.5 4.5h4M2.5 8h11M9.5 11.5h4M6.5 2.5v4M9.5 9.5v4" fill="none"/></svg>Расхождения с требованиями'
+               f'<b class="cnt">{nd}</b></button>') if pr.devs is not None and pr.devs_doc is not None else ""
     has_rel = pr.release is not None and pr.release_doc is not None
     rel_btn = '<button data-view="rel">Релиз</button>' if has_rel else ""
     rel_menu = ('<button class="mi" data-rlmenu><svg viewBox="0 0 16 16" aria-hidden="true">'
@@ -300,7 +361,8 @@ def render(pr: bl.Project, base: str = "") -> str:
     return PAGE.format(
         title_tag=html.escape(f"Карта · {pr.meta.get('epic_slug', '')}"), h1=html.escape(pr.title),
         status=html.escape(status), status_cls=" ok" if status.lower() == "согласован" else "",
-        adr_menu=adr_menu, rm_btn=rm_btn, rm_menu=rm_menu, rk_menu=rk_menu, rel_btn=rel_btn, rel_menu=rel_menu,
+        api_btn='<button data-view="api">Контракты</button>' if any((pr.root / bc.DIR).glob("C-*.md")) else "",
+        adr_menu=adr_menu, rm_btn=rm_btn, rm_menu=rm_menu, rk_menu=rk_menu, dv_menu=dv_menu, rel_btn=rel_btn, rel_menu=rel_menu,
         css=(HERE / "map_page.css").read_text(encoding="utf-8"),
         kit=(HERE / "page_kit.js").read_text(encoding="utf-8"),
         js=(HERE / "map_page.js").read_text(encoding="utf-8"), data=data)
@@ -351,6 +413,9 @@ def main() -> int:
         stale_img = bm.sync(pr.bdir, pr.story.screens, write=False)
         for sid in stale_img:
             print(f"{pr.bdir / bm.ASSETS / (sid + '.svg')}:1: ERROR BL031 картинка экрана {sid} не совпадает с «Историей» — ./blueprint.py build перепишет")
+        if sync_openapi(pr, write=False):
+            print(f"{pr.root / bc.DIR / bc.OPENAPI}:1: ERROR BL029 Swagger устарел — ./blueprint.py build пересоберёт его из контрактов")
+            stale_kit = list(stale_kit) + [f"{bc.DIR}/{bc.OPENAPI}"]
         miss = [] if stale_img else provenance(model(pr), pr)
         for x in miss:
             print(f"{root}:1: ERROR BL032 на странице было бы то, чего нет в проекте: {x[:120]}")
@@ -359,6 +424,8 @@ def main() -> int:
     if synced:
         print(f"backlog-build: схема BPMN пересобрана из «Процесса» — {', '.join(c.id for c in synced)}")
         pr = lint.run(root, args.source, args.no_source)
+    if sync_openapi(pr, write=True):
+        print(f"backlog-build: Swagger пересобран из контрактов — {pr.root / bc.DIR / bc.OPENAPI}")
     imgs = bm.sync(pr.bdir, pr.story.screens, write=True)
     if imgs:
         print(f"backlog-build: картинки экранов пересобраны из «Истории» — {', '.join(imgs)}")

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Ставит навыки /bft-blueprint, /system-requirements, /adr и /release-plan в воркспейс: skills/ и commands/ (промпт-команды).
+# Ставит навыки /bft-blueprint, /bft-reconcile, /bft-confluence, /system-requirements, /adr и /release-plan в воркспейс: skills/ и commands/ (промпт-команды).
 # Рядом обычно стоит poh-bft-writer — он пишет БФТ, который читает этот навык.
 set -e
 GREEN='\033[0;32m'; BLUE='\033[0;34m'; NC='\033[0m'
@@ -40,13 +40,16 @@ case "$choice" in
   *) echo "Неизвестный выбор"; exit 1 ;;
 esac
 
-mkdir -p "$ROOT/$CMD_DIR" "$ROOT/skills/bft-blueprint" "$ROOT/skills/system-requirements" "$ROOT/skills/adr" "$ROOT/skills/release-plan"
+mkdir -p "$ROOT/$CMD_DIR" "$ROOT/skills/bft-blueprint" "$ROOT/skills/bft-reconcile" "$ROOT/skills/system-requirements" "$ROOT/skills/adr" "$ROOT/skills/release-plan"
 cp "$SRC/commands/bft-blueprint.md" "$ROOT/$CMD_DIR/bft-blueprint.md"
 cp -R "$SRC/skills/bft-blueprint"/. "$ROOT/skills/bft-blueprint"/
 cp "$SRC/commands/system-requirements.md" "$ROOT/$CMD_DIR/system-requirements.md"
 cp -R "$SRC/skills/system-requirements"/. "$ROOT/skills/system-requirements"/
 cp "$SRC/commands/adr.md" "$ROOT/$CMD_DIR/adr.md"
 cp -R "$SRC/skills/adr"/. "$ROOT/skills/adr"/
+cp "$SRC/commands/bft-reconcile.md" "$ROOT/$CMD_DIR/bft-reconcile.md"
+cp "$SRC/commands/bft-confluence.md" "$ROOT/$CMD_DIR/bft-confluence.md"
+cp -R "$SRC/skills/bft-reconcile"/. "$ROOT/skills/bft-reconcile"/
 cp "$SRC/commands/release-plan.md" "$ROOT/$CMD_DIR/release-plan.md"
 cp -R "$SRC/skills/release-plan"/. "$ROOT/skills/release-plan"/
 

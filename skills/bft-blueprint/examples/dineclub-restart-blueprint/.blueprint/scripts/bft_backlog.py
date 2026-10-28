@@ -17,6 +17,7 @@ markdown-файлы, которыми ИИ-агент управляет чер�
   backlog/docs/doc-… - Стыки.md               этап «Контроль стыковочных работ» <!-- bft-seams … -->:
                                              участники стыков, обязательства, контракты, точки, риски
   backlog/docs/doc-… - Риски-исполнения.md   риски исполнения историй, согласуются с PO <!-- bft-risks … -->
+  backlog/docs/doc-… - Расхождения-с-требованиями.md   где карта отошла от БФТ и решение — для PO <!-- bft-deviations … -->
   backlog/docs/doc-… - Roadmap.md             сроки: кто что делает по неделям и спринтам <!-- bft-roadmap … -->
   backlog/docs/doc-… - План-релиза.md         этап «План релиза / Delivery» <!-- bft-release … -->:
                                              дорожки DEV/STAGE/PROD, шаги и ворота между стендами
@@ -110,6 +111,12 @@ ROADMAP_MAX_SPRINTS = 6
 # стык BE+FE в одной истории, работы DevOps, интеграция новых или внешних систем; документ «Риски
 # исполнения» их записывает с митигацией, владельцем и статусом согласования с PO.
 RISKS_META = ("epic_slug", "version", "revised", "status")
+
+# «Расхождения с требованиями»: где проработка карты отошла от первичных БФТ и какое решение — реестр для PO
+DEV_HEADER = ("ID", "Требование", "Функционал", "Требуется в БФТ", "Изменения в процессе", "Решение")
+DEV_META = ("epic_slug", "version", "revised", "status")
+DEV_ID = re.compile(r"^DV-?(?P<num>\d+)$", re.I)
+REQ_ID = re.compile(r"(?<![\w-])(?:БТ|ФТ|НФТ|ИТ|ПТ)-[А-ЯA-Z]?\d+(?![\w-])")
 
 RISKS_HEADER = ("ID", "История", "Тип", "Риск", "Митигация", "Владелец", "Статус")
 
@@ -295,7 +302,7 @@ REQS_LINE = re.compile(r"^Требования(?: БФТ)?\s*:\s*(.*)$")
 
 STEP_RE = re.compile(r"^\d+\.\s+\S")
 
-META_OPEN = re.compile(r"^<!--\s*(bft-map|bft-story|bft-adr|bft-sysreq|bft-seams|bft-release|bft-roadmap|bft-risks)\s*$")
+META_OPEN = re.compile(r"^<!--\s*(bft-map|bft-story|bft-adr|bft-sysreq|bft-seams|bft-release|bft-roadmap|bft-risks|bft-deviations)\s*$")
 
 MERMAID = re.compile(r"```mermaid\n(.*?)\n```", re.S)
 
@@ -617,6 +624,23 @@ class ExecRisk:
     line: int
 
 @dataclass
+class Deviation:
+    """Строка реестра: требование БФТ, что в нём требуется, что изменилось при проработке, решение."""
+    id: str
+    reqs: list
+    feature: str
+    bft: str
+    change: str
+    decision: str
+    line: int
+
+@dataclass
+class Deviations:
+    meta: dict = field(default_factory=dict)
+    items: list = field(default_factory=list)     # [Deviation]
+    doc: "Doc | None" = None
+
+@dataclass
 class ExecRisks:
     meta: dict = field(default_factory=dict)
     items: list = field(default_factory=list)     # [ExecRisk]
@@ -700,6 +724,8 @@ class Project:
     roadmap_doc: Doc | None = None
     roadmap: Roadmap | None = None
     risks_doc: Doc | None = None
+    devs: Deviations | None = None
+    devs_doc: Doc | None = None
     risks: ExecRisks | None = None
     story: bs.Story | None = None
     teams: list[Team] = field(default_factory=list)
@@ -1304,6 +1330,43 @@ def parse_risks(pr: Project, d: Doc) -> ExecRisks:
     rk.meta["_issues"] = issues
     return rk
 
+def parse_devs(pr: Project, d: Doc) -> Deviations:
+    """Документ «Расхождения с требованиями» (<!-- bft-deviations … -->): «## Расхождения» | ID | Требование |
+    Функционал | Требуется в БФТ | Изменения в процессе | Решение |. Форма — здесь (DV001), сверка с БФТ — в линтере."""
+    dv = Deviations(meta={k: v for k, v in d.meta.items() if not k.startswith("_")})
+    dv.doc = d
+    issues: list[bb.Issue] = []
+    err = lambda ln, code, msg: issues.append(bb.Issue(ln, "ERROR", code, msg, d.rel))  # noqa: E731
+    for key in DEV_META:
+        if not str(dv.meta.get(key, "")).strip():
+            err(d.off + 1, "DV001", f"паспорт <!-- bft-deviations -->: нет ключа `{key}`")
+    secs = bb._sections(d.body.split("\n"))
+    if "Расхождения" not in secs:
+        err(d.off + 1, "DV001", f"нет раздела «## Расхождения» с таблицей | {' | '.join(DEV_HEADER)} |")
+    else:
+        ln0, tbody = secs["Расхождения"]
+        found = bb.tables(tbody, first_lineno=d.off + ln0 + 1)
+        if found and tuple(found[0][0]) != DEV_HEADER:
+            err(d.off + ln0, "DV001", f"«Расхождения»: таблица | {' | '.join(DEV_HEADER)} |")
+        for ln, c in (found[0][1] if found and tuple(found[0][0]) == DEV_HEADER else []):
+            if len(c) != len(DEV_HEADER):
+                err(ln, "DV001", f"«Расхождения»: в строке {len(c)} колонок, нужно {len(DEV_HEADER)}")
+                continue
+            did = _norm_id(c[0], DEV_ID, "DV")
+            if not did or any(x.id == did for x in dv.items):
+                err(ln, "DV001", f"расхождение: ID вида DV1…, уникален — «{c[0]}»")
+                continue
+            reqs = REQ_ID.findall(c[1])
+            if not reqs:
+                err(ln, "DV001", f"{did}: «Требование» — ID требования БФТ (ФТ-3, ИТ-4), а не «{c[1].strip()}»")
+                continue
+            if not all(x.strip() for x in (c[2], c[3], c[4])):
+                err(ln, "DV001", f"{did}: нужны «Функционал», «Требуется в БФТ», «Изменения в процессе»")
+                continue
+            dv.items.append(Deviation(did, reqs, c[2].strip(), c[3].strip(), c[4].strip(), c[5].strip(), ln))
+    dv.meta["_issues"] = issues
+    return dv
+
 def auto_risks(pr: Project) -> list[tuple[str, str]]:
     """Кандидаты в риски исполнения по данным карты: [(история, befe|devops|integration)].
     Стык BE+FE — у истории подзадачи BE и FE; DevOps — подзадача DevOps; интеграция — история
@@ -1623,7 +1686,7 @@ def parse(root: Path) -> Project:
             pr.err(d.rel, 1, "BL005", f"второй документ с ID {d.id} — `backlog doctor`")
             continue
         pr.docs[d.id] = d
-        for kind in ("bft-map", "bft-story", "bft-adr", "bft-sysreq", "bft-seams", "bft-release", "bft-roadmap", "bft-risks"):
+        for kind in ("bft-map", "bft-story", "bft-adr", "bft-sysreq", "bft-seams", "bft-release", "bft-roadmap", "bft-risks", "bft-deviations"):
             mc = _meta_comment(d.body, kind)
             if mc:
                 d.meta = {**d.meta, "_kind": kind, **mc[0]}
@@ -1652,6 +1715,13 @@ def parse(root: Path) -> Project:
                     pr.seams_doc = d
                     pr.seams = parse_seams(pr, d)
                     pr.issues.extend(pr.seams.meta.pop("_issues"))
+                elif kind == "bft-deviations":
+                    if pr.devs_doc:
+                        pr.err(d.rel, 1, "DV002", f"вторые «Расхождения с требованиями» — уже есть {pr.devs_doc.rel}")
+                    d.meta = {**d.meta, **mc[0]}
+                    pr.devs_doc = d
+                    pr.devs = parse_devs(pr, d)
+                    pr.issues.extend(pr.devs.meta.pop("_issues"))
                 elif kind == "bft-risks":
                     if pr.risks_doc:
                         pr.err(d.rel, 1, "RK002", f"вторые «Риски исполнения» — уже есть {pr.risks_doc.rel}")

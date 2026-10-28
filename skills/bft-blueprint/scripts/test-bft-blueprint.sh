@@ -344,6 +344,116 @@ RW="$tmp/bad/risks" && cp -r "$BGOLD" "$RW" && sed -i '/^| X2 | BP-6 |/d; s/^| X
 out="$(python3 "$BLINT" "$RW" --no-source --strict 2>&1)"; rc=$?
 [ "$rc" -eq 1 ] && grep -q "RK005 BP-6: риск «интеграция» по данным карты не записан" <<<"$out" && grep -q "RK003 X5: истории BP-99 на карте нет" <<<"$out" \
   && ok "риски исполнения · не записан — RK005, история мимо карты — RK003" || fail "риски исполнения · RK005/RK003 не пойманы — $out"
+# расхождения с требованиями (#38): реестр на странице — пункт меню, требование кликается; DV001/DV003/DV004, BL017 и RC001 — по реестру
+BRC="$DIR/scripts/bft-reconcile.py"
+python3 - "$tmp/bout" <<'PY' && ok "расхождения · 2 строки реестра на странице, пункт меню, где требование на карте" || fail "расхождения не дошли до страницы"
+import json, re, sys
+from pathlib import Path
+page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf-8")
+d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
+v = d["devs"]
+assert [(x["id"], x["reqs"]) for x in v["items"]] == [("DV1", ["ИТ-5", "ФТ-7"]), ("DV2", ["ФТ-17"])], v["items"]
+assert all(x["decision"] for x in v["items"]) and v["at"]["ФТ-7"] and v["file"].endswith("Расхождения-с-требованиями.md")
+assert 'data-dvmenu' in page and "function dvBoard" in page and 'id="devs"' in page
+PY
+DV="$tmp/bad/devs" && cp -r "$BOK" "$DV" && cp "$FIX/story_source.md" "$tmp/bad/devs-bft.md" \
+  && sed -i 's/^| ИТ-1 | Страница после покупки | Блок акции на странице после покупки |$/&\n| ФТ-9 | Push до мероприятия | Push о скидке за день до мероприятия |/' "$tmp/bad/devs-bft.md"
+out="$(python3 "$BLINT" "$DV" --source "$tmp/bad/devs-bft.md" 2>&1)"; rc=$?
+out2="$(python3 "$BRC" "$DV" --source "$tmp/bad/devs-bft.md" 2>&1)"; rc2=$?
+[ "$rc" -eq 1 ] && grep -q " BL017 " <<<"$out" && [ "$rc2" -eq 1 ] && grep -q "RC001 ФТ-9 «Push до мероприятия»" <<<"$out2" && grep -q "| ФТ-9 | Push до мероприятия | — | — | нет на карте |" <<<"$out2" \
+  && ok "сверка · требование БФТ мимо карты и реестра — BL017 и RC001" || fail "сверка · ФТ-9 мимо карты не пойман — $out $out2"
+python3 "$BRC" "$BOK" >/dev/null 2>&1 && ok "сверка · вторая инициатива: всё на карте, код 0" || fail "сверка · вторая инициатива не прошла"
+cat > "$DV/backlog/docs/doc-3 - Расхождения-с-требованиями.md" <<'MD'
+---
+id: doc-3
+title: Расхождения с требованиями
+created_date: '2026-10-28 08:02'
+type: specification
+---
+<!-- bft-deviations
+epic_slug: demo-story
+version: 1
+revised: 2026-10-28
+status: Черновик
+-->
+
+# Расхождения с требованиями
+
+## Расхождения
+
+| ID | Требование | Функционал | Требуется в БФТ | Изменения в процессе | Решение |
+| --- | --- | --- | --- | --- | --- |
+| DV1 | ФТ-9 | Push о скидке | Push за день до мероприятия | Push есть не у всех приложений — напоминание письмом | |
+| DV2 | ФТ-99 | Опечатка | Что-то | Что-то иное | Решено PO |
+MD
+out="$(python3 "$BLINT" "$DV" --source "$tmp/bad/devs-bft.md" 2>&1)"; rc=$?
+out2="$(python3 "$BRC" "$DV" --source "$tmp/bad/devs-bft.md" 2>&1)"; rc2=$?
+[ "$rc" -eq 1 ] && grep -q "DV003 DV2" <<<"$out" && grep -q "DV004 DV1" <<<"$out" && ! grep -q " BL017 " <<<"$out" \
+  && [ "$rc2" -eq 0 ] && grep -q "| ФТ-9 | Push до мероприятия | — | DV1 | расхождение |" <<<"$out2" \
+  && ok "расхождения · требование в реестре: BL017 и RC001 молчат; ID не из БФТ — DV003, без решения — DV004" || fail "расхождения · DV003/DV004 или реестр не учтён — $out $out2"
+sed -i 's/^| DV2 | ФТ-99 |/| X2 | ФТ-1 |/' "$DV/backlog/docs/doc-3 - Расхождения-с-требованиями.md"
+cp "$DV/backlog/docs/doc-3 - Расхождения-с-требованиями.md" "$DV/backlog/docs/doc-4 - Ещё-расхождения.md" && sed -i 's/^id: doc-3/id: doc-4/' "$DV/backlog/docs/doc-4 - Ещё-расхождения.md"
+expect_bl "расхождения · ID не DV — DV001, второй реестр — DV002" 1 "$DV" "DV001 DV002" --source "$tmp/bad/devs-bft.md"
+# отгрузка в Confluence (#39): страница собирается без сети; без доступа — код 3 и файл; publish на локальной заглушке REST создаёт, повтор обновляет ту же страницу
+BCF="$DIR/scripts/bft-confluence.py"
+CF="$tmp/cf/dineclub-restart-blueprint" && mkdir -p "$tmp/cf" && cp -r "$BGOLD" "$CF" && cp "$DIR/examples/dineclub-restart-map.html" "$CF/"
+out="$(env -u CONFLUENCE_URL -u CONFLUENCE_TOKEN python3 "$BCF" publish "$CF" --date 2026-10-28 2>&1)"; rc=$?
+[ "$rc" -eq 3 ] && grep -q "не хватает: CONFLUENCE_URL, CONFLUENCE_TOKEN, --parent" <<<"$out" && python3 - "$CF/confluence/page.xhtml" <<'PY' \
+  && ok "confluence · без доступа — код 3, страница собрана локально: этапы, истории, слои, расхождения, вопросы" || fail "confluence · локальная страница не та — $out"
+import sys, xml.dom.minidom
+s = open(sys.argv[1], encoding="utf-8").read()
+xml.dom.minidom.parseString('<r xmlns:ac="ac">' + s + "</r>")
+for h in ("<h2>Этапы</h2>", "<h2>Что делаем</h2>", "<h2>Как это работает</h2>", "<h2>Расхождения с требованиями</h2>", "<h2>Открытые вопросы"):
+    assert h in s, h
+assert "собрано 2026-10-28" in s and "<td>DV1</td>" in s and "<td>BP-1</td>" in s and "Backstage — работа за кадром" in s and "dineclub-restart-map.html" in s
+PY
+python3 - "$BCF" "$CF" <<'PY' && ok "confluence · publish: дочерняя страница БФТ, повтор — новая версия той же страницы, вложение, токен не в выводе и не в файлах" || fail "confluence · publish на заглушке REST не прошёл"
+import json, os, subprocess, sys, threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+log, pages, atts = [], {"100": {"id": "100", "title": "БФТ", "version": {"number": 3}, "space": {"key": "PO"}}}, {}
+class H(BaseHTTPRequestHandler):
+    def log_message(self, *a): pass
+    def send(self, obj, code=200):
+        b = json.dumps(obj).encode(); self.send_response(code); self.send_header("Content-Type", "application/json"); self.end_headers(); self.wfile.write(b)
+    def body(self):
+        return self.rfile.read(int(self.headers.get("Content-Length") or 0))
+    def do_GET(self):
+        log.append(("GET", self.path, self.headers.get("Authorization")))
+        p = self.path.split("?")[0].split("/")
+        if len(p) == 5:
+            return self.send(pages[p[4]]) if p[4] in pages else self.send({}, 404)
+        if p[-1] == "page":
+            return self.send({"results": [x for x in pages.values() if x.get("parent") == p[4]]})
+        return self.send({"results": [a for a in atts.get(p[4], []) if a["title"] in self.path]})
+    def do_POST(self):
+        b = self.body(); log.append(("POST", self.path, self.headers.get("Authorization")))
+        if self.path == "/rest/api/content":
+            d = json.loads(b); pid = str(200 + len(pages))
+            pages[pid] = {"id": pid, "title": d["title"], "parent": d["ancestors"][0]["id"], "version": {"number": 1}, "space": d["space"],
+                          "body": d["body"]["storage"]["value"], "_links": {"webui": f"/pages/viewpage.action?pageId={pid}"}}
+            return self.send(pages[pid])
+        pid = self.path.split("/")[4]; name = b.split(b'filename="')[1].split(b'"')[0].decode()
+        if not self.path.endswith("/data"):
+            atts.setdefault(pid, []).append({"id": "a1", "title": name})
+        self.send({"results": []})
+    def do_PUT(self):
+        d = json.loads(self.body()); pid = self.path.split("/")[-1]; log.append(("PUT", self.path, self.headers.get("Authorization")))
+        pages[pid].update(version={"number": d["version"]["number"]}, body=d["body"]["storage"]["value"]); self.send(pages[pid])
+srv = HTTPServer(("127.0.0.1", 0), H); threading.Thread(target=srv.serve_forever, daemon=True).start()
+env = {**os.environ, "CONFLUENCE_URL": f"http://127.0.0.1:{srv.server_port}", "CONFLUENCE_TOKEN": "s3cr3t-token", "NO_PROXY": "127.0.0.1", "no_proxy": "127.0.0.1"}
+env.pop("CONFLUENCE_USER", None)
+bcf, proj = sys.argv[1], sys.argv[2]
+r1 = subprocess.run([sys.executable, bcf, "publish", proj, "--parent", "https://wiki.example.com/pages/viewpage.action?pageId=100", "--date", "2026-10-28"], env=env, capture_output=True, text=True)
+r2 = subprocess.run([sys.executable, bcf, "publish", proj, "--date", "2026-10-29"], env=env, capture_output=True, text=True)
+out = r1.stdout + r1.stderr + r2.stdout + r2.stderr
+kids = [p for p in pages.values() if p.get("parent") == "100"]
+assert r1.returncode == 0 and r2.returncode == 0, out
+assert len(kids) == 1 and kids[0]["version"]["number"] == 2 and "собрано 2026-10-29" in kids[0]["body"] and kids[0]["space"] == {"key": "PO"}, kids
+assert [a["title"] for a in atts[kids[0]["id"]]] == ["dineclub-restart-map.html"] and any(p.endswith("/a1/data") for m, p, a in log if m == "POST")
+assert all(a == "Bearer s3cr3t-token" for m, p, a in log)
+meta = open(os.path.join(proj, "confluence/publish.json"), encoding="utf-8").read()
+assert "s3cr3t" not in out and "s3cr3t" not in meta and json.loads(meta)["page_id"] == kids[0]["id"], (out, meta)
+PY
 # User Actions: старт пути персонажа (триггер) и точки входа — из «Карты» и согласованной истории; без триггера — BL050
 python3 - "$tmp/bout" <<'PY' && ok "карта · Evidence и User Actions: два триггера, шаги CJM и группы касания из истории" || fail "карта · User Actions не дошёл до страницы"
 import json, re, sys
@@ -1051,8 +1161,36 @@ miss=""; for c in CT001 CT002 CT003 CT004 CT005 CT006 CT007 CT008 CT009 CT010 CT
 CS="$tmp/cts" && cp -r "$BGOLD" "$CS" && rm "$CS/contracts/C-6.md"
 out1="$(python3 "$CTL" lint "$CS" 2>&1)"; python3 "$CTL" skeleton "$CS" >/dev/null 2>&1; out2="$(python3 "$CTL" lint "$CS" 2>&1)"
 grep -q "WARN CT020 BP-1.1 → BP-2.1" <<<"$out1" && grep -q "^cards: BP-1.1, BP-2.1" "$CS/contracts/C-9.md" && grep -q "ERROR CT011 C-9" <<<"$out2" \
-  && [ "$(grep -c " ERROR " <<<"$out2")" -eq 1 ] && ! grep -q CT020 <<<"$out2" && [ "$(ls "$CS/contracts" | wc -l)" -eq 9 ] \
+  && [ "$(grep -c " ERROR " <<<"$out2")" -eq 1 ] && ! grep -q CT020 <<<"$out2" && [ "$(ls "$CS/contracts" | grep -c '^C-.*\.md$')" -eq 8 ] \
   && ok "контракты · skeleton: стык без контракта → каркас C-9 с картой в шапке, незаполненный — только CT011" || fail "контракты · skeleton"
+# Swagger из контрактов: пути и операции, обязательные поля, назначение в описании; без назначения — CT023; вкладка «Контракты»
+python3 - "$BGOLD" "$DIR/scripts" "$tmp/bout/dineclub-restart-map.html" <<'PY' && ok "контракты · Swagger: OpenAPI 3 из 7 API-контрактов, обязательные поля и назначение; вкладка «Контракты»" || fail "контракты · Swagger и вкладка «Контракты»"
+import json, re, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[2])
+import bft_backlog as bl, bft_contracts as bc
+pr = bl.parse(Path(sys.argv[1])); cs = bc.parse(pr)
+d = bc.openapi(cs, pr.title)
+ops = {o["operationId"]: o for p in d["paths"].values() for o in p.values()}
+assert d["openapi"].startswith("3.") and len(ops) == 7 and "C-5" not in ops, sorted(ops)
+v = ops["C-3"]
+assert v["parameters"][0]["name"] == "barcode" and v["parameters"][0]["in"] == "path" and v["parameters"][0]["required"] is True
+assert v["requestBody"]["content"]["application/json"]["schema"]["required"] == ["restaurant_id"]
+r = v["responses"]["200"]["content"]["application/json"]
+assert r["schema"]["required"] == ["status"] and r["schema"]["properties"]["reason"]["description"].startswith("Объяснить официанту причину отказа")
+assert set(v["responses"]) == {"200", "404", "409", "422"} and r["example"]["status"] == "valid"
+items = ops["C-1"]["responses"]["200"]["content"]["application/json"]["schema"]["properties"]["items"]
+assert items["type"] == "array" and "walk_minutes" in items["items"]["properties"]
+f = Path(sys.argv[1]) / "contracts" / "openapi.yaml"
+assert f.read_text(encoding="utf-8") == bc.openapi_text(cs, pr.title), "contracts/openapi.yaml устарел — ./blueprint.py build"
+page = Path(sys.argv[3]).read_text(encoding="utf-8")
+m = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
+assert len(m["contracts"]) == 8 and m["openapi"] == "contracts/openapi.yaml" and 'data-view="api">Контракты' in page and "function openApi" in page
+assert next(c for c in m["contracts"] if c["id"] == "C-3")["resp"][2][4] == "объяснить официанту причину отказа"
+PY
+CP="$tmp/ctp" && cp -r "$BGOLD" "$CP" && sed -i 's/ | объяснить официанту причину отказа |/ |  |/' "$CP/contracts/C-3.md"
+python3 "$CTL" lint "$CP" --no-source 2>&1 | grep -q "WARN CT023 C-3: «Ответ»: поле reason" \
+  && ok "контракты · CT023: поле без «Зачем потребителю»" || fail "контракты · CT023"
 # внешний стык текстом («из внешней системы»), без карточки на той стороне: CT020 и external-каркас на эту карточку
 CX="$tmp/ctx" && cp -r "$BGOLD" "$CX" && sed -i '0,/^- \*\*Вход:\*\* /s//- **Вход:** Рейтинги из внешней системы; /' "$CX/backlog/tasks/bp-9.1 "*.md
 out1="$(python3 "$CTL" lint "$CX" 2>&1)"; python3 "$CTL" skeleton "$CX" >/dev/null 2>&1

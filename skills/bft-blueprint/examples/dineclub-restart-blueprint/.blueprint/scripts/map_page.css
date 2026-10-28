@@ -605,3 +605,45 @@ body[data-view="do"] .how.l-user{display:none}
 /* карточки в подстолбцах групп касания (#33): колонки Evidence продолжаются вниз через все слои */
 .mc.how:not(.l-ev):not(.l-user)>.sub{flex:1;align-items:center}
 .mc.how:not(.l-ev):not(.l-user) .sc{gap:16px;align-items:flex-start;justify-content:center;height:100%}
+/* «Контракты»: технические контракты стыков (#37) */
+.api{display:none}
+body[data-view="api"] .hero,body[data-view="api"] .wrap,body[data-view="api"] .mstack{display:none}
+body[data-view="api"] .api{display:block}
+@media(min-width:701px){body[data-view="api"] .api{height:100vh;overflow-y:auto;overflow-x:hidden}}
+.swg{display:inline-flex;align-items:center;gap:6px;margin-top:10px;font-size:13px;font-weight:600;color:#1f6fd1;text-decoration:none;border:1px solid #cfe0f5;background:#f2f7fd;border-radius:8px;padding:6px 10px}.swg:hover{background:#e6f0fb}
+.apig{margin:22px 0 0}.apig h4{margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#8a857c}
+.apigrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+.apic{display:flex;flex-direction:column;gap:6px;text-align:left;font:inherit;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer}
+.apic:hover{border-color:#cfc8bb;box-shadow:0 6px 18px rgba(0,0,0,.07)}
+.apitop{display:flex;align-items:center;gap:8px;min-width:0}.apitop code{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.apiid{margin-left:auto;font-size:11px;color:#8a857c;font-weight:600}
+.apit{font-size:14px;font-weight:600;line-height:1.35}.apic small{font-size:12px;color:#8a857c}
+.mth{flex:none;font-size:10.5px;font-weight:800;letter-spacing:.4px;border-radius:5px;padding:2px 6px;color:#fff;background:#6b6b6b}
+.mth.get{background:#2f7d4f}.mth.post{background:#1f6fd1}.mth.put,.mth.patch{background:#b7791f}.mth.delete{background:#c0392b}.mth.db{background:#6b4fd4}
+.apiop{display:flex;align-items:center;gap:8px;margin:0 0 6px}.apiop code{font-size:13.5px}
+.apicards{font-size:13px;color:#6b6b6b;margin:0}
+.apitbl{width:100%;border-collapse:collapse;font-size:13px;line-height:1.4}
+.apitbl th{text-align:left;font-size:11.5px;font-weight:600;color:var(--muted);padding:0 10px 6px 0;border-bottom:1px solid var(--line)}
+.apitbl td{padding:7px 10px 7px 0;border-bottom:1px solid var(--line);vertical-align:top}
+.apitbl td code{font-size:12.5px}.apitbl td small{display:block;font-size:11px;color:#8a857c}.apitbl td.src{color:#8a857c;font-size:12px}
+.rq{display:inline-block;font-size:11px;font-weight:600;border-radius:999px;padding:1px 8px;white-space:nowrap}.rq.y{background:#fdecea;color:#a23224}.rq.n{background:#f1eee8;color:#77736b}
+.apiseq{margin:0;padding:0 0 0 18px;font-size:13px;line-height:1.5}.apiseq li{margin:2px 0}.apiseq i{font-style:normal;color:#8a857c;margin:0 6px}.apiseq span{color:#55524c;margin-left:6px}
+.apiseq li.ret b{font-weight:500}.apiseq li.ret span{color:#8a857c}
+.apiex{font-size:12px;background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:10px 12px;overflow-x:auto;white-space:pre-wrap}
+
+/* ---------- Расхождения с требованиями (#38) ---------- */
+.devs{display:none}
+body[data-view="dev"] .hero,body[data-view="dev"] .wrap,body[data-view="dev"] .mstack{display:none}
+body[data-view="dev"] .devs{display:block}
+@media(min-width:701px){body[data-view="dev"] .devs{height:100vh;overflow-y:auto;overflow-x:hidden}}
+.dvtbl{width:100%;border-collapse:collapse;background:#fff;border:1px solid #e6e2da;border-radius:12px;font-size:13.5px;line-height:1.45}
+.dvtbl th{text-align:left;font-size:11.5px;color:#8a857c;font-weight:700;text-transform:uppercase;letter-spacing:.3px;padding:10px 12px;border-bottom:1px solid #e6e2da;background:#faf8f4}
+.dvtbl td{padding:10px 12px;border-bottom:1px solid #efece6;vertical-align:top}
+.dvtbl tr:last-child td{border-bottom:0}
+.dvtbl tr.esc td{background:#fff8ec}
+.dvid{font-weight:700;white-space:nowrap;color:#8a857c}
+.dvreq{display:inline-flex;align-items:center;gap:5px;margin:0 4px 4px 0;padding:2px 8px;border:1px solid #d9d4ca;border-radius:999px;background:#fff;font:inherit;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
+.dvreq:hover{border-color:#8a857c}
+.dvreq i{font-style:normal;font-size:10.5px;color:#8a857c;background:#f2f0ec;border-radius:999px;padding:0 5px}
+.dvesc{display:inline-block;padding:1px 8px;border-radius:999px;background:#fbe3dc;color:#a0392d;font-size:11px;font-weight:700}
+.dvnone,.dvhint{color:#8a857c;font-size:13px;margin-top:14px}

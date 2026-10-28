@@ -1,0 +1,695 @@
+# Swagger (OpenAPI 3) — собран из contracts/C-N.md: ./blueprint.py contracts openapi
+openapi: "3.0.3"
+info:
+  title: "Контракты стыков · Перезапуск акции DineClub — «билет Acme Tickets = скидка 10%»"
+  version: "1.0.0"
+  description: "Собрано из contracts/C-N.md командой ./blueprint.py contracts openapi — правь контракты, не этот файл."
+servers:
+  - url: "http://localhost:8080"
+    description: "MockAPI прототипа: ./blueprint.py prototype build, docker compose up"
+tags:
+  - name: "external"
+  - name: "frontend-backend"
+  - name: "service-service"
+paths:
+  "/v1/restaurants":
+    get:
+      operationId: "C-1"
+      summary: "Витрина показывает рестораны у площадки билета"
+      tags:
+        - "frontend-backend"
+      description: "Витрина → Каталог UnitB. Карточки «Как это работает»: BP-2.1, BP-5.1, BP-6.1, BP-8.1, BP-9.1, BP-11.1."
+      x-caller: "Витрина"
+      x-callee: "Каталог UnitB"
+      x-cards:
+        - "BP-2.1"
+        - "BP-5.1"
+        - "BP-6.1"
+        - "BP-8.1"
+        - "BP-9.1"
+        - "BP-11.1"
+      parameters:
+        - name: "venue_id"
+          in: "query"
+          required: false
+          description: "Отобрать рестораны у площадки активного билета. Источник: ФТ-3"
+          schema:
+            type: "string"
+        - name: "filters"
+          in: "query"
+          required: false
+          description: "Сузить список под компанию гостя. Источник: ФТ-11, ИТ-7"
+          schema:
+            type: "string"
+        - name: "limit"
+          in: "query"
+          required: false
+          description: "Показать на полке столько ресторанов, сколько помещается. Источник: ИТ-3"
+          schema:
+            type: "integer"
+      responses:
+        "200":
+          description: "Успех"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  items:
+                    type: "array"
+                    description: "Показать полку ресторанов. Источник: ФТ-3"
+                    items:
+                      type: "object"
+                      properties:
+                        id:
+                          type: "string"
+                          description: "Открыть карточку выбранного ресторана. Источник: ФТ-3"
+                        name:
+                          type: "string"
+                          description: "Подписать ресторан на полке. Источник: ФТ-3"
+                        walk_minutes:
+                          type: "integer"
+                          description: "Показать, сколько идти пешком. Источник: ИТ-4"
+                        rating:
+                          type: "number"
+                          description: "Поставить лучшие рестораны выше. Источник: НФТ-2"
+                        discount:
+                          type: "integer"
+                          description: "Показать размер скидки на полке. Источник: ПТ-1"
+                      required:
+                        - "id"
+                        - "name"
+                        - "walk_minutes"
+                        - "discount"
+                  total:
+                    type: "integer"
+                    description: "Показать, сколько всего участников. Источник: ИТ-3"
+                required:
+                  - "items"
+                  - "total"
+              example:
+                items:
+                  - id: "r-12"
+                    name: "Сад"
+                    walk_minutes: 6
+                    rating: 4.7
+                    discount: 10
+                total: 48
+        "404":
+          description: "VENUE_NOT_FOUND — площадки нет в каталоге — витрина показывает полный список (ФТ-3)"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                required:
+                  - "code"
+                properties:
+                  code:
+                    type: "string"
+                    enum:
+                      - "VENUE_NOT_FOUND"
+                  message:
+                    type: "string"
+              example:
+                code: "VENUE_NOT_FOUND"
+                message: "площадки нет в каталоге — витрина показывает полный список (ФТ-3)"
+      x-sequence:
+        - "Витрина -> Каталог UnitB: restaurants(venue_id, filters)"
+        - "Каталог UnitB --> Витрина: items, total"
+    post:
+      operationId: "C-6"
+      summary: "Подключённый ресторан попадает в каталог участников"
+      tags:
+        - "service-service"
+      description: "DineClub → Каталог UnitB. Карточки «Как это работает»: BP-1.1, BP-2.1."
+      x-caller: "DineClub"
+      x-callee: "Каталог UnitB"
+      x-cards:
+        - "BP-1.1"
+        - "BP-2.1"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                partner_id:
+                  type: "string"
+                  description: "Связать участника каталога с партнёром DineClub. Источник: ФТ-19, извне: ID партнёра в DineClub"
+                name:
+                  type: "string"
+                  description: "Показать гостю название ресторана. Источник: ФТ-3"
+                address:
+                  type: "string"
+                  description: "Посчитать путь пешком от площадки. Источник: ФТ-3"
+                hours:
+                  type: "string"
+                  description: "Не вести гостя в закрытый ресторан. Источник: ФТ-4"
+                city:
+                  type: "string"
+                  description: "Показывать ресторан только в своём городе. Источник: [УТОЧНИТЬ у DineClub]"
+              required:
+                - "partner_id"
+                - "name"
+                - "address"
+                - "hours"
+                - "city"
+      responses:
+        "200":
+          description: "Успех"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  restaurant_id:
+                    type: "string"
+                    description: "Сохранить связь партнёра с участником каталога. Источник: ФТ-3"
+                  rating:
+                    type: "number"
+                    description: "Показать партнёру рейтинг из справочника. Источник: НФТ-2"
+                  published:
+                    type: "boolean"
+                    description: "Понять, попал ли ресторан в каталог. Источник: ФТ-4"
+                required:
+                  - "restaurant_id"
+                  - "published"
+              example:
+                restaurant_id: "r-12"
+                rating: 4.7
+                published: true
+        "422":
+          description: "HOURS_MISSING — нет часов работы — в каталог не публикуется (ФТ-4)"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                required:
+                  - "code"
+                properties:
+                  code:
+                    type: "string"
+                    enum:
+                      - "HOURS_MISSING"
+                  message:
+                    type: "string"
+              example:
+                code: "HOURS_MISSING"
+                message: "нет часов работы — в каталог не публикуется (ФТ-4)"
+        "409":
+          description: "PARTNER_EXISTS — ресторан уже в каталоге"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                required:
+                  - "code"
+                properties:
+                  code:
+                    type: "string"
+                    enum:
+                      - "PARTNER_EXISTS"
+                  message:
+                    type: "string"
+              example:
+                code: "PARTNER_EXISTS"
+                message: "ресторан уже в каталоге"
+      x-sequence:
+        - "DineClub -> Каталог UnitB: restaurant(partner_id, name, address, hours, city)"
+        - "Каталог UnitB -> Справочник рейтингов: рейтинг(name, address)"
+        - "Справочник рейтингов --> Каталог UnitB: rating"
+        - "Каталог UnitB --> DineClub: restaurant_id, rating, published"
+  "/v1/restaurants/{restaurant_id}":
+    get:
+      operationId: "C-2"
+      summary: "Гость открывает карточку ресторана"
+      tags:
+        - "frontend-backend"
+      description: "Витрина → Каталог UnitB. Карточки «Как это работает»: BP-10.1, BP-2.1."
+      x-caller: "Витрина"
+      x-callee: "Каталог UnitB"
+      x-cards:
+        - "BP-10.1"
+        - "BP-2.1"
+      parameters:
+        - name: "restaurant_id"
+          in: "path"
+          required: true
+          description: "Открыть карточку выбранного ресторана. Источник: ФТ-3"
+          schema:
+            type: "string"
+        - name: "venue_id"
+          in: "query"
+          required: false
+          description: "Посчитать путь пешком от площадки билета. Источник: ИТ-4"
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "Успех"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  id:
+                    type: "string"
+                    description: "Связать карточку с переходами и аналитикой. Источник: ФТ-3"
+                  name:
+                    type: "string"
+                    description: "Показать название ресторана. Источник: ФТ-3"
+                  hours:
+                    type: "string"
+                    description: "Показать часы работы. Источник: ФТ-4"
+                  walk_minutes:
+                    type: "integer"
+                    description: "Показать путь пешком от площадки. Источник: ИТ-4"
+                  promo:
+                    type: "object"
+                    properties:
+                      discount:
+                        type: "integer"
+                        description: "Показать блок акции со скидкой. Источник: ПТ-1"
+                      window_days:
+                        type: "integer"
+                        description: "Показать, сколько дней действует скидка. Источник: ФТ-1"
+                    required:
+                      - "discount"
+                      - "window_days"
+                required:
+                  - "id"
+                  - "name"
+                  - "hours"
+                  - "walk_minutes"
+              example:
+                id: "r-12"
+                name: "Сад"
+                hours: "12:00–23:00"
+                walk_minutes: 6
+                promo:
+                  discount: 10
+                  window_days: 7
+        "404":
+          description: "RESTAURANT_NOT_FOUND — ресторан вышел из акции"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                required:
+                  - "code"
+                properties:
+                  code:
+                    type: "string"
+                    enum:
+                      - "RESTAURANT_NOT_FOUND"
+                  message:
+                    type: "string"
+              example:
+                code: "RESTAURANT_NOT_FOUND"
+                message: "ресторан вышел из акции"
+      x-sequence:
+        - "Витрина -> Каталог UnitB: restaurant(restaurant_id, venue_id)"
+        - "Каталог UnitB --> Витрина: карточка, блок акции"
+  "/v1/tickets/{barcode}/verify":
+    post:
+      operationId: "C-3"
+      summary: "Официант сканирует билет — сервис отвечает «валиден» или «отказ»"
+      tags:
+        - "external"
+      description: "Приложение-сканер → TeamA. Карточки «Как это работает»: BP-15.1, BP-16.1."
+      x-caller: "Приложение-сканер"
+      x-callee: "TeamA"
+      x-cards:
+        - "BP-15.1"
+        - "BP-16.1"
+      parameters:
+        - name: "barcode"
+          in: "path"
+          required: true
+          description: "Найти билет гостя. Источник: ФТ-1, извне: штрихкод с билета Acme Tickets"
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                restaurant_id:
+                  type: "string"
+                  description: "Записать, в каком ресторане дана скидка. Источник: ФТ-1"
+              required:
+                - "restaurant_id"
+      responses:
+        "200":
+          description: "Успех"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  status:
+                    type: "string"
+                    description: "Показать официанту «валиден» или «отказ». Источник: ФТ-1"
+                  discount:
+                    type: "integer"
+                    description: "Показать размер скидки при «валиден». Источник: ПТ-1"
+                  reason:
+                    type: "string"
+                    description: "Объяснить официанту причину отказа. Источник: ФТ-15"
+                required:
+                  - "status"
+              example:
+                status: "valid"
+                discount: 10
+                reason: null
+        "404":
+          description: "TICKET_NOT_FOUND — штрихкод не найден у Acme Tickets"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                required:
+                  - "code"
+                properties:
+                  code:
+                    type: "string"
+                    enum:
+                      - "TICKET_NOT_FOUND"
+                  message:
+                    type: "string"
+              example:
+                code: "TICKET_NOT_FOUND"
+                message: "штрихкод не найден у Acme Tickets"
+        "409":
+          description: "ALREADY_USED — билет уже дал скидку (ФТ-1)"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                required:
+                  - "code"
+                properties:
+                  code:
+                    type: "string"
+                    enum:
+                      - "ALREADY_USED"
+                  message:
+                    type: "string"
+              example:
+                code: "ALREADY_USED"
+                message: "билет уже дал скидку (ФТ-1)"
+        "422":
+          description: "WINDOW_EXPIRED — с мероприятия прошло больше 7 дней (ФТ-1); TICKET_RETURNED — билет возвращён или мероприятие отменено (ФТ-15)"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                required:
+                  - "code"
+                properties:
+                  code:
+                    type: "string"
+                    enum:
+                      - "WINDOW_EXPIRED"
+                      - "TICKET_RETURNED"
+                  message:
+                    type: "string"
+              example:
+                code: "WINDOW_EXPIRED"
+                message: "с мероприятия прошло больше 7 дней (ФТ-1)"
+      x-sequence:
+        - "Приложение-сканер -> TeamA: verify(barcode, restaurant_id)"
+        - "TeamA -> Acme Tickets: статус билета(barcode)"
+        - "Acme Tickets --> TeamA: ticket_status, event_date"
+        - "TeamA -> Хранилище билетов: отметки скидок по barcode"
+        - "Хранилище билетов --> TeamA: used"
+        - "TeamA --> Приложение-сканер: status, discount, reason"
+  "/v1/receipts":
+    post:
+      operationId: "C-4"
+      summary: "Фото чека — компенсация ресторану и уведомление о списании"
+      tags:
+        - "service-service"
+      description: "Приложение-сканер → DineClub. Карточки «Как это работает»: BP-17.1, BP-18.1."
+      x-caller: "Приложение-сканер"
+      x-callee: "DineClub"
+      x-cards:
+        - "BP-17.1"
+        - "BP-18.1"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                barcode:
+                  type: "string"
+                  description: "Связать чек с билетом, давшим скидку. Источник: ФТ-14"
+                restaurant_id:
+                  type: "string"
+                  description: "Начислить компенсацию нужному ресторану. Источник: ФТ-14"
+                photo:
+                  type: "string"
+                  description: "Подтвердить сумму скидки чеком. Источник: ФТ-14"
+                discount:
+                  type: "integer"
+                  description: "Посчитать размер компенсации. Источник: ПТ-1"
+              required:
+                - "barcode"
+                - "restaurant_id"
+                - "photo"
+                - "discount"
+      responses:
+        "200":
+          description: "Успех"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  receipt_id:
+                    type: "string"
+                    description: "Показать официанту, что чек сохранён. Источник: ФТ-14"
+                  compensation:
+                    type: "string"
+                    description: "Показать ресторану сумму компенсации. Источник: [УТОЧНИТЬ у DineClub]"
+                required:
+                  - "receipt_id"
+              example:
+                receipt_id: "rc-301"
+                compensation: "accepted"
+        "409":
+          description: "RECEIPT_EXISTS — чек по этому билету уже принят"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                required:
+                  - "code"
+                properties:
+                  code:
+                    type: "string"
+                    enum:
+                      - "RECEIPT_EXISTS"
+                  message:
+                    type: "string"
+              example:
+                code: "RECEIPT_EXISTS"
+                message: "чек по этому билету уже принят"
+        "422":
+          description: "LIMIT_EXCEEDED — лимит компенсаций ресторана исчерпан [УТОЧНИТЬ у DineClub]"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                required:
+                  - "code"
+                properties:
+                  code:
+                    type: "string"
+                    enum:
+                      - "LIMIT_EXCEEDED"
+                  message:
+                    type: "string"
+              example:
+                code: "LIMIT_EXCEEDED"
+                message: "лимит компенсаций ресторана исчерпан [УТОЧНИТЬ у DineClub]"
+      x-sequence:
+        - "Приложение-сканер -> DineClub: receipt(barcode, restaurant_id, photo, discount)"
+        - "DineClub -> Acme Tickets: уведомление о списании(гость, скидка, когда)"
+        - "Acme Tickets --> DineClub: принято"
+        - "DineClub --> Приложение-сканер: receipt_id, compensation"
+  "/v1/touches":
+    post:
+      operationId: "C-7"
+      summary: "Триггер касаний отправляет напоминание через внешний канал: email, SMS или push"
+      tags:
+        - "external"
+      description: "Триггеры касаний → Email / SMS. Карточки «Как это работает»: BP-12.2, BP-12.1, BP-13.1, BP-14.1."
+      x-caller: "Триггеры касаний"
+      x-callee: "Email / SMS"
+      x-cards:
+        - "BP-12.2"
+        - "BP-12.1"
+        - "BP-13.1"
+        - "BP-14.1"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                guest_id:
+                  type: "string"
+                  description: "Найти гостя и его каналы связи. Источник: ФТ-6, извне: гость Acme Tickets"
+                kind:
+                  type: "string"
+                  description: "Выбрать текст касания: накануне или после мероприятия. Источник: ФТ-16, ФТ-6"
+                event_date:
+                  type: "string"
+                  description: "Посчитать окно скидки 7 дней. Источник: ФТ-16"
+                discount:
+                  type: "integer"
+                  description: "Назвать гостю размер скидки. Источник: ПТ-1"
+              required:
+                - "guest_id"
+                - "kind"
+                - "event_date"
+                - "discount"
+      responses:
+        "200":
+          description: "Успех"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  status:
+                    type: "string"
+                    description: "Понять, ушло ли касание. Источник: ФТ-6"
+                  channel:
+                    type: "string"
+                    description: "Узнать, каким каналом ушло касание. Источник: [УТОЧНИТЬ у CPO продукта]"
+                required:
+                  - "status"
+              example:
+                status: "sent"
+                channel: "email"
+        "409":
+          description: "UNSUBSCRIBED — гость отписан — касание не уходит (ФТ-6)"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                required:
+                  - "code"
+                properties:
+                  code:
+                    type: "string"
+                    enum:
+                      - "UNSUBSCRIBED"
+                  message:
+                    type: "string"
+              example:
+                code: "UNSUBSCRIBED"
+                message: "гость отписан — касание не уходит (ФТ-6)"
+        "422":
+          description: "NO_CHANNEL — у гостя нет ни email, ни телефона [УТОЧНИТЬ у CPO продукта]"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                required:
+                  - "code"
+                properties:
+                  code:
+                    type: "string"
+                    enum:
+                      - "NO_CHANNEL"
+                  message:
+                    type: "string"
+              example:
+                code: "NO_CHANNEL"
+                message: "у гостя нет ни email, ни телефона [УТОЧНИТЬ у CPO продукта]"
+      x-sequence:
+        - "Триггеры касаний -> Email / SMS: touch(guest_id, kind, event_date, discount)"
+        - "Email / SMS --> Триггеры касаний: status, channel"
+  "/v1/events":
+    post:
+      operationId: "C-8"
+      summary: "Витрина, письма и DineClub отдают события воронки в аналитику без ручного логирования"
+      tags:
+        - "external"
+      description: "Витрина → Аналитика. Карточки «Как это работает»: BP-19.1, BP-5.1, BP-7.1, BP-8.1, BP-10.1, BP-18.1."
+      x-caller: "Витрина"
+      x-callee: "Аналитика"
+      x-cards:
+        - "BP-19.1"
+        - "BP-5.1"
+        - "BP-7.1"
+        - "BP-8.1"
+        - "BP-10.1"
+        - "BP-18.1"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                event:
+                  type: "string"
+                  description: "Понять, какое действие совершил гость. Источник: ФТ-9"
+                stage:
+                  type: "string"
+                  description: "Отнести событие к этапу воронки. Источник: ФТ-9"
+                utm:
+                  type: "string"
+                  description: "Понять, из какого письма пришёл гость. Источник: ФТ-9"
+                ticket_id:
+                  type: "string"
+                  description: "Связать события одного гостя в одну воронку. Источник: [УТОЧНИТЬ у UnitB]"
+              required:
+                - "event"
+                - "stage"
+      responses:
+        "200":
+          description: "Успех"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                properties:
+                  accepted:
+                    type: "boolean"
+                    description: "Понять, что событие принято в воронку. Источник: ФТ-9"
+                required:
+                  - "accepted"
+              example:
+                accepted: true
+        "422":
+          description: "UNKNOWN_EVENT — событие не из воронки «билет → ресторан → скидка» [УТОЧНИТЬ у UnitB]"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                required:
+                  - "code"
+                properties:
+                  code:
+                    type: "string"
+                    enum:
+                      - "UNKNOWN_EVENT"
+                  message:
+                    type: "string"
+              example:
+                code: "UNKNOWN_EVENT"
+                message: "событие не из воронки «билет → ресторан → скидка» [УТОЧНИТЬ у UnitB]"
+      x-sequence:
+        - "Витрина -> Аналитика: event(event, stage, utm, ticket_id)"
+        - "Аналитика --> Витрина: accepted"
