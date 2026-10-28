@@ -43,7 +43,7 @@ START, END = "<!-- BFT-BLUEPRINT START -->", "<!-- BFT-BLUEPRINT END -->"
 NPM_START, NPM_END = "<!-- BACKLOG.MD GUIDELINES START -->", "<!-- BACKLOG.MD GUIDELINES END -->"
 TOOLS = ("backlog_cli.py", "bft_blueprint.py", "bft_story.py", "bft_screens.py", "bft_mock.py", "bft_backlog.py", "bft-blueprint-lint.py",
          "bft-backlog-lint.py", "bft-backlog-build.py", "bft-backlog-init.py", "bft_plan.py", "bft-plan.py", "bft-reqs.py", "bft-groom.py", "bft_graph.py", "bft-skeleton.py",
-         "bft_contracts.py", "bft-contracts.py", "bft_proto.py", "bft-proto.py", "proto_api.py", "proto_page.html",
+         "bft_contracts.py", "bft-contracts.py", "bft-reconcile.py", "bft_proto.py", "bft-proto.py", "proto_api.py", "proto_page.html",
          "proto_runtime.js", "proto_runtime.css",
          "page_kit.js", "map_page.js", "map_page.css")
 RULES = ("autopilot.md", "grooming.md", "backlog_rules.md", "screen_notes.md", "story_line.md", "contracts.md", "prototype.md")
@@ -99,6 +99,8 @@ elif cmd == "groom":
 elif cmd == "prototype":
     sub = rest.pop(0) if rest and rest[0] in ("skeleton", "lint", "build", "review") else "lint"
     run = ["bft-proto.py", sub, here]
+elif cmd == "reconcile":
+    run = ["bft-reconcile.py", here]
 elif cmd == "contracts":
     sub = rest[0] if rest[:1] in (["skeleton"], ["openapi"]) else ""
     run = ["bft-contracts.py", sub, here] if sub else ["bft-contracts.py", "lint", here, "--hints"]
@@ -116,6 +118,7 @@ else:
     print("./blueprint.py contracts openapi — Swagger contracts/openapi.yaml из API-контрактов (mock-сервер: Prism, MockAPI прототипа)")
     print("./blueprint.py prototype skeleton|lint|build — прототип по контрактам: prototype/spec.md → web, MockAPI, docker-compose (.blueprint/rules/prototype.md)")
     print("./blueprint.py prototype review review.json — замечания прототипа → «Вопросы» плана карты")
+    print("./blueprint.py reconcile — сверка БФТ ↔ карта: каждое требование — где на карте или в «Расхождениях с требованиями» (код RC)")
     print("./blueprint.py build  — схемы BPMN из «Процесса», страница <epic>-map.html и архив <epic>-blueprint.zip")
     print("./blueprint.py check  — проверка без записи: схемы и скрипты проекта актуальны")
     print("доп. ключи: --source БФТ.md — сверка с БФТ, --strict — предупреждения тоже ошибки")
@@ -142,7 +145,7 @@ def guide(title: str, epic: str, source: str) -> str:
 | `./backlog.py` | CLI Backlog.md, встроенный (`python3 backlog.py …` на Windows). Начни с `./backlog.py instructions overview` |
 | `./blueprint.py` | `lint` — проверка карты, `build` — страница `{epic}-map.html` и архив `{epic}-blueprint.zip`, `check` — без записи |
 | `backlog/tasks/` | задачи: «Что делаем» и их подзадачи «Как это работает» |
-| `backlog/docs/` | документы: «Карта» (команды, вопросы), «История» (этапы, шаги, экраны), `screens/` — требования к экранам |
+| `backlog/docs/` | документы: «Карта» (команды, вопросы), «История» (этапы, шаги, экраны), «Расхождения с требованиями» (отходы от БФТ и решения), `screens/` — требования к экранам |
 | `contracts/` | контракты стыков `C-N.md`: кто кого вызывает, поля с источником в БФТ, пример ответа, ошибки, Sequence, цепочка, данные. Шаблон — `.blueprint/templates/contract.md`, проверка — `./blueprint.py contracts` |
 | `prototype/` | прототип для заказчика: `spec.md` — план показа (правится), остальное собирает `./blueprint.py prototype build`: `web/` — пошаговый показ, `api/main.py` — MockAPI по контрактам, `docker-compose.yml`. Правила — `.blueprint/rules/prototype.md` |
 | `backlog/assets/screens/` | картинки экранов: `<ID>.svg` пишет `./blueprint.py build` из таблицы «Экраны» «Истории»; свой макет — `<ID>.png` рядом |
@@ -158,6 +161,8 @@ def guide(title: str, epic: str, source: str) -> str:
 - **Как это работает** — подзадача (`-p BP-N`) с метками `stage:<этап>` и `layer:employee|technology|backstage|support`. Описание: суть; `### UserStory` «Как <роль>, я хочу …, чтобы …»; `### JobStory` — список «- Когда …, хочу …, чтобы …»; `### Параметры` (`- **Вход:** …`, `- **Управление:** …`, `- **Выход:** …`, `- **Механизм:** …`, значения через `;`, ссылка `(BP-8.1)` — связь с карточкой); `### Процесс` — шаги `- Участник: действие`, развилка `- ? вопрос` и под ней ветки `  - да → Участник: действие` или `  - нет → конец`; `### HowToDemo`. У `layer:backstage` — только суть, `### Параметры`, `### Процесс` и `### Данные` (`- что — откуда — для чего`, по желанию), без UserStory, JobStory и HowToDemo. Название карточки — «<кто> <что делает>, чтобы <результат>». Развилка «ЕСЛИ»: `- ? вопрос` в процессе и `Если <условие>: <что> (BP-8.1)` в «Выходе». Жёстко: у карточки нет команды (`-a ""`) — это целевая картинка глазами пользователя, одно событие сервиса — одна карточка; карточка — регулярный процесс работающего сервиса, не разовая задача команды («переключает», «переверстывает», «настраивает»); в Backstage участники и механизм — технологические компоненты, никогда не команды. Блок `### BPMN` не пиши — его собирает `./blueprint.py build` из процесса.
 - **Требования к экрану** — документ `F3 · Название` в `backlog/docs/screens/`: `# Название`, картинки `![…](../../assets/screens/F3.svg)`, вкладки `## Product`, `## Design`, `## Functions`, заметки `### …` с `Источник: ФТ-1`.
 
+- **Расхождения с требованиями** — документ `<!-- bft-deviations -->`, раздел `## Расхождения` — таблица `| ID | Требование | Функционал | Требуется в БФТ | Изменения в процессе | Решение |`, строка `DV1`. Карта отходит от БФТ (требование перенесено, урезано, сделано иначе) — строка в реестре сразу, с решением PO или `[УТОЧНИТЬ у PO]`. Сверка каждого требования БФТ с картой — `./blueprint.py reconcile` (код RC001 — требования нет ни на карте, ни в реестре).
+
 Задачи без метки `stage:` на карте не показываются — это обычная работа: план реализации, баги.
 
 ## Правила
@@ -165,7 +170,7 @@ def guide(title: str, epic: str, source: str) -> str:
 1. Задачи и документы меняй только через `./backlog.py`: файлы руками не правь.
 2. Факты — только из БФТ и ответов PO. Неизвестное — `[УТОЧНИТЬ у {{кого}}]` в тексте и строка в «Вопросах» документа «Карта».
 3. Названия и суть — без API, протоколов, таблиц БД: это высота БФТ. Метод, поля и ошибки стыка — в `contracts/C-N.md`, не в карточке.
-4. После правок: `./blueprint.py lint` → 0 ошибок, `./blueprint.py contracts` → 0 ошибок, затем `./blueprint.py build`.
+4. После правок: `./blueprint.py lint` → 0 ошибок, `./blueprint.py contracts` → 0 ошибок, `./blueprint.py reconcile` → 0 ошибок, затем `./blueprint.py build`.
 
 ## Частые действия
 

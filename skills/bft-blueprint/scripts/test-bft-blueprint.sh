@@ -344,6 +344,56 @@ RW="$tmp/bad/risks" && cp -r "$BGOLD" "$RW" && sed -i '/^| X2 | BP-6 |/d; s/^| X
 out="$(python3 "$BLINT" "$RW" --no-source --strict 2>&1)"; rc=$?
 [ "$rc" -eq 1 ] && grep -q "RK005 BP-6: риск «интеграция» по данным карты не записан" <<<"$out" && grep -q "RK003 X5: истории BP-99 на карте нет" <<<"$out" \
   && ok "риски исполнения · не записан — RK005, история мимо карты — RK003" || fail "риски исполнения · RK005/RK003 не пойманы — $out"
+# расхождения с требованиями (#38): реестр на странице — пункт меню, требование кликается; DV001/DV003/DV004, BL017 и RC001 — по реестру
+BRC="$DIR/scripts/bft-reconcile.py"
+python3 - "$tmp/bout" <<'PY' && ok "расхождения · 2 строки реестра на странице, пункт меню, где требование на карте" || fail "расхождения не дошли до страницы"
+import json, re, sys
+from pathlib import Path
+page = (Path(sys.argv[1]) / "dineclub-restart-map.html").read_text(encoding="utf-8")
+d = json.loads(re.search(r'id="map-data">(.*?)</script>', page, re.S).group(1))
+v = d["devs"]
+assert [(x["id"], x["reqs"]) for x in v["items"]] == [("DV1", ["ИТ-5", "ФТ-7"]), ("DV2", ["ФТ-17"])], v["items"]
+assert all(x["decision"] for x in v["items"]) and v["at"]["ФТ-7"] and v["file"].endswith("Расхождения-с-требованиями.md")
+assert 'data-dvmenu' in page and "function dvBoard" in page and 'id="devs"' in page
+PY
+DV="$tmp/bad/devs" && cp -r "$BOK" "$DV" && cp "$FIX/story_source.md" "$tmp/bad/devs-bft.md" \
+  && sed -i 's/^| ИТ-1 | Страница после покупки | Блок акции на странице после покупки |$/&\n| ФТ-9 | Push до мероприятия | Push о скидке за день до мероприятия |/' "$tmp/bad/devs-bft.md"
+out="$(python3 "$BLINT" "$DV" --source "$tmp/bad/devs-bft.md" 2>&1)"; rc=$?
+out2="$(python3 "$BRC" "$DV" --source "$tmp/bad/devs-bft.md" 2>&1)"; rc2=$?
+[ "$rc" -eq 1 ] && grep -q " BL017 " <<<"$out" && [ "$rc2" -eq 1 ] && grep -q "RC001 ФТ-9 «Push до мероприятия»" <<<"$out2" && grep -q "| ФТ-9 | Push до мероприятия | — | — | нет на карте |" <<<"$out2" \
+  && ok "сверка · требование БФТ мимо карты и реестра — BL017 и RC001" || fail "сверка · ФТ-9 мимо карты не пойман — $out $out2"
+python3 "$BRC" "$BOK" >/dev/null 2>&1 && ok "сверка · вторая инициатива: всё на карте, код 0" || fail "сверка · вторая инициатива не прошла"
+cat > "$DV/backlog/docs/doc-3 - Расхождения-с-требованиями.md" <<'MD'
+---
+id: doc-3
+title: Расхождения с требованиями
+created_date: '2026-10-28 08:02'
+type: specification
+---
+<!-- bft-deviations
+epic_slug: demo-story
+version: 1
+revised: 2026-10-28
+status: Черновик
+-->
+
+# Расхождения с требованиями
+
+## Расхождения
+
+| ID | Требование | Функционал | Требуется в БФТ | Изменения в процессе | Решение |
+| --- | --- | --- | --- | --- | --- |
+| DV1 | ФТ-9 | Push о скидке | Push за день до мероприятия | Push есть не у всех приложений — напоминание письмом | |
+| DV2 | ФТ-99 | Опечатка | Что-то | Что-то иное | Решено PO |
+MD
+out="$(python3 "$BLINT" "$DV" --source "$tmp/bad/devs-bft.md" 2>&1)"; rc=$?
+out2="$(python3 "$BRC" "$DV" --source "$tmp/bad/devs-bft.md" 2>&1)"; rc2=$?
+[ "$rc" -eq 1 ] && grep -q "DV003 DV2" <<<"$out" && grep -q "DV004 DV1" <<<"$out" && ! grep -q " BL017 " <<<"$out" \
+  && [ "$rc2" -eq 0 ] && grep -q "| ФТ-9 | Push до мероприятия | — | DV1 | расхождение |" <<<"$out2" \
+  && ok "расхождения · требование в реестре: BL017 и RC001 молчат; ID не из БФТ — DV003, без решения — DV004" || fail "расхождения · DV003/DV004 или реестр не учтён — $out $out2"
+sed -i 's/^| DV2 | ФТ-99 |/| X2 | ФТ-1 |/' "$DV/backlog/docs/doc-3 - Расхождения-с-требованиями.md"
+cp "$DV/backlog/docs/doc-3 - Расхождения-с-требованиями.md" "$DV/backlog/docs/doc-4 - Ещё-расхождения.md" && sed -i 's/^id: doc-3/id: doc-4/' "$DV/backlog/docs/doc-4 - Ещё-расхождения.md"
+expect_bl "расхождения · ID не DV — DV001, второй реестр — DV002" 1 "$DV" "DV001 DV002" --source "$tmp/bad/devs-bft.md"
 # User Actions: старт пути персонажа (триггер) и точки входа — из «Карты» и согласованной истории; без триггера — BL050
 python3 - "$tmp/bout" <<'PY' && ok "карта · Evidence и User Actions: два триггера, шаги CJM и группы касания из истории" || fail "карта · User Actions не дошёл до страницы"
 import json, re, sys

@@ -630,3 +630,20 @@ body[data-view="api"] .api{display:block}
 .apiseq{margin:0;padding:0 0 0 18px;font-size:13px;line-height:1.5}.apiseq li{margin:2px 0}.apiseq i{font-style:normal;color:#8a857c;margin:0 6px}.apiseq span{color:#55524c;margin-left:6px}
 .apiseq li.ret b{font-weight:500}.apiseq li.ret span{color:#8a857c}
 .apiex{font-size:12px;background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:10px 12px;overflow-x:auto;white-space:pre-wrap}
+
+/* ---------- Расхождения с требованиями (#38) ---------- */
+.devs{display:none}
+body[data-view="dev"] .hero,body[data-view="dev"] .wrap,body[data-view="dev"] .mstack{display:none}
+body[data-view="dev"] .devs{display:block}
+@media(min-width:701px){body[data-view="dev"] .devs{height:100vh;overflow-y:auto;overflow-x:hidden}}
+.dvtbl{width:100%;border-collapse:collapse;background:#fff;border:1px solid #e6e2da;border-radius:12px;font-size:13.5px;line-height:1.45}
+.dvtbl th{text-align:left;font-size:11.5px;color:#8a857c;font-weight:700;text-transform:uppercase;letter-spacing:.3px;padding:10px 12px;border-bottom:1px solid #e6e2da;background:#faf8f4}
+.dvtbl td{padding:10px 12px;border-bottom:1px solid #efece6;vertical-align:top}
+.dvtbl tr:last-child td{border-bottom:0}
+.dvtbl tr.esc td{background:#fff8ec}
+.dvid{font-weight:700;white-space:nowrap;color:#8a857c}
+.dvreq{display:inline-flex;align-items:center;gap:5px;margin:0 4px 4px 0;padding:2px 8px;border:1px solid #d9d4ca;border-radius:999px;background:#fff;font:inherit;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
+.dvreq:hover{border-color:#8a857c}
+.dvreq i{font-style:normal;font-size:10.5px;color:#8a857c;background:#f2f0ec;border-radius:999px;padding:0 5px}
+.dvesc{display:inline-block;padding:1px 8px;border-radius:999px;background:#fbe3dc;color:#a0392d;font-size:11px;font-weight:700}
+.dvnone,.dvhint{color:#8a857c;font-size:13px;margin-top:14px}

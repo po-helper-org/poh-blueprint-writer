@@ -594,6 +594,33 @@
       ${miss.length ? `<section class="rkmiss"><h4>Не записаны — найдены по данным карты</h4>${miss.map(a => `<button class="rkm-i" data-task="${esc(a.story)}"><span class="rkk">${esc(RK_KIND[a.kind][0])}</span><b>${esc(a.story)}</b> ${esc((TASK[a.story] || {}).text || "")}<small>${esc(RK_KIND[a.kind][1])}</small></button>`).join("")}</section>` : ""}</div>`;
   }
 
+  /* ---------- «Расхождения с требованиями»: где проработка карты отошла от первичных БФТ ----------
+     Данные — документ «Расхождения с требованиями» (ключ devs): функционал, что требуется в БФТ, что изменилось
+     в процессе, решение. Строка без решения — эскалировать. Требование кликается: где оно на карте. */
+  const DV = D.devs || null, gridDev = document.getElementById("devs");
+  const dvOpen = r => !String(r.decision || "").trim() || /УТОЧНИТЬ/.test(r.decision);
+  function dvBoard() {
+    if (!DV || !gridDev) return;
+    const open = DV.items.filter(dvOpen).length;
+    const req = id => `<button class="dvreq" data-dvreq="${esc(id)}" title="Где на карте">${esc(id)}<i>${(DV.at[id] || []).length}</i></button>`;
+    const row = r => `<tr class="${dvOpen(r) ? "esc" : ""}"><td class="dvid">${esc(r.id)}</td><td>${r.reqs.map(req).join(" ")}</td><td><b>${mdInline(r.feature)}</b></td>
+      <td>${mdInline(r.bft)}</td><td>${mdInline(r.change)}</td><td>${dvOpen(r) ? `<span class="dvesc">Эскалировать</span> ` : ""}${mdInline(r.decision || "")}</td></tr>`;
+    gridDev.innerHTML = `<div class="rkwrap"><div class="rmhead"><button class="rmback" data-view="see">← К карте</button>${DV.status ? `<span class="arst">${esc(DV.status)}</span>` : ""}<h2>Расхождения с требованиями</h2>
+      <p>Где карта отошла от первичных БФТ · ${DV.items.length} ${plural(DV.items.length, "расхождение", "расхождения", "расхождений")}${open ? `, без решения ${open} — эскалировать` : ", у всех есть решение"} · документ <code>${esc(DV.file)}</code></p></div>
+      ${DV.items.length ? `<div class="tbl"><table class="dvtbl"><thead><tr><th>ID</th><th>Требование</th><th>Функционал</th><th>Требуется в БФТ</th><th>Изменения в процессе</th><th>Решение</th></tr></thead><tbody>${DV.items.map(row).join("")}</tbody></table></div>`
+        : `<p class="dvnone">Расхождений нет: карта делает всё, что требует БФТ.</p>`}
+      <p class="dvhint">Сверка каждого требования БФТ с картой — <code>./blueprint.py reconcile</code>.</p></div>`;
+  }
+  function openDevReq(id) {
+    const at = DV.at[id] || [], rows = DV.items.filter(r => r.reqs.includes(id));
+    const chip = x => API && API.some(c => c.id === x) ? `<button class="ref" data-api="${esc(x)}">${esc(x)}</button>` : idChip(x);
+    side.innerHTML = head(id, `Требование БФТ · ${rows.map(r => esc(r.id)).join(", ")}`) + `<div class="snbody">
+      ${sec("Где на карте", at.length ? `<p>${at.map(chip).join(" ")}</p>` : "<p>На карте его нет — решение записано в реестре расхождений.</p>")}
+      ${rows.map(r => sec(`${r.id} · ${r.feature}`, `<p><b>Требуется в БФТ.</b> ${mdInline(r.bft)}</p><p><b>Изменения в процессе.</b> ${mdInline(r.change)}</p><p><b>Решение.</b> ${mdInline(r.decision || "— эскалировать")}</p>`)).join("")}
+      ${sec("Ссылки", refList([`<span class="lk">Реестр</span> <code>${esc(DV.file)}</code>`]))}</div>`;
+    body.classList.add("open"); side.scrollTop = 0; side.dataset.ctx = "dev:" + id; side.dataset.note = "";
+  }
+
   /* ---------- «Контракты»: технические контракты стыков — API и база данных ----------
      Работа команды согласования контрактов: вход — история, где системы обмениваются данными (БФТ и процесс
      карточек), выход — контракт contracts/C-N.md и Swagger contracts/openapi.yaml, по нему поднимается mock-сервер.
@@ -652,8 +679,9 @@
     if (v === "road") { if (RM) { rmBoard(); gridRoad.scrollTop = 0 } return }
     if (v === "risk") { if (RK) { rkBoard(); gridRisk.scrollTop = 0 } return }
     if (v === "api") { if (API) { apiBoard(); gridApi.scrollTop = 0 } return }
-    if (was === "rel" || was === "adr" || was === "road" || was === "risk" || was === "api") { window.scrollTo(0, 0) }
-    const col = was === "see" ? firstVisible(hh, hs, 132) : was === "rel" || was === "road" || was === "risk" || was === "api" ? 0 : firstVisible(mh, work, 96);
+    if (v === "dev") { if (DV) { dvBoard(); gridDev.scrollTop = 0 } return }
+    if (was === "rel" || was === "adr" || was === "road" || was === "risk" || was === "api" || was === "dev") { window.scrollTo(0, 0) }
+    const col = was === "see" ? firstVisible(hh, hs, 132) : was === "rel" || was === "road" || was === "risk" || was === "api" || was === "dev" ? 0 : firstVisible(mh, work, 96);
     if (v === "see") hs.scrollLeft = hh[col] ? hh[col].offsetLeft - 132 : 0;
     else { work.scrollTop = 0; work.scrollLeft = mh[col] ? mh[col].offsetLeft - 96 : 0 }
     drawLinks();
@@ -1194,6 +1222,7 @@
     if (t.closest("[data-rlmenu]")) { menu(false); if (RL) return setView("rel") }
     if (t.closest("[data-rmmenu]")) { menu(false); if (RM) return setView("road") }
     if (t.closest("[data-rkmenu]")) { menu(false); return setView("risk") }
+    if (t.closest("[data-dvmenu]")) { menu(false); return setView("dev") }
     if (t.closest("#menu [data-guide]") || t.closest("#menu .play")) menu(false);
     const sl = t.closest("[data-sl]"); if (sl) return slide(sl.closest(".pic"), +sl.dataset.sl);
     const dd = t.closest("[data-dot]"); if (dd) return slide(dd.closest(".fr").querySelector(".pic"), 0, +dd.dataset.dot);
@@ -1203,6 +1232,7 @@
       more.textContent = open ? "свернуть" : `ещё ${sc.querySelectorAll(".xtra").length}`; return drawLinks() }
     const fl = t.closest(".fn[data-seen]"); if (fl) return openSeen(fl.dataset.seen);
     const ap = t.closest("[data-api]"); if (ap) return openApi(ap.dataset.api);
+    const dq = t.closest("[data-dvreq]"); if (dq) return openDevReq(dq.dataset.dvreq);
     const ev = t.closest("[data-ev]"); if (ev) { const sid = ev.dataset.ev; if (NOTE_OF[sid]) return openScreen(sid, 0); const s = D.seen.find(x => x.steps.some(st => st.screens.includes(sid))); if (s) return openSeen(s.key) }
     const ua = t.closest(".ua[data-seen]"); if (ua) return openSeen(ua.dataset.seen);
     const tf = t.closest("[data-tf]");
@@ -1265,6 +1295,7 @@
         return { key: "seen:" + id, label: `Шаги истории ${s.steps.map(st => st.id).join(", ")} · этап «${s.final ? "Итог" : COLS[s.col].name}» · ${pName(s.persona)}`, file: storyDoc } }
       if (kind === "sub") return { key: "sub:" + id, label: `Подзадача ${id} «${SUB[id].text}»`, file: SUB[id].file };
       if (kind === "api") { const c = API.find(x => x.id === id); return { key: "api:" + id, label: `Контракт ${id} «${c.title}»`, file: c.file } }
+      if (kind === "dev") return { key: "dev:" + id, label: `Расхождение по требованию ${id}`, file: DV.file };
       return { key: "map", label: "Карта", file: mapDoc };
     }
     const fr = el.closest(".fr"); if (fr) { const cap = fr.querySelector(".cap").textContent, ids = (fr.dataset.screens || "").split(",").filter(Boolean);

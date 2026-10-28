@@ -21,6 +21,8 @@ elif cmd == "groom":
 elif cmd == "prototype":
     sub = rest.pop(0) if rest and rest[0] in ("skeleton", "lint", "build", "review") else "lint"
     run = ["bft-proto.py", sub, here]
+elif cmd == "reconcile":
+    run = ["bft-reconcile.py", here]
 elif cmd == "contracts":
     sub = rest[0] if rest[:1] in (["skeleton"], ["openapi"]) else ""
     run = ["bft-contracts.py", sub, here] if sub else ["bft-contracts.py", "lint", here, "--hints"]
@@ -38,6 +40,7 @@ else:
     print("./blueprint.py contracts openapi — Swagger contracts/openapi.yaml из API-контрактов (mock-сервер: Prism, MockAPI прототипа)")
     print("./blueprint.py prototype skeleton|lint|build — прототип по контрактам: prototype/spec.md → web, MockAPI, docker-compose (.blueprint/rules/prototype.md)")
     print("./blueprint.py prototype review review.json — замечания прототипа → «Вопросы» плана карты")
+    print("./blueprint.py reconcile — сверка БФТ ↔ карта: каждое требование — где на карте или в «Расхождениях с требованиями» (код RC)")
     print("./blueprint.py build  — схемы BPMN из «Процесса», страница <epic>-map.html и архив <epic>-blueprint.zip")
     print("./blueprint.py check  — проверка без записи: схемы и скрипты проекта актуальны")
     print("доп. ключи: --source БФТ.md — сверка с БФТ, --strict — предупреждения тоже ошибки")
