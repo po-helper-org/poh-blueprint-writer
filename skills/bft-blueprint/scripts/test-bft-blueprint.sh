@@ -394,6 +394,66 @@ out2="$(python3 "$BRC" "$DV" --source "$tmp/bad/devs-bft.md" 2>&1)"; rc2=$?
 sed -i 's/^| DV2 | ФТ-99 |/| X2 | ФТ-1 |/' "$DV/backlog/docs/doc-3 - Расхождения-с-требованиями.md"
 cp "$DV/backlog/docs/doc-3 - Расхождения-с-требованиями.md" "$DV/backlog/docs/doc-4 - Ещё-расхождения.md" && sed -i 's/^id: doc-3/id: doc-4/' "$DV/backlog/docs/doc-4 - Ещё-расхождения.md"
 expect_bl "расхождения · ID не DV — DV001, второй реестр — DV002" 1 "$DV" "DV001 DV002" --source "$tmp/bad/devs-bft.md"
+# отгрузка в Confluence (#39): страница собирается без сети; без доступа — код 3 и файл; publish на локальной заглушке REST создаёт, повтор обновляет ту же страницу
+BCF="$DIR/scripts/bft-confluence.py"
+CF="$tmp/cf/dineclub-restart-blueprint" && mkdir -p "$tmp/cf" && cp -r "$BGOLD" "$CF" && cp "$DIR/examples/dineclub-restart-map.html" "$CF/"
+out="$(env -u CONFLUENCE_URL -u CONFLUENCE_TOKEN python3 "$BCF" publish "$CF" --date 2026-10-28 2>&1)"; rc=$?
+[ "$rc" -eq 3 ] && grep -q "не хватает: CONFLUENCE_URL, CONFLUENCE_TOKEN, --parent" <<<"$out" && python3 - "$CF/confluence/page.xhtml" <<'PY' \
+  && ok "confluence · без доступа — код 3, страница собрана локально: этапы, истории, слои, расхождения, вопросы" || fail "confluence · локальная страница не та — $out"
+import sys, xml.dom.minidom
+s = open(sys.argv[1], encoding="utf-8").read()
+xml.dom.minidom.parseString('<r xmlns:ac="ac">' + s + "</r>")
+for h in ("<h2>Этапы</h2>", "<h2>Что делаем</h2>", "<h2>Как это работает</h2>", "<h2>Расхождения с требованиями</h2>", "<h2>Открытые вопросы"):
+    assert h in s, h
+assert "собрано 2026-10-28" in s and "<td>DV1</td>" in s and "<td>BP-1</td>" in s and "Backstage — работа за кадром" in s and "dineclub-restart-map.html" in s
+PY
+python3 - "$BCF" "$CF" <<'PY' && ok "confluence · publish: дочерняя страница БФТ, повтор — новая версия той же страницы, вложение, токен не в выводе и не в файлах" || fail "confluence · publish на заглушке REST не прошёл"
+import json, os, subprocess, sys, threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+log, pages, atts = [], {"100": {"id": "100", "title": "БФТ", "version": {"number": 3}, "space": {"key": "PO"}}}, {}
+class H(BaseHTTPRequestHandler):
+    def log_message(self, *a): pass
+    def send(self, obj, code=200):
+        b = json.dumps(obj).encode(); self.send_response(code); self.send_header("Content-Type", "application/json"); self.end_headers(); self.wfile.write(b)
+    def body(self):
+        return self.rfile.read(int(self.headers.get("Content-Length") or 0))
+    def do_GET(self):
+        log.append(("GET", self.path, self.headers.get("Authorization")))
+        p = self.path.split("?")[0].split("/")
+        if len(p) == 5:
+            return self.send(pages[p[4]]) if p[4] in pages else self.send({}, 404)
+        if p[-1] == "page":
+            return self.send({"results": [x for x in pages.values() if x.get("parent") == p[4]]})
+        return self.send({"results": [a for a in atts.get(p[4], []) if a["title"] in self.path]})
+    def do_POST(self):
+        b = self.body(); log.append(("POST", self.path, self.headers.get("Authorization")))
+        if self.path == "/rest/api/content":
+            d = json.loads(b); pid = str(200 + len(pages))
+            pages[pid] = {"id": pid, "title": d["title"], "parent": d["ancestors"][0]["id"], "version": {"number": 1}, "space": d["space"],
+                          "body": d["body"]["storage"]["value"], "_links": {"webui": f"/pages/viewpage.action?pageId={pid}"}}
+            return self.send(pages[pid])
+        pid = self.path.split("/")[4]; name = b.split(b'filename="')[1].split(b'"')[0].decode()
+        if not self.path.endswith("/data"):
+            atts.setdefault(pid, []).append({"id": "a1", "title": name})
+        self.send({"results": []})
+    def do_PUT(self):
+        d = json.loads(self.body()); pid = self.path.split("/")[-1]; log.append(("PUT", self.path, self.headers.get("Authorization")))
+        pages[pid].update(version={"number": d["version"]["number"]}, body=d["body"]["storage"]["value"]); self.send(pages[pid])
+srv = HTTPServer(("127.0.0.1", 0), H); threading.Thread(target=srv.serve_forever, daemon=True).start()
+env = {**os.environ, "CONFLUENCE_URL": f"http://127.0.0.1:{srv.server_port}", "CONFLUENCE_TOKEN": "s3cr3t-token", "NO_PROXY": "127.0.0.1", "no_proxy": "127.0.0.1"}
+env.pop("CONFLUENCE_USER", None)
+bcf, proj = sys.argv[1], sys.argv[2]
+r1 = subprocess.run([sys.executable, bcf, "publish", proj, "--parent", "https://wiki.example.com/pages/viewpage.action?pageId=100", "--date", "2026-10-28"], env=env, capture_output=True, text=True)
+r2 = subprocess.run([sys.executable, bcf, "publish", proj, "--date", "2026-10-29"], env=env, capture_output=True, text=True)
+out = r1.stdout + r1.stderr + r2.stdout + r2.stderr
+kids = [p for p in pages.values() if p.get("parent") == "100"]
+assert r1.returncode == 0 and r2.returncode == 0, out
+assert len(kids) == 1 and kids[0]["version"]["number"] == 2 and "собрано 2026-10-29" in kids[0]["body"] and kids[0]["space"] == {"key": "PO"}, kids
+assert [a["title"] for a in atts[kids[0]["id"]]] == ["dineclub-restart-map.html"] and any(p.endswith("/a1/data") for m, p, a in log if m == "POST")
+assert all(a == "Bearer s3cr3t-token" for m, p, a in log)
+meta = open(os.path.join(proj, "confluence/publish.json"), encoding="utf-8").read()
+assert "s3cr3t" not in out and "s3cr3t" not in meta and json.loads(meta)["page_id"] == kids[0]["id"], (out, meta)
+PY
 # User Actions: старт пути персонажа (триггер) и точки входа — из «Карты» и согласованной истории; без триггера — BL050
 python3 - "$tmp/bout" <<'PY' && ok "карта · Evidence и User Actions: два триггера, шаги CJM и группы касания из истории" || fail "карта · User Actions не дошёл до страницы"
 import json, re, sys

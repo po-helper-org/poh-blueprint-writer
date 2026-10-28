@@ -43,7 +43,7 @@ START, END = "<!-- BFT-BLUEPRINT START -->", "<!-- BFT-BLUEPRINT END -->"
 NPM_START, NPM_END = "<!-- BACKLOG.MD GUIDELINES START -->", "<!-- BACKLOG.MD GUIDELINES END -->"
 TOOLS = ("backlog_cli.py", "bft_blueprint.py", "bft_story.py", "bft_screens.py", "bft_mock.py", "bft_backlog.py", "bft-blueprint-lint.py",
          "bft-backlog-lint.py", "bft-backlog-build.py", "bft-backlog-init.py", "bft_plan.py", "bft-plan.py", "bft-reqs.py", "bft-groom.py", "bft_graph.py", "bft-skeleton.py",
-         "bft_contracts.py", "bft-contracts.py", "bft-reconcile.py", "bft_proto.py", "bft-proto.py", "proto_api.py", "proto_page.html",
+         "bft_contracts.py", "bft-contracts.py", "bft-reconcile.py", "bft-confluence.py", "bft_proto.py", "bft-proto.py", "proto_api.py", "proto_page.html",
          "proto_runtime.js", "proto_runtime.css",
          "page_kit.js", "map_page.js", "map_page.css")
 RULES = ("autopilot.md", "grooming.md", "backlog_rules.md", "screen_notes.md", "story_line.md", "contracts.md", "prototype.md")
@@ -101,6 +101,9 @@ elif cmd == "prototype":
     run = ["bft-proto.py", sub, here]
 elif cmd == "reconcile":
     run = ["bft-reconcile.py", here]
+elif cmd == "confluence":
+    sub = rest.pop(0) if rest[:1] == ["page"] else "publish"
+    run = ["bft-confluence.py", sub, here]
 elif cmd == "contracts":
     sub = rest[0] if rest[:1] in (["skeleton"], ["openapi"]) else ""
     run = ["bft-contracts.py", sub, here] if sub else ["bft-contracts.py", "lint", here, "--hints"]
@@ -119,6 +122,8 @@ else:
     print("./blueprint.py prototype skeleton|lint|build — прототип по контрактам: prototype/spec.md → web, MockAPI, docker-compose (.blueprint/rules/prototype.md)")
     print("./blueprint.py prototype review review.json — замечания прототипа → «Вопросы» плана карты")
     print("./blueprint.py reconcile — сверка БФТ ↔ карта: каждое требование — где на карте или в «Расхождениях с требованиями» (код RC)")
+    print("./blueprint.py confluence --parent <ссылка на БФТ> — отгрузить карту в Confluence дочерней страницей к БФТ (повтор обновляет её; доступ — CONFLUENCE_URL, CONFLUENCE_TOKEN)")
+    print("./blueprint.py confluence page — страница для Confluence локально: confluence/page.xhtml, без сети")
     print("./blueprint.py build  — схемы BPMN из «Процесса», страница <epic>-map.html и архив <epic>-blueprint.zip")
     print("./blueprint.py check  — проверка без записи: схемы и скрипты проекта актуальны")
     print("доп. ключи: --source БФТ.md — сверка с БФТ, --strict — предупреждения тоже ошибки")
@@ -147,6 +152,7 @@ def guide(title: str, epic: str, source: str) -> str:
 | `backlog/tasks/` | задачи: «Что делаем» и их подзадачи «Как это работает» |
 | `backlog/docs/` | документы: «Карта» (команды, вопросы), «История» (этапы, шаги, экраны), «Расхождения с требованиями» (отходы от БФТ и решения), `screens/` — требования к экранам |
 | `contracts/` | контракты стыков `C-N.md`: кто кого вызывает, поля с источником в БФТ, пример ответа, ошибки, Sequence, цепочка, данные. Шаблон — `.blueprint/templates/contract.md`, проверка — `./blueprint.py contracts` |
+| `confluence/` | отгрузка в Confluence: `page.xhtml` — страница (storage format), `publish.json` — родитель (страница БФТ) и ID отгруженной страницы. Собирает `./blueprint.py confluence`, учётных данных здесь нет |
 | `prototype/` | прототип для заказчика: `spec.md` — план показа (правится), остальное собирает `./blueprint.py prototype build`: `web/` — пошаговый показ, `api/main.py` — MockAPI по контрактам, `docker-compose.yml`. Правила — `.blueprint/rules/prototype.md` |
 | `backlog/assets/screens/` | картинки экранов: `<ID>.svg` пишет `./blueprint.py build` из таблицы «Экраны» «Истории»; свой макет — `<ID>.png` рядом |
 | `.blueprint/rules/` | правила: `backlog_rules.md` — карта, `screen_notes.md` — экраны, `story_line.md` — история, `contracts.md` — контракты, `prototype.md` — прототип |

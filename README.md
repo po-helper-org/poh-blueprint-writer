@@ -1,6 +1,6 @@
 # poh-blueprint-writer
 
-Навыки `/bft-blueprint`, `/bft-reconcile`, `/adr`, `/system-requirements` и `/release-plan` для Claude Code и других IDE-агентов.
+Навыки `/bft-blueprint`, `/bft-reconcile`, `/bft-confluence`, `/adr`, `/system-requirements` и `/release-plan` для Claude Code и других IDE-агентов.
 По готовому БФТ они собирают общую картину кроссфункциональной инициативы — Service Blueprint —
 в два согласуемых этапа, этап системной проработки и этап **«План релиза / Delivery»**
 (дорожки DEV / STAGE / PROD с шагами и воротами). Все страницы — HTML без `npm` и CDN.
@@ -9,6 +9,7 @@
 а эти читают готовый БФТ и раскладывают его в карту. Ставятся рядом, в один `<skills_path>`.
 `/release-plan` собирает план релиза по описанию задачи.
 `/bft-reconcile` сверяет каждое требование БФТ с итоговой картой и ведёт реестр «Расхождения с требованиями» для PO.
+`/bft-confluence` отгружает карту в Confluence дочерней страницей под страницей первичных БФТ; повтор обновляет ту же страницу.
 
 ## Что получается
 
