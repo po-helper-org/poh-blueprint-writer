@@ -72,9 +72,12 @@ python3 -m unittest discover -s service/tests -t service
 
 ## Сервер
 
-`bash service/deploy/install.sh` (с `BLUEPRINT_WORKSPACE=…` при первой установке): тесты, настройки, токен MCP,
-юнит `poh-blueprint.service` (127.0.0.1:8662). nginx — шаг владельца: сниппет `deploy/poh-blueprint.nginx.conf`
-в `server{}` корп-браузера, рядом с `/sprints/`.
+Код выкладывает автодеплой из main (server-infra `repos.conf`: `poh-blueprint-writer|poh-blueprint.service|service/deploy/apply.sh`):
+шаг гоняет тесты и `install.sh` — настройки и токен MCP один раз, юнит `poh-blueprint.service` (127.0.0.1:8662).
+Воркспейс по умолчанию — `~/.local/share/poh-blueprint/workspace` (`bft/documentation/<эпик>/`).
+nginx-сниппет `deploy/poh-blueprint.nginx.conf` ставит root-агент poh-nginx-sync по записи в server-infra
+`config/poh-nginx/snippets.conf` (путь `/blueprint`, порт 8662); новая запись — разовый шаг владельца
+`sudo /usr/local/sbin/poh-nginx-sync --accept`.
 
 ## Безопасность
 
