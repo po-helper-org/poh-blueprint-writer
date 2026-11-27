@@ -13,3 +13,5 @@ jobs:
           python-version: '3.12'
       - name: Самотест навыка
         run: bash skills/bft-blueprint/scripts/test-bft-blueprint.sh
+      - name: Тесты сервиса Blueprint (MCP, API, этапы)
+        run: python3 -m unittest discover -s service/tests -t service

@@ -1,0 +1,16 @@
+{
+  "listen": "127.0.0.1:8662",
+  "base": "/blueprint",
+  "workspace": "~/work/my-workspace",
+  "docs_path": "bft/documentation",
+  "skills_path": "",
+  "state_dir": "~/.local/state/poh-blueprint",
+  "gate_mode": "corp",
+  "gate_secret_file": "~/.config/corp-link/gate-secret",
+  "mcp_tokens_file": "~/.config/poh-blueprint/mcp-tokens",
+  "public_url": "https://browser.example.org",
+  "agent": {
+    "command": ["claude", "-p", "{prompt}", "--permission-mode", "acceptEdits", "--allowedTools", "Bash(python3:*)", "Read", "Write", "Edit"],
+    "timeout": 3600
+  }
+}
