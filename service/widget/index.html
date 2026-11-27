@@ -4,35 +4,27 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="referrer" content="no-referrer">
-<title>Сервис Blueprint</title>
+<title>Blueprint</title>
 <link rel="icon" href="icon.svg">
 <link rel="stylesheet" href="blueprint.css">
 </head>
 <body>
-<header class="bp-top" id="top">
-  <button type="button" class="bp-back" id="back" hidden aria-label="К списку диаграмм">
-    <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-  </button>
-  <img class="bp-logo" src="icon.svg" alt="" width="28" height="28">
-  <div class="bp-titles">
-    <b id="title">Сервис Blueprint</b>
-    <small id="subtitle">Service Blueprint по БФТ</small>
-  </div>
-  <div class="bp-top__end">
-    <button type="button" class="ds-btn ds-btn--ghost" id="mcpBtn" title="Управление через MCP">MCP</button>
-  </div>
-</header>
-
-<main id="app" class="bp-main" aria-live="polite"></main>
+<main id="app" class="bp-main">
+  <header class="bp-head">
+    <h1>Blueprint</h1>
+    <button type="button" class="ds-btn ds-btn--primary" id="create">Создать</button>
+  </header>
+  <input class="ds-input" id="search" type="search" placeholder="Поиск" aria-label="Поиск">
+  <div id="list"><p class="bp-empty">Загрузка…</p></div>
+</main>
 
 <section id="login" class="bp-login" hidden>
-  <p>Нужен вход — тот же, что в корп-браузере.</p>
   <iframe id="loginFrame" title="Вход"></iframe>
 </section>
 
 <div class="bp-scrim" id="scrim" hidden></div>
 <section class="bp-sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
-  <div class="bp-sheet__head"><b id="sheetTitle"></b><button type="button" class="bp-x" id="sheetClose" aria-label="Закрыть">×</button></div>
+  <div class="bp-sheet__head"><b id="sheetTitle">Новая диаграмма</b><button type="button" class="bp-x" id="sheetClose" aria-label="Закрыть">×</button></div>
   <div class="bp-sheet__body" id="sheetBody"></div>
 </section>
 

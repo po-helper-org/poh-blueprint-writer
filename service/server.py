@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Сервис Blueprint: список Service Blueprint диаграмм, поэтапная работа над картой и MCP «Система Blueprint».
 
-  GET  /blueprint/                         интерфейс (статика, данных нет)
+  GET  /blueprint/                         список диаграмм (статика, данных нет)
+  GET  /blueprint/<эпик>                   диаграмма отдельной страницей: собранная карта, до неё — история
   GET  /blueprint/api/list|map|questions|file|jobs|job|config      ┐ за гейтом (corp: X-Corp-Gate от nginx,
   GET  /blueprint/api/page?epic=&kind=map|story — страница в песочнице │  basic: HTTP Basic, none: только 127.0.0.1)
   POST /blueprint/api/run|answer|agent|stop — заголовок X-Blueprint: 1 ┘
@@ -24,6 +25,7 @@ import re
 import sys
 import traceback
 import urllib.parse
+from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -229,7 +231,12 @@ def make_handler(app: App):
                     return self._deny()
                 return self._api_get(path[len(base) + 5:], q)
             if path.startswith(base + "/"):
-                return self._static(path[len(base) + 1:] or "index.html")
+                rel = urllib.parse.unquote(path[len(base) + 1:]) or "index.html"
+                if (WIDGET / rel).is_file() or rel == "login" or "/" in rel:
+                    return self._static(rel)
+                if not self._gate_ok():   # /blueprint/<эпик> — сама карта; вход на неё делает nginx (edge-auth)
+                    return self._deny()
+                return self._diagram(rel)
             return self._err(404, "not-found")
 
         def _static(self, rel: str):
@@ -267,6 +274,23 @@ def make_handler(app: App):
             if name == "page":
                 return self._page(q.get("epic", ""), q.get("kind", "map"))
             return self._err(404, "not-found")
+
+        def _diagram(self, epic: str):
+            """Страница диаграммы: собранная карта, а пока её нет — история. Обе — шаблоны навыка."""
+            try:
+                f = core.collect(app.ws, core.check_slug(epic), deep=False)
+            except BlueprintError as e:
+                return self._err(e.status, "blueprint", str(e))
+            has_story = (f.get("story") or {}).get("html")
+            if f.get("map_html_path"):
+                return self._page(epic, "map")
+            if has_story:
+                return self._page(epic, "story")
+            html = (f"<!doctype html><meta charset=utf-8><title>{escape(f['title'])}</title>"
+                    "<body style='font:16px system-ui;max-width:560px;margin:15vh auto;padding:0 16px;color:#1c1c1e'>"
+                    f"<h1 style='font-size:22px'>{escape(f['title'])}</h1><p style='color:#6e6e73'>Карта ещё не собрана.</p>"
+                    f"<pre style='background:#f2f2f5;padding:12px;border-radius:12px'>/bft-blueprint {escape(epic)}</pre>")
+            return self._reply(404 if not f.get("bft") else 200, html, "text/html; charset=utf-8", headers=[("Content-Security-Policy", PAGE_CSP)])
 
         def _page(self, epic: str, kind: str):
             try:

@@ -273,37 +273,37 @@ def stages(f: dict) -> list[Stage]:
 
     # 1. БФТ
     if f.get("bft") == "deep":
-        out.append(Stage("bft", STAGE_TITLES["bft"], "done", "полный БФТ (deep)",
+        out.append(Stage("bft", STAGE_TITLES["bft"], "done", "deep",
                          artifacts=[{"label": "БФТ", "kind": "md", "path": f["bft_path"]}]))
     elif f.get("bft") == "fast":
-        out.append(Stage("bft", STAGE_TITLES["bft"], "done", "быстрый проход (fast): ФТ/ИТ/НФТ ещё скелет — карта выйдет тонкой",
+        out.append(Stage("bft", STAGE_TITLES["bft"], "done", "только fast — карта выйдет тонкой",
                          missing=["полный БФТ — /bft-deep"], command=f"/bft-deep {epic}",
                          artifacts=[{"label": "БФТ (fast)", "kind": "md", "path": f["bft_path"]}]))
     else:
-        out.append(Stage("bft", STAGE_TITLES["bft"], "blocked", "БФТ не найден",
+        out.append(Stage("bft", STAGE_TITLES["bft"], "blocked", "нет БФТ",
                          missing=[f"{f['dir']}/{epic}.md"], command=f"/bft-fast {epic}"))
     has_bft = bool(f.get("bft"))
 
     # 2. История
     s = f.get("story")
     if not has_bft and not s:
-        out.append(Stage("story", STAGE_TITLES["story"], "blocked", "нужен БФТ"))
+        out.append(Stage("story", STAGE_TITLES["story"], "blocked", ""))
     elif not s:
-        out.append(Stage("story", STAGE_TITLES["story"], "ready", "истории ещё нет",
+        out.append(Stage("story", STAGE_TITLES["story"], "ready", "",
                          missing=[f"{epic}-story.md"], command=f"/bft-blueprint {epic} --story",
-                         actions=[{"id": "auto", "label": "Автопилот: история и карта сразу"}]))
+                         actions=[{"id": "auto", "label": "Автопилот"}]))
     else:
         art = [{"label": "История", "kind": "md", "path": s["path"]}]
         if s["html"]:
             art.append({"label": "Страница истории", "kind": "story", "path": s["path"].replace(".md", ".html")})
         approved = s["status"].lower().startswith("согласов")
         if not s["html"] or s["html_stale"]:
-            out.append(Stage("story", STAGE_TITLES["story"], "stale", "страница истории не собрана или старше документа",
-                             missing=[f"{epic}-story.html"], actions=[{"id": "story_render", "label": "Собрать страницу истории"}], artifacts=art))
+            out.append(Stage("story", STAGE_TITLES["story"], "stale", "страница устарела",
+                             missing=[f"{epic}-story.html"], actions=[{"id": "story_render", "label": "Собрать"}], artifacts=art))
         elif not approved and not p:
-            out.append(Stage("story", STAGE_TITLES["story"], "review", f"черновик v{s['version'] or '1'} — ждёт согласования PO",
+            out.append(Stage("story", STAGE_TITLES["story"], "review", f"черновик v{s['version'] or '1'}",
                              missing=["status: Согласован"], command=f"/bft-blueprint {epic} --story <правки PO>",
-                             actions=[{"id": "story_approve", "label": "Согласовать историю"}], artifacts=art))
+                             actions=[{"id": "story_approve", "label": "Согласовать"}], artifacts=art))
         else:
             out.append(Stage("story", STAGE_TITLES["story"], "done",
                              f"v{s['version'] or '1'} · {s['status'] or 'без статуса'}", artifacts=art))
@@ -315,36 +315,35 @@ def stages(f: dict) -> list[Stage]:
         map_art.append({"label": "Страница карты", "kind": "map", "path": f.get("map_html_path")})
     if not p:
         st = "ready" if story_ok else "blocked"
-        out.append(Stage("map", STAGE_TITLES["map"], st, "проекта карты ещё нет" if story_ok else "нужна согласованная история",
+        out.append(Stage("map", STAGE_TITLES["map"], st, "",
                          missing=[f"{epic}-blueprint/"], command=f"/bft-blueprint {epic} --map" if story_ok else ""))
     else:
-        counts = f"{p.get('tasks', 0)} задач · {p.get('cards', 0)} карточек · {p.get('teams_on_map', 0)} команд"
+        counts = f"{p.get('tasks', 0)} задач · {p.get('cards', 0)} карточек"
         if p.get("parse_error"):
             out.append(Stage("map", STAGE_TITLES["map"], "stale", f"карта не читается: {p['parse_error']}",
                              command=f"/bft-blueprint {epic} --map", actions=[{"id": "lint", "label": "Проверить карту"}]))
         elif not p.get("tasks") and p.get("files", 0) == 0:
-            out.append(Stage("map", STAGE_TITLES["map"], "ready", "проект создан, задач нет",
+            out.append(Stage("map", STAGE_TITLES["map"], "ready", "задач нет",
                              command=f"/bft-blueprint {epic} --map",
-                             actions=[{"id": "skeleton", "label": "Каркас плана из БФТ"}, {"id": "next", "label": "Что исправить дальше"}]))
+                             actions=[{"id": "skeleton", "label": "Каркас плана"}, {"id": "next", "label": "Что исправить"}]))
         elif not f.get("map_html") or f.get("map_stale") or p.get("errors"):
-            why = (f"ошибок проверки: {p['errors']}" if p.get("errors") else
-                   "страница старше проекта — пересобрать" if f.get("map_stale") else "страница не собрана")
-            out.append(Stage("map", STAGE_TITLES["map"], "stale", f"{counts} · {why}",
+            why = (f"ошибок: {p['errors']}" if p.get("errors") else
+                   "страница устарела" if f.get("map_stale") else "страница не собрана")
+            out.append(Stage("map", STAGE_TITLES["map"], "stale", why,
                              missing=[why], command=f"/bft-blueprint {epic} --map" if p.get("errors") else "",
-                             actions=[{"id": "lint", "label": "Проверить"}, {"id": "build", "label": "Собрать страницу"}, {"id": "next", "label": "Что исправить"}],
+                             actions=[{"id": "build", "label": "Собрать"}, {"id": "lint", "label": "Проверить"}, {"id": "next", "label": "Что исправить"}],
                              artifacts=map_art))
         else:
-            q = p.get("questions_open", 0)
             out.append(Stage("map", STAGE_TITLES["map"], "done",
-                             counts + (f" · открытых вопросов: {q}" if q else ""),
-                             actions=[{"id": "build", "label": "Пересобрать"}, {"id": "verify", "label": "Приёмка комплекта"}],
+                             counts,
+                             actions=[{"id": "build", "label": "Пересобрать"}, {"id": "verify", "label": "Приёмка"}],
                              artifacts=map_art))
     map_ok = out[-1].status in ("done", "stale") and bool(p.get("tasks"))
 
     def gated(key: str, needed: bool, done: bool, summary_done: str, summary_todo: str, command: str,
               missing: list, actions=None, art=None, optional=False, skip_reason=""):
         if not map_ok:
-            out.append(Stage(key, STAGE_TITLES[key], "blocked", "нужна карта с задачами"))
+            out.append(Stage(key, STAGE_TITLES[key], "blocked", ""))
         elif not needed:
             out.append(Stage(key, STAGE_TITLES[key], "skipped", skip_reason))
         elif done:
@@ -361,46 +360,46 @@ def stages(f: dict) -> list[Stage]:
     tech = p.get("technology", 0)
     have = [k for k in ("adr", "sysreq") if k in docs]
     gated("adr", tech > 0, len(have) == 2,
-          f"ADR: {docs.get('adr', {}).get('status', '—')} · СТ: {docs.get('sysreq', {}).get('status', '—')}",
-          f"карточек Technology: {tech}" + (" · есть только " + ", ".join(DOC_TITLES[k] for k in have) if have else ""),
+          "",
+          ("нет: " + ", ".join(DOC_TITLES[k] for k in ("adr", "sysreq") if k not in docs)),
           (f"/system-requirements{bft_arg} --project {proj}" if "adr" in have else f"/adr{bft_arg} --project {proj}"),
           [DOC_TITLES[k] for k in ("adr", "sysreq") if k not in docs], art=doc_art("adr", "sysreq"),
-          skip_reason="на карте нет слоя Technology — устройство систем не меняется")
+          skip_reason="нет слоя Technology")
 
     # 5. Стыки и контракты — когда работа режется между командами
     teams = p.get("teams_on_map", 0)
     seams_done = "seams" in docs and p.get("contracts", 0) > 0
     gated("seams", teams >= 2, seams_done,
-          f"стыки: {docs.get('seams', {}).get('status', '—')} · контрактов: {p.get('contracts', 0)}",
-          f"команд на карте: {teams}",
+          f"контрактов: {p.get('contracts', 0)}",
+          f"команд: {teams}",
           f"/bft-blueprint {epic} --map — шаги 7–8: документ «Стыки» и контракты стыков (./blueprint.py contracts до 0 ошибок)",
           (["документ «Стыки»"] if "seams" not in docs else []) + (["контракты contracts/C-N.md"] if not p.get("contracts") else []),
           actions=[{"id": "contracts", "label": "Проверить контракты"}], art=doc_art("seams"),
-          skip_reason="одна команда без интеграций — стыков нет")
+          skip_reason="одна команда")
 
     # 6. Сверка с БФТ
     gated("reconcile", True, "deviations" in docs,
-          f"расхождений в реестре: {p.get('deviations', 0)}", "требования БФТ с картой не сверены",
+          f"расхождений: {p.get('deviations', 0)}", "",
           f"/bft-reconcile {proj}" + (f" --source {f['bft_path']}" if f.get("bft_path") else ""),
-          ["реестр «Расхождения с требованиями»"], actions=[{"id": "reconcile", "label": "Сверить сейчас (скрипт)"}],
+          ["реестр «Расхождения с требованиями»"], actions=[{"id": "reconcile", "label": "Сверить скриптом"}],
           art=doc_art("deviations"))
 
     # 7. План релиза
-    gated("release", True, "release" in docs, f"план релиза: {docs.get('release', {}).get('status', '—')}",
-          "этапа Delivery на карте нет", f"/release-plan{bft_arg} --project {proj}", ["документ «План релиза»"],
+    gated("release", True, "release" in docs, docs.get('release', {}).get('status', ''),
+          "", f"/release-plan{bft_arg} --project {proj}", ["документ «План релиза»"],
           art=doc_art("release", "roadmap", "risks"))
 
     # 8. Прототип — по желанию
-    gated("prototype", True, bool(f.get("prototype")), "прототип собран", "по желанию: пошаговый показ и MockAPI",
+    gated("prototype", True, bool(f.get("prototype")), "", "",
           f"/bft-blueprint {epic} --prototype", [], optional=True)
 
     # 9. Confluence
     c = f.get("confluence") or {}
     gated("confluence", True, bool(c.get("page_id")),
-          "страница в Confluence" + (f" · {c['url']}" if c.get("url") else f" · ID {c.get('page_id')}"),
-          "страница подготовлена локально — отгрузить" if c.get("prepared") else "карта ещё не отгружена",
+          "",
+          "страница подготовлена" if c.get("prepared") else "",
           f"/bft-confluence {proj} <ссылка на страницу БФТ>", ["страница в Confluence"],
-          actions=[{"id": "confluence_page", "label": "Подготовить страницу локально"}],
+          actions=[{"id": "confluence_page", "label": "Подготовить страницу"}],
           art=[{"label": "Confluence", "kind": "url", "path": c["url"]}] if c.get("url") else [])
     return out
 

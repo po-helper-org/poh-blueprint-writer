@@ -302,7 +302,7 @@ class HttpTest(unittest.TestCase):
     def test_static_and_list(self):
         status, body, hdr = self.req("/")
         self.assertEqual(status, 200)
-        self.assertIn("Сервис Blueprint", body.decode())
+        self.assertIn("Создать", body.decode())
         self.assertIn("frame-ancestors", hdr["Content-Security-Policy"])
         status, body, _ = self.req("/api/list")
         self.assertEqual(len(json.loads(body)["diagrams"]), 2)
@@ -320,6 +320,19 @@ class HttpTest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("sandbox", hdr["Content-Security-Policy"])
         self.assertIn(b"data:image/svg+xml;base64,", body)
+
+    def test_diagram_page(self):
+        status, body, hdr = self.req("/dineclub-restart")
+        self.assertEqual(status, 200)
+        self.assertIn("sandbox", hdr["Content-Security-Policy"])
+        self.assertIn(b"bft-blueprint map", body)             # сама карта навыка
+        actions.run_action(self.app.ws, "direct-faq", "story_render")
+        status, body, _ = self.req("/direct-faq")              # карты нет — история
+        self.assertIn(b"bft-blueprint story", body)
+        status, body, _ = self.req("/car-booking")             # только БФТ
+        self.assertIn("Карта ещё не собрана", body.decode())
+        self.assertEqual(self.req("/no-such")[0], 404)
+        self.assertEqual(self.req("/..%2Fserver.py")[0], 404)
 
     def test_mcp_token(self):
         ping = {"jsonrpc": "2.0", "id": 1, "method": "ping"}
