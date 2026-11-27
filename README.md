@@ -11,6 +11,10 @@
 `/bft-reconcile` сверяет каждое требование БФТ с итоговой картой и ведёт реестр «Расхождения с требованиями» для PO.
 `/bft-confluence` отгружает карту в Confluence дочерней страницей под страницей первичных БФТ; повтор обновляет ту же страницу.
 
+**Сервис Blueprint** ([`service/`](service/README.md)) — список всех диаграмм воркспейса, «Создать» с инструкцией
+для ИИ-агента и страница каждой карты по адресу `/blueprint/<эпик>`; плюс MCP «Система Blueprint», через который
+диаграммами управляет любой агент. Вход — из меню отчётов по спринту `/sprints/`.
+
 ## Что получается
 
 **Этап 1 — история через экраны.** Простая нетехническая история: что инициатива меняет
@@ -187,6 +191,15 @@ cd prototype && docker compose up   # http://localhost:8080, MockAPI — http://
 Решения сведены в таблицы, форма — в шаблоны, проверки — в скрипты: маршрут рассчитан на модели
 уровня Haiku и Sonnet.
 
+## Сервис Blueprint и MCP
+
+```sh
+BLUEPRINT_WORKSPACE=~/ws BLUEPRINT_GATE=none python3 service/server.py   # http://127.0.0.1:8662/blueprint/
+claude mcp add blueprint -- python3 service/server.py mcp                # MCP «Система Blueprint» по stdio
+```
+
+Экраны, этапы, инструменты MCP, настройки и установка на сервер — [service/README.md](service/README.md).
+
 ## Установка
 
 Из корня воркспейса, где уже стоит poh-bft-writer:
@@ -228,6 +241,7 @@ python3 <skills_path>/bft-blueprint/scripts/bft-backlog-build.py .bft/documentat
 
 ```bash
 bash skills/bft-blueprint/scripts/test-bft-blueprint.sh
+python3 -m unittest discover -s service/tests -t service   # сервис Blueprint и MCP
 ```
 
 Тот же самотест идёт в CI на каждый PR.

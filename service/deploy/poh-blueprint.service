@@ -1,0 +1,15 @@
+[Unit]
+Description=poh-blueprint: Сервис Blueprint — диаграммы Service Blueprint по БФТ, поэтапная работа и MCP «Система Blueprint»
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 %h/Projects/poh-blueprint-writer/service/server.py
+WorkingDirectory=%h/Projects/poh-blueprint-writer/service
+Environment=POH_BLUEPRINT_CONFIG=%h/.config/poh-blueprint/config.json
+Restart=always
+RestartSec=5
+MemoryMax=512M
+UnsetEnvironment=http_proxy https_proxy HTTP_PROXY HTTPS_PROXY all_proxy ALL_PROXY
+
+[Install]
+WantedBy=default.target
